@@ -1,0 +1,4 @@
+recursive-include viralconseq/scripts *.yaml
+recursive-include viralconseq/scripts *.smk
+recursive-exclude viralconseq/scripts __pycache__
+recursive-exclude viralconseq/scripts *.pyc

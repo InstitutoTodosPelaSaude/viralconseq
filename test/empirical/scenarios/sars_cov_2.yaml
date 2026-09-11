@@ -1,0 +1,72 @@
+name: sars_cov_2
+description: |
+  SARS-CoV-2 ARTIC V3 — itps-0001/0002 Illumina + barcode05/09 Nanopore.
+  Exercises the two tutorial pipelines: consensus illumina and consensus
+  nanopore.
+
+data:
+  tarball:
+    url: https://itps-nimbus.nyc3.cdn.digitaloceanspaces.com/my_test_data.tar.gz
+    extract_to: my_test_data
+    expected_files:
+      - my_test_data/illumina_data/itps-0001_R1.fastq.gz
+      - my_test_data/illumina_data/itps-0001_R2.fastq.gz
+      - my_test_data/illumina_data/itps-0002_R1.fastq.gz
+      - my_test_data/illumina_data/itps-0002_R2.fastq.gz
+      - my_test_data/nanopore_data/barcode05.itps-0003.fastq.gz
+      - my_test_data/nanopore_data/barcode09.itps-0004.fastq.gz
+
+references:
+  - url: https://raw.githubusercontent.com/artic-network/primer-schemes/master/nCoV-2019/V3/nCoV-2019.reference.fasta
+    dest: references/nCoV-2019.reference.fasta
+  - url: https://raw.githubusercontent.com/artic-network/primer-schemes/master/nCoV-2019/V3/nCoV-2019.scheme.bed
+    dest: references/nCoV-2019.bed
+
+sample_sheets:
+  illumina:
+    path: samples_illumina.csv
+    rows:
+      - [itps-0001, my_test_data/illumina_data/itps-0001_R1.fastq.gz, my_test_data/illumina_data/itps-0001_R2.fastq.gz]
+      - [itps-0002, my_test_data/illumina_data/itps-0002_R1.fastq.gz, my_test_data/illumina_data/itps-0002_R2.fastq.gz]
+  nanopore:
+    path: samples_nanopore.csv
+    rows:
+      - [barcode05, my_test_data/nanopore_data/barcode05.itps-0003.fastq.gz]
+      - [barcode09, my_test_data/nanopore_data/barcode09.itps-0004.fastq.gz]
+
+pipelines:
+  - id: consensus_illumina
+    cli: [viralconseq, consensus, illumina]
+    samples_ref: illumina
+    run_name: sarscov2
+    extra_args:
+      --reference:         references/nCoV-2019.reference.fasta
+      --primer-scheme:     references/nCoV-2019.bed
+      --minimum-coverage:  "20"
+      --threads:           "2"
+      --threads-total:     "4"
+    expected_outputs:
+      - samples/sample-itps-0001/consensus.fasta
+      - samples/sample-itps-0002/consensus.fasta
+      - samples/sample-itps-0001/trimmed_mapped_reads.bam
+      - assembly/assembly_stats_summary.csv
+      - assembly/consensus/final_consensus/samples_alignment.fasta
+      - qc/reports/multiqc_report.html
+      - benchmark.tsv
+
+  - id: consensus_nanopore
+    cli: [viralconseq, consensus, nanopore]
+    samples_ref: nanopore
+    run_name: sarscov2
+    extra_args:
+      --reference:            references/nCoV-2019.reference.fasta
+      --clair3-model:         r1041_e82_400bps_sup_v500
+      --minimum-coverage:     "20"
+      --minimum-map-quality:  "30"
+      --threads:              "4"
+      --threads-total:        "4"
+    expected_outputs:
+      - samples/sample-barcode05/consensus.fasta
+      - samples/sample-barcode09/consensus.fasta
+      - assembly/consensus/final_consensus/samples_alignment.fasta
+      - benchmark.tsv

@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use viralconseq, please cite it using the metadata from this file. A scientific publication is in preparation."
+type: software
+title: "viralconseq: reference-guided consensus sequence inference for viral high-throughput sequencing data"
+version: 0.1.0
+date-released: 2026-09-11
+license: MIT
+repository-code: "https://github.com/filiperomero2/viralconseq"
+url: "https://viralconseq.readthedocs.io/"
+authors:
+  - family-names: Moreira
+    given-names: Filipe
+    email: filiperomero2@gmail.com
+keywords:
+  - viral genomics
+  - consensus sequence
+  - reference-guided assembly
+  - high-throughput sequencing
+  - snakemake
+abstract: >-
+  viralconseq is a Python package that orchestrates Snakemake workflows to infer
+  consensus genome sequences from Illumina and Nanopore viral sequencing data,
+  including amplicon primer clipping, segmented-virus support and content-level
+  input validation. It is derived from the consensus pipeline of ViralUnity.
+references:
+  - type: software
+    title: ViralUnity
+    repository-code: "https://github.com/InstitutoTodosPelaSaude/ViralUnity"
+    notes: "viralconseq was extracted from the consensus pipeline of ViralUnity v1.5.0."

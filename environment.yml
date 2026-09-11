@@ -1,0 +1,23 @@
+name: viralconseq
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - snakemake>=7.32,<8
+  - pyyaml>=6.0
+  - biopython>=1.81
+  - python>=3.10,<3.12
+  # Pinned to <26 because conda-libmamba-solver 26.x queries
+  # `repodata_shards.msgpack.zst` from bioconda, which is not published,
+  # and conda mis-handles the resulting 404 (raises JSONDecodeError).
+  # Lift the ceiling once bioconda publishes shards OR conda's shards
+  # path tolerates 404s gracefully.
+  - conda>=24,<26
+  - conda-libmamba-solver>=24,<26
+  - pip
+# NOTE: viralconseq itself is installed separately with `pip install -e .`
+# (see README/Dockerfile), not via a `pip: - .` entry here. Embedding it in
+# `conda env create` runs pip before the repo is present (e.g. in the Docker
+# build, where only environment.yml is copied first) and fails.
+# The per-rule bioinformatics tools (minimap2, samtools, fastp, clair3, ...)
+# live in viralconseq/scripts/envs/*.yaml and are built by Snakemake.

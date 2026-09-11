@@ -1,0 +1,10 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - racon=1.5
+  - lofreq=2.1
+  - samtools=1.23
+  - bcftools=1.23
+  - gofasta=1.2
