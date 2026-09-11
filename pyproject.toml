@@ -37,7 +37,7 @@ dependencies = [
     "snakemake>=7.32,<8",
     "pandas>=1.5",
     # Snakemake 7.32 calls pulp.list_solvers(), which was removed in pulp 2.8.
-    "pulp<2.8",
+    "pulp<3.4",
 ]
 
 [project.optional-dependencies]
