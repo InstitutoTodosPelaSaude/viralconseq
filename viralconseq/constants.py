@@ -62,6 +62,16 @@ class ViralQCDatabase:
     REQUIRED_FILES = ("blast.fasta", "blast.tsv", NEXTCLADE_SENTINEL)
     REQUIRED_DIRS = ("blast_gff",)
 
+    # ``makeblastdb`` writes ``blast.fasta.nin`` (and siblings) next to the
+    # FASTA, or one ``blast.fasta.<NN>.nin`` per volume plus a
+    # ``blast.fasta.nal`` alias when the database is split. The index must be
+    # validated separately from ``blast.fasta`` itself: without it ``blastn``
+    # fails, and viralQC deliberately degrades a blastn failure to "no hits",
+    # so the run would succeed with every unmatched sequence silently reported
+    # as Unclassified.
+    BLAST_INDEX_GLOBS = ("blast.fasta*.nin", "blast.fasta.nal")
+    BLAST_INDEX_LABEL = "blast.fasta.nin"
+
     @classmethod
     def default_dir(cls) -> str:
         """Default database directory, resolved at call time.
@@ -70,8 +80,10 @@ class ViralQCDatabase:
         Used as the click default of ``--viralqc-db`` on ``consensus`` and
         ``setup`` so both commands agree on the location.
         """
-        return os.environ.get(
-            cls.ENV_VAR, str(Path.home() / ".cache" / "viralconseq" / "viralqc-db")
+        # ``or`` (not the get() default) so an exported-but-empty
+        # VIRALCONSEQ_VIRALQC_DB falls back instead of resolving to "".
+        return os.environ.get(cls.ENV_VAR, "") or str(
+            Path.home() / ".cache" / "viralconseq" / "viralqc-db"
         )
 
 

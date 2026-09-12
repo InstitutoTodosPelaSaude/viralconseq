@@ -140,7 +140,7 @@ class Test_SetupCli(unittest.TestCase):
     def _make_db(self, root):
         db = Path(root) / "vqc"
         (db / "blast_gff").mkdir(parents=True)
-        for name in ("blast.fasta", "blast.tsv", ".nextclade_datasets_ok"):
+        for name in ("blast.fasta", "blast.fasta.nin", "blast.tsv", ".nextclade_datasets_ok"):
             (db / name).touch()
         return db
 
@@ -152,7 +152,12 @@ class Test_SetupCli(unittest.TestCase):
         def _side_effect(*args, **kwargs):
             if "config" in kwargs:
                 (Path(db) / "blast_gff").mkdir(parents=True, exist_ok=True)
-                for name in ("blast.fasta", "blast.tsv", ".nextclade_datasets_ok"):
+                for name in (
+                    "blast.fasta",
+                    "blast.fasta.nin",
+                    "blast.tsv",
+                    ".nextclade_datasets_ok",
+                ):
                     (Path(db) / name).touch()
             return True
 

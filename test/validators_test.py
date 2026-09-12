@@ -156,6 +156,8 @@ def _make_viralqc_db(root, omit=()):
     for name in ViralQCDatabase.REQUIRED_DIRS:
         if name not in omit:
             os.makedirs(os.path.join(db, name), exist_ok=True)
+    if ViralQCDatabase.BLAST_INDEX_LABEL not in omit:
+        open(os.path.join(db, ViralQCDatabase.BLAST_INDEX_LABEL), "w").close()
     return db
 
 
@@ -187,6 +189,28 @@ class Test_ViralQCDatabase(unittest.TestCase):
         self.assertIn(missing, str(ctx.exception))
         self.assertIn(f"viralconseq setup --viralqc-db {missing}", str(ctx.exception))
         self.assertEqual(ctx.exception.code, "viralqc_database_not_found")
+
+    def test_missing_blast_index_is_reported(self):
+        """An unindexed blast.fasta must not pass: blastn would fail and viralQC
+        degrades that to "no hits", silently reporting every unmatched sequence
+        as Unclassified."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = _make_viralqc_db(tmp, omit=(ViralQCDatabase.BLAST_INDEX_LABEL,))
+            self.assertEqual(
+                missing_viralqc_database_files(db), [ViralQCDatabase.BLAST_INDEX_LABEL]
+            )
+            with self.assertRaises(ViralQCDatabaseNotFoundError) as ctx:
+                validate_viralqc_database({"run_viralqc": True, "viralqc_db": db})
+        self.assertIn(ViralQCDatabase.BLAST_INDEX_LABEL, str(ctx.exception))
+
+    def test_volume_split_blast_index_accepted(self):
+        """A large database split into volumes has blast.fasta.<NN>.nin plus a
+        blast.fasta.nal alias instead of a single blast.fasta.nin."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = _make_viralqc_db(tmp, omit=(ViralQCDatabase.BLAST_INDEX_LABEL,))
+            open(os.path.join(db, "blast.fasta.00.nin"), "w").close()
+            open(os.path.join(db, "blast.fasta.nal"), "w").close()
+            self.assertEqual(missing_viralqc_database_files(db), [])
 
     def test_validator_missing_sentinel_raises(self):
         with tempfile.TemporaryDirectory() as tmp:

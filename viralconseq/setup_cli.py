@@ -45,9 +45,10 @@ def _default_conda_prefix() -> str:
     Mirrors the helper in the consensus CLI so both commands share the same
     cache by default.
     """
-    return os.environ.get(
-        "VIRALCONSEQ_CONDA_PREFIX",
-        str(Path.home() / ".cache" / "viralconseq" / "conda-envs"),
+    # ``or`` (not the get() default) so an exported-but-empty
+    # VIRALCONSEQ_CONDA_PREFIX falls back instead of resolving to "".
+    return os.environ.get("VIRALCONSEQ_CONDA_PREFIX", "") or str(
+        Path.home() / ".cache" / "viralconseq" / "conda-envs"
     )
 
 

@@ -5,8 +5,13 @@ from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
-from viralconseq.constants import ConfigKeys, DataType, ResourceDefaults
+from viralconseq.constants import ConfigKeys, DataType, ResourceDefaults, ViralQCDatabase
 from viralconseq.exceptions import ConfigurationError
+
+# The viralQC database inputs ``rules/viralqc.smk`` declares, as paths relative
+# to the placeholder directory. Derived from the database contract so the two
+# cannot drift apart.
+_VIRALQC_DB_PLACEHOLDERS = [f"viralqc_db/{name}" for name in ViralQCDatabase.REQUIRED_FILES]
 
 
 class ConfigGenerator:
@@ -338,16 +343,12 @@ class ConfigGenerator:
                 "reads/skel_R1.fastq.gz",
                 "reads/skel_R2.fastq.gz",
                 "references/skel.reference.fasta",
-                "viralqc_db/blast.fasta",
-                "viralqc_db/blast.tsv",
-                "viralqc_db/.nextclade_datasets_ok",
+                *_VIRALQC_DB_PLACEHOLDERS,
             ],
             "nanopore": [
                 "reads/skel.fastq.gz",
                 "references/skel.reference.fasta",
-                "viralqc_db/blast.fasta",
-                "viralqc_db/blast.tsv",
-                "viralqc_db/.nextclade_datasets_ok",
+                *_VIRALQC_DB_PLACEHOLDERS,
             ],
         },
     }

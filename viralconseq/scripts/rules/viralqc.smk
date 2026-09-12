@@ -80,13 +80,23 @@ rule prepare_viralqc_input:
             if [ -n "{params.segmented}" ]; then
                 segment=$(basename $(dirname $(dirname $(dirname $_file))))
             fi
+            if [ "$(grep -c '^>' $_file || true)" -eq 0 ]; then
+                # Consensus calling can legitimately yield an empty file (no
+                # mapped reads). Warn: that sample will simply be absent from
+                # the viralQC table rather than failing the run.
+                echo "WARNING: $_file has no sequence records; this sample will be missing from the viralQC results" >&2
+            fi
             # Header -> sample[|contig][|segment]; contig = what rename_sequences
-            # appended after "<sample>_" for multi-contig references.
+            # appended after "<sample>_" for multi-contig references. Any "|"
+            # inside a contig or segment name is collapsed so that "|" stays the
+            # one and only field separator in seqName.
             awk -v s="$sample" -v seg="$segment" '
                 /^>/ {{
                     h = substr($1, 2); out = s
-                    if (h != s && substr(h, 1, length(s) + 1) == s "_") out = out "|" substr(h, length(s) + 2)
-                    else if (h != s) out = out "|" h
+                    if (h != s && substr(h, 1, length(s) + 1) == s "_") h = substr(h, length(s) + 2)
+                    else if (h == s) h = ""
+                    gsub(/\|/, "_", h); gsub(/\|/, "_", seg)
+                    if (h != "") out = out "|" h
                     if (seg != "") out = out "|" seg
                     print ">" out; next
                 }}
@@ -96,8 +106,9 @@ rule prepare_viralqc_input:
         n_unique=$( (grep '^>' {output.fasta} || true) | sort -u | wc -l)
         echo "prepared $n_records record(s) for viralQC" >&2
         if [ "$n_records" -eq 0 ]; then
-            echo "ERROR: no consensus records to hand to viralQC" >&2
-            exit 1
+            # Not an error: run_viralqc short-circuits to an empty table. Failing
+            # here would abort a run whose consensus outputs are already written.
+            echo "WARNING: no consensus records at all; viralQC will be skipped" >&2
         fi
         if [ "$n_records" -ne "$n_unique" ]; then
             echo "ERROR: duplicate FASTA headers in {output.fasta}" >&2
@@ -140,6 +151,19 @@ rule run_viralqc:
         rm -rf {params.workdir}/outputs {params.workdir}/.snakemake
         mkdir -p {params.workdir}/outputs
 
+        n_records=$(grep -c '^>' {input.fasta} || true)
+        if [ "$n_records" -eq 0 ]; then
+            # Nothing to classify (every consensus was empty). Emit the table
+            # shape so downstream rules and readers still work.
+            printf 'seqName\tgenomeQuality\tinputSequenceStatus\n' > {output.results}
+            printf 'status\t%s\nexit_code\t%s\ninput_records\t0\nresult_rows\t0\nresults\t%s\nlog\t%s\n' \
+                skipped 0 {output.results} {log} > {output.status}
+            msg="WARNING: viralQC skipped - no consensus sequences were produced for this run."
+            echo "$msg" > {log}
+            echo "viralconseq: $msg" >&2
+            exit 0
+        fi
+
         exit_code=0
         env -u SNAKEMAKE_PROFILE vqc run \
             --input {input.fasta} \
@@ -151,7 +175,6 @@ rule run_viralqc:
             --cores {threads} \
             --verbose {params.extra_flags} > {log} 2>&1 || exit_code=$?
 
-        n_records=$(grep -c '^>' {input.fasta} || true)
         if [ -s {output.results} ]; then
             n_rows=$(($(wc -l < {output.results}) - 1))
             if [ "$exit_code" -eq 0 ]; then status=ok; else status=partial; fi

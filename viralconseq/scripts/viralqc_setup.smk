@@ -6,8 +6,11 @@
 # sub-directory per virus) and the BLAST reference set (blast.fasta + index,
 # blast.tsv, blast_gff/). viralQC has no completion marker for the nextclade
 # datasets, so this workflow writes ``.nextclade_datasets_ok`` itself; the
-# Python layer (constants.ViralQCDatabase) treats that file, blast.fasta,
-# blast.tsv and blast_gff/ as the database's required entries.
+# Python layer (constants.ViralQCDatabase) treats that file, blast.fasta (with
+# its makeblastdb index), blast.tsv and blast_gff/ as the database's required
+# entries. The marker records the viralQC version that built the datasets:
+# ``setup`` will not re-download an existing database, so after bumping the
+# viralQC pin delete the directory to pick up datasets added upstream.
 
 import os
 
@@ -26,7 +29,7 @@ rule get_nextclade_datasets:
     conda:
         "envs/viralqc.yaml"
     output:
-        touch(VIRALQC_DB + "/.nextclade_datasets_ok")
+        marker = VIRALQC_DB + "/.nextclade_datasets_ok"
     params:
         db = VIRALQC_DB
     threads: workflow.cores
@@ -47,9 +50,14 @@ rule get_nextclade_datasets:
         cd "$scratch"
         env -u SNAKEMAKE_PROFILE vqc get-nextclade-datasets \
             --datasets-dir {params.db} --cores {threads} --verbose > {log} 2>&1
+        printf 'viralQC %s\n%s\n' \
+            "$(python -c 'import importlib.metadata as m; print(m.version("viralQC"))')" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > {output.marker}
         """
 
 
+# Kept sequential with the nextclade fetch (both claim every core): two large
+# concurrent downloads made the NCBI/nextclade endpoints time out in testing.
 rule get_blast_database:
     conda:
         "envs/viralqc.yaml"

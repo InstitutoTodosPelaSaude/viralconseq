@@ -58,9 +58,14 @@ needs outbound HTTPS; use `--no-run-viralqc` on air-gapped nodes.
 **Databases.** `viralconseq setup` downloads the Nextclade datasets and the
 NCBI RefSeq viral BLAST set into one directory: `--viralqc-db`,
 `$VIRALCONSEQ_VIRALQC_DB`, or `~/.cache/viralconseq/viralqc-db` by default.
-The directory is considered complete when it contains `blast.fasta`,
-`blast.tsv`, `blast_gff/` and the marker `.nextclade_datasets_ok` (written by
-`setup` once the Nextclade download finished). `viralconseq consensus` checks
+The directory is considered complete when it contains `blast.fasta` together
+with its `makeblastdb` index (`blast.fasta.nin`, or per-volume `.nin` files plus
+a `blast.fasta.nal` alias for a split database), `blast.tsv`, `blast_gff/` and
+the marker `.nextclade_datasets_ok` (written by `setup` once the Nextclade
+download finished). The index is checked separately from the FASTA on purpose:
+without it `blastn` fails, and viralQC treats a `blastn` failure as "no hits",
+so the run would otherwise succeed with every sequence that no Nextclade
+dataset matched silently reported as `Unclassified`. `viralconseq consensus` checks
 this during argument validation, before any work starts, and aborts with
 `viralqc_database_not_found` otherwise; `--no-run-viralqc` skips both the check and the step. To refresh
 the databases (new Nextclade datasets, new RefSeq release) delete the directory

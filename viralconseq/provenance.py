@@ -21,6 +21,7 @@ import os
 from typing import Any, Dict, Optional
 
 from viralconseq import __version__
+from viralconseq.validators import _is_path_sentinel
 
 MANIFEST_FILENAME = "run_manifest.json"
 
@@ -87,9 +88,9 @@ def build_run_manifest(
         "viralqc": {
             "enabled": bool(args.get("run_viralqc", True)),
             "db": (
-                os.path.abspath(str(args["viralqc_db"]))
-                if args.get("viralqc_db") not in (None, "", "NA")
-                else None
+                None
+                if _is_path_sentinel(args.get("viralqc_db"))
+                else os.path.abspath(str(args["viralqc_db"]))
             ),
         },
         "samples": sample_inputs,

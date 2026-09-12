@@ -45,8 +45,11 @@ install:
 install-dev:
 	pip install -e ".[dev]"
 
+# --no-run-viralqc keeps this developer target runnable without the viralQC
+# databases; drop the flag once `viralconseq setup` has populated them.
 run-consensus:
 	viralconseq consensus illumina \
+		--no-run-viralqc \
 		--sample-sheet input/samplesheet.csv \
 		--config-file output/config_consensus.yml \
 		--run-name test-consensus \

@@ -29,6 +29,9 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 - `ViralQCDatabaseNotFoundError` (code `viralqc_database_not_found`): a run with
   viralQC enabled aborts before any work starts if the database directory is
   missing or incomplete, naming the directory and the `viralconseq setup` command.
+  Completeness includes the `makeblastdb` index next to `blast.fasta`, because
+  viralQC degrades a `blastn` failure to "no hits" and would otherwise report
+  every unmatched sequence as `Unclassified` without any error.
 - `run_manifest.json` records whether viralQC ran and the database directory
   used (`viralqc` entry).
 
@@ -41,6 +44,10 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   placeholder `results.tsv` and `viralqc_status.txt` are written and a
   `WARNING` is printed. QC grades never affect the exit code. Delete
   `qc/viralqc/` and rerun to retry the step.
+- When a run produces no consensus sequences at all (for example no reads map),
+  viralQC is skipped with `status skipped` and an empty results table instead of
+  failing the run; samples with an empty consensus are warned about and are
+  absent from the table.
 - The QC step needs outbound HTTPS even with the databases in place
   (`nextclade sort` fetches its reference minimizer index from the Nextclade
   server on every run); use `--no-run-viralqc` on air-gapped nodes.

@@ -1,6 +1,7 @@
 """Validation functions for viralconseq pipeline arguments and data."""
 
 import csv
+import glob
 import logging
 import os
 import re
@@ -485,6 +486,8 @@ def missing_viralqc_database_files(db_dir: str) -> List[str]:
         for name in ViralQCDatabase.REQUIRED_DIRS
         if not os.path.isdir(os.path.join(db_dir, name))
     ]
+    if not any(glob.glob(os.path.join(db_dir, p)) for p in ViralQCDatabase.BLAST_INDEX_GLOBS):
+        missing.append(ViralQCDatabase.BLAST_INDEX_LABEL)
     return missing
 
 
