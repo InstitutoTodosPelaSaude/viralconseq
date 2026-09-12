@@ -36,7 +36,7 @@ def start_config(args: Dict[str, Any], samples: Dict[str, list]) -> ConfigGenera
 
 
 def run_workflow(workflow_path: str, args: Dict[str, Any]) -> bool:
-    """Run a Snakemake workflow with the kwargs both pipelines share.
+    """Run a Snakemake workflow with the kwargs every workflow shares.
 
     Args:
         workflow_path: Absolute path to the ``.smk`` file to execute.
@@ -72,12 +72,11 @@ def run_pipeline(
     args: Dict[str, Any],
     *,
     resolve_paths: Callable[[Dict[str, Any]], object],
-    validate: Callable[[Dict[str, Any]], Optional[Dict[str, list]]],
+    validate: Callable[[Dict[str, Any]], Dict[str, list]],
     generate_config: Callable[[Dict[str, list], Dict[str, Any]], None],
     run_workflow_fn: Callable[[Dict[str, Any]], bool],
-    skip_when_no_samples: bool = False,
 ) -> int:
-    """The try/except ``main`` skeleton shared by both pipelines.
+    """The try/except ``main`` skeleton of the pipeline entry point.
 
     Args:
         args: Pipeline argument dict.
@@ -89,9 +88,6 @@ def run_pipeline(
             pipeline-specific module passes its own
             ``run_snakemake_workflow`` so test patches at that name
             keep working.
-        skip_when_no_samples: If ``True``, return 0 (success) when the
-            validated samples dict is empty. The consensus pipeline does not
-            opt in (an empty sample set is a validation error there).
 
     Returns:
         Exit code (0 for success, 1 for failure).
@@ -99,15 +95,6 @@ def run_pipeline(
     try:
         resolve_paths(args)
         samples = validate(args)
-
-        if skip_when_no_samples and (samples is None or len(samples) == 0):
-            logger.warning("No samples were provided.")
-            return 0
-
-        # ``validate`` is typed as returning Optional; narrow for the type
-        # checker (the consensus pipeline always returns a dict).
-        if samples is None:
-            samples = {}
 
         generate_config(samples, args)
 

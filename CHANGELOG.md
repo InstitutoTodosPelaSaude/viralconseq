@@ -16,11 +16,14 @@ published independently of the metagenomics pipeline.
 
 ### Pipeline behaviour
 
-The four consensus workflows (`consensus_{illumina,nanopore}{,_segmented}.smk`),
-their rule modules, per-rule conda environment files and helper scripts are
-**byte-identical** to ViralUnity v1.5.0, apart from the two points below.
-Alignment, primer clipping, variant calling, consensus calling, coverage
-statistics and the multi-sample alignment are unchanged.
+The rule modules (`scripts/rules/*.smk`), per-rule conda environment files
+(`scripts/envs/*.yaml`) and helper scripts (`scripts/python/*.py`) are
+**byte-identical** to ViralUnity v1.5.0. The four entry-point workflows
+(`consensus_{illumina,nanopore}{,_segmented}.smk`) differ only by the removal of
+the HTML-report / annotation-staging rules and the `viralconseq:` message
+prefix. Alignment, primer clipping, variant calling, consensus calling,
+coverage statistics and the multi-sample alignment are unchanged, and the
+generated Snakemake config is identical key for key.
 
 ### Removed (relative to ViralUnity v1.5.0)
 
@@ -32,7 +35,9 @@ statistics and the multi-sample alignment are unchanged.
 - `--gene-annotation` / `--segmented-gene-annotation` (GFF3 inputs), including their
   auto-splitting and warn-only validation. Their only consumer was the report's
   annotation track. Primer-scheme (BED) handling is untouched.
-- `plotly` and `jinja2` are no longer runtime dependencies.
+- `plotly`, `jinja2`, `biopython` and `pandas` are no longer runtime dependencies of
+  the Python layer (`pandas` is still pinned inside `envs/utils.yaml`, where the
+  statistics script runs, and is a `dev` extra for its unit test).
 
 ### Changed (relative to ViralUnity v1.5.0)
 
@@ -50,7 +55,8 @@ statistics and the multi-sample alignment are unchanged.
 - Snakemake `onsuccess`/`onerror` messages are prefixed with `viralconseq:`.
 - The Snakemake dry-run test suite targets `rule all` explicitly (as the CLI does),
   so the non-segmented nanopore dry-run now exercises the whole DAG instead of only
-  `sanitize_reference`.
+  `sanitize_reference`, and two extra dry-run configs cover primer clipping and
+  iSNV calling (`consensus_illumina__isnv_primers.yaml`, `consensus_nanopore__primers.yaml`).
 
 ### Lineage
 

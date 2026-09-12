@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,7 +10,8 @@ readme = "README.md"
 authors = [
     { name = "Filipe Moreira", email = "filiperomero2@gmail.com" },
 ]
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10,<3.12"
 keywords = [
     "viral genomics",
@@ -24,24 +25,26 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 dependencies = [
     "pyyaml>=6.0",
     "click>=8.0",
-    "biopython>=1.81",
     "snakemake>=7.32,<8",
-    "pandas>=1.5",
     # Snakemake 7.32 calls pulp.list_solvers(), which was removed in pulp 2.8.
     "pulp<2.8",
 ]
 
 [project.optional-dependencies]
 dev = [
+    # pandas is only needed to unit-test scripts/python/calculate_assembly_stats.py,
+    # which runs inside envs/utils.yaml at pipeline runtime.
+    "pandas>=1.5",
     "black>=26,<27",
     "pytest>=9.0",
     "pytest-cov>=5.0",

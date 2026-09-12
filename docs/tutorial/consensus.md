@@ -72,7 +72,7 @@ What each flag does:
 - `--threads 2 --threads-total 4` — 2 threads per task, 4 cores total across the workflow.
 
 ```{tip}
-Add `--create-config-only` to write the YAML config and stop. You can then inspect or edit it before running `snakemake --configfile <config> -s viralconseq/scripts/consensus_illumina.smk --use-conda -j 4 all` yourself.
+Add `--create-config-only` to write the YAML config and stop. You can then inspect or edit it before running `snakemake --configfile <config> -s "$(python -c 'import viralconseq, os; print(os.path.dirname(viralconseq.__file__))')/scripts/consensus_illumina.smk" --use-conda --conda-prefix ~/.cache/viralconseq/conda-envs -j 4 all` yourself.
 ```
 
 Snakemake will print a job table and stream tool output for each rule (`perform_qc`, `map_reads`, `trim_primer_sequences`, `infer_consensus_sequence`, `calculate_assembly_statistics`, `generate_multiqc_report`, `align_consensus_to_reference_genome`, …). On a typical laptop the bundled SARS-CoV-2 samples finish in a few minutes; consult `results/consensus_illumina/sarscov2/benchmark.tsv` after the run for per-rule timing.
@@ -82,7 +82,7 @@ Snakemake will print a job table and stream tool output for each rule (`perform_
 After the run, the relevant paths under `results/consensus_illumina/sarscov2/` are:
 
 ```text
-samples/<sample>/
+samples/sample-<id>/           # note the sample- prefix on every sample directory
 ├── consensus.fasta            # final consensus sequence
 ├── consensus.vcf.gz           # variants relative to the reference
 ├── fastp.html                 # fastp QC report
@@ -91,7 +91,7 @@ samples/<sample>/
 └── stats_summary.csv          # per-sample mapped/coverage stats
 assembly/
 ├── assembly_stats_summary.csv          # the per-sample stats combined into one CSV
-├── coverage_stats/<sample>.table_cov_basewise.txt  # per-base depth
+├── coverage_stats/sample-<id>.table_cov_basewise.txt  # per-base depth
 └── consensus/final_consensus/
     └── samples_alignment.fasta          # all samples + reference, MSA-ready
 qc/reports/multiqc_report.html           # combined fastp/QC report
@@ -100,23 +100,23 @@ benchmark.tsv                            # wall time + memory per rule per sampl
 
 How to read each one:
 
-**`samples/<sample>/consensus.fasta`** — your finished genome. Long runs of `N` indicate stretches with coverage below `--minimum-coverage` (or where every read disagreed with the reference but no allele exceeded `--af-threshold`). A first sanity check is the proportion of non-N bases — `assembly_stats_summary.csv` reports it as `horizontal_coverage`.
+**`samples/sample-<id>/consensus.fasta`** — your finished genome. Long runs of `N` indicate stretches with coverage below `--minimum-coverage` (or where every read disagreed with the reference but no allele exceeded `--af-threshold`). A first sanity check is the proportion of non-N bases — `assembly_stats_summary.csv` reports it as `horizontal_coverage`.
 
-**`samples/<sample>/consensus.vcf.gz`** — the differences between your sample and the reference, called from the consensus FASTA via GSAlign. Inspect with:
-
-```bash
-bcftools view results/consensus_illumina/sarscov2/samples/itps-0001/consensus.vcf.gz | head -30
-```
-
-**`assembly/coverage_stats/<sample>.table_cov_basewise.txt`** — three columns: `RNAME`, `POS`, `DEPTH`. Useful for spotting drop-outs:
+**`samples/sample-<id>/consensus.vcf.gz`** — the differences between your sample and the reference, called from the consensus FASTA via GSAlign. Inspect with:
 
 ```bash
-awk '$3 < 20' results/consensus_illumina/sarscov2/assembly/coverage_stats/itps-0001.table_cov_basewise.txt | head
+bcftools view results/consensus_illumina/sarscov2/samples/sample-itps-0001/consensus.vcf.gz | head -30
 ```
 
-**`samples/<sample>/{raw,trimmed}_mapped_reads.bam`** — both exist deliberately. `raw_mapped_reads.bam` is what minimap2 produced; `trimmed_mapped_reads.bam` is the same BAM after `samtools ampliconclip` removed primer sequences (only different when you passed `--primer-scheme`). The consensus is called from the trimmed BAM.
+**`assembly/coverage_stats/sample-<id>.table_cov_basewise.txt`** — three columns: `RNAME`, `POS`, `DEPTH`. Useful for spotting drop-outs:
 
-**`assembly/assembly_stats_summary.csv`** — one row per sample, with `number_of_reads`, `number_of_trim_paired_reads`, `number_of_mapped_reads`, `average_depth`, `percentage_above_{10,100,1000}x`, and `horizontal_coverage`. Quick way to spot low-coverage or poorly-mapping samples without opening each BAM.
+```bash
+awk '$3 < 20' results/consensus_illumina/sarscov2/assembly/coverage_stats/sample-itps-0001.table_cov_basewise.txt | head
+```
+
+**`samples/sample-<id>/{raw,trimmed}_mapped_reads.bam`** — both exist deliberately. `raw_mapped_reads.bam` is what minimap2 produced; `trimmed_mapped_reads.bam` is the same BAM after `samtools ampliconclip` removed primer sequences (only different when you passed `--primer-scheme`). The consensus is called from the trimmed BAM.
+
+**`assembly/assembly_stats_summary.csv`** — one row per sample (`sample_name` carries the `sample-` prefix), with `number_of_reads`, `number_of_trim_paired_reads`, `number_of_mapped_reads`, `average_depth`, `percentage_above_{10,100,1000}x`, and `horizontal_coverage`. Quick way to spot low-coverage or poorly-mapping samples without opening each BAM.
 
 **`assembly/consensus/final_consensus/samples_alignment.fasta`** — all per-sample consensuses plus the reference, aligned (built by `minimap2` followed by `gofasta sam toMultiAlign`). Drop this straight into a tree-builder such as IQ-TREE for a quick phylogeny.
 
@@ -142,7 +142,7 @@ This adds a LoFreq pass on the primer-clipped BAM. The output VCFs land under `a
 
 ## Worked example 2 — Nanopore (SARS-CoV-2)
 
-Same virus, different chemistry. The reads are in `my_test_data/nanopore_data/`. Nanopore's higher per-base error rate calls for a deep-learning variant caller (Clair3) and a stricter default allele-frequency threshold than Illumina.
+Same virus, different chemistry. The reads are in `my_test_data/nanopore_data/`. Nanopore's higher per-base error rate calls for a deep-learning variant caller (Clair3) instead of the pileup-based consensus used for Illumina.
 
 ### Sample sheet (2 columns)
 
@@ -184,7 +184,7 @@ Most of the output layout matches the Illumina run, with a couple of additions a
 The headline `consensus.fasta` and `samples_alignment.fasta` files behave identically to the Illumina case.
 
 ```{tip}
-The default `--af-threshold` for Nanopore is intentionally lower-leaning than what you might expect from Illumina, because Clair3 already filters by its own quality score. If you see too many heterozygous-looking sites in your consensus, raise it: `--af-threshold 0.7` or higher.
+`--af-threshold` defaults to `0.51` on both platforms. On Nanopore, Clair3 additionally filters calls by its own quality score (`--variant-quality`, `--variant-depth`). If you see too many heterozygous-looking sites in your consensus, raise the threshold: `--af-threshold 0.7` or higher.
 ```
 
 ## Segmented viruses
@@ -231,7 +231,7 @@ The three knobs you will reach for most often:
 
 - **`--minimum-coverage`** (default `20`) — any reference position with fewer than this many reads after primer clipping becomes `N`. Lower it (e.g. `10`) for low-depth samples where you would rather see a tentative base than a hole; raise it for high-confidence assemblies.
 - **`--af-threshold`** (default `0.51`) — minimum allele frequency to call a variant into the consensus. At `0.51` the consensus is the majority allele. Raise it (e.g. `0.7`) for noisier data; lower it to capture ambiguity codes.
-- **`--minimum-read-length`** (default `50`) — reads below this length are dropped at QC time on Illumina, and used as a minimum-length filter on primer-clipped reads on Nanopore.
+- **`--minimum-read-length`** (default `50`) — on Illumina, reads below this length are dropped by fastp at QC time and by `samtools ampliconclip --filter-len` after primer clipping; on Nanopore it is applied only by `samtools ampliconclip --filter-len`, i.e. only when a primer scheme is given.
 
 Nanopore has a few extra knobs:
 
@@ -243,8 +243,8 @@ The full set is in the [Commands reference](../commands.md#viralconseq-consensus
 
 ## Common pitfalls
 
-- **Sample sheet column count is the only check.** A Nanopore CSV that accidentally has three columns is silently parsed as Illumina (and vice versa). Always confirm the row count and column count before running.
-- **Reference header sanitization is silent.** On Nanopore, if your downstream tooling expects the original reference contig names, read them from `reference/reference.sanitized.fasta`, not your input FASTA.
+- **Sample sheet columns must match the subcommand.** `consensus illumina` requires 3 columns and `consensus nanopore` 2; a mismatch is rejected with a `SampleSheetError` that names the offending row.
+- **Reference header sanitization is silent.** On Nanopore, if your downstream tooling expects the exact contig names used in the BAM/VCF, read them from `reference/reference.sanitized.fasta` (or `reference/<segment>.sanitized.fasta` in segmented runs), not your input FASTA.
 - **Primer scheme contig names must match the reference.** The BED file must use the same chromosome/contig names as the reference FASTA. viralconseq checks this before running and aborts with an `InputIntegrityError` if the primer BED chrom matches no reference contig (so `samtools ampliconclip` would clip nothing) — no more silently un-clipped runs.
 - **Inputs are content-validated before the run.** FASTQ, reference FASTA, and primer BED are streamed and checked (record structure, gzip integrity, nucleotide alphabet, chrom matching); a broken, truncated, or mismatched file stops the run up front rather than failing deep inside Snakemake. Pass `--skip-input-validation` to bypass.
 - **`--reference` and `--segmented-reference` are mutually exclusive.** Pass one or the other.

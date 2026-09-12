@@ -39,8 +39,8 @@ def get_workflow_file(config_name):
     """Maps a configuration file name to its corresponding Snakemake workflow file.
 
     A ``__variant`` suffix lets several configs target the same workflow, e.g.
-    both ``consensus_illumina.yaml`` and ``consensus_illumina__isnv.yaml``
-    would resolve to ``consensus_illumina.smk``.
+    both ``consensus_illumina.yaml`` and ``consensus_illumina__isnv_primers.yaml``
+    resolve to ``consensus_illumina.smk``.
     """
     # Example: consensus_illumina.yaml -> viralconseq/scripts/consensus_illumina.smk
     base_name = os.path.splitext(config_name)[0].split("__")[0]

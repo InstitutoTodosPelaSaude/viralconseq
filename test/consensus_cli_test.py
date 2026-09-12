@@ -123,6 +123,81 @@ class Test_ConsensusIlluminaCommand(unittest.TestCase):
         self.assertFalse(args["create_config_only"])
 
 
+class Test_RemovedOptionsRejected(unittest.TestCase):
+    """Options dropped in the split from ViralUnity (HTML report, gene
+    annotation) must be rejected by click rather than silently ignored."""
+
+    REMOVED = [
+        ["--gene-annotation", "genes.gff3"],
+        ["--segmented-gene-annotation", "S=genes.gff3"],
+        ["--generate-html-report"],
+        ["--no-generate-html-report"],
+    ]
+
+    def setUp(self):
+        self.runner = CliRunner()
+
+    def _required(self, data_type):
+        return [
+            data_type,
+            "--sample-sheet",
+            "sample_sheet.csv",
+            "--config-file",
+            "config_file.yaml",
+            "--output",
+            "output_dir",
+            "--reference",
+            "reference.fasta",
+        ]
+
+    def test_removed_options_are_unknown(self):
+        for data_type in ("illumina", "nanopore"):
+            for extra in self.REMOVED:
+                with self.subTest(data_type=data_type, option=extra[0]):
+                    with patch("viralconseq.consensus_cli.consensus_main", return_value=0):
+                        result = self.runner.invoke(consensus, self._required(data_type) + extra)
+                    self.assertEqual(result.exit_code, 2, result.output)
+                    self.assertIn("No such option", result.output)
+
+
+class Test_ResourceOptions(unittest.TestCase):
+    """Per-rule ``--<rule>-cpus`` / ``--<rule>-ram`` options are routed through
+    ``**kwargs`` into the args dict under their snake_case key."""
+
+    def setUp(self):
+        self.runner = CliRunner()
+
+    def _invoke(self, data_type, extra):
+        args = [
+            data_type,
+            "--sample-sheet",
+            "sample_sheet.csv",
+            "--config-file",
+            "config_file.yaml",
+            "--output",
+            "output_dir",
+            "--reference",
+            "reference.fasta",
+        ] + extra
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0) as mock_main:
+            result = self.runner.invoke(consensus, args, catch_exceptions=False)
+        self.assertEqual(result.exit_code, 0, result.output)
+        return mock_main.call_args[0][0]
+
+    def test_illumina_resource_options_land_in_args(self):
+        args = self._invoke("illumina", ["--map-reads-cpus", "8", "--perform-qc-ram", "16"])
+        self.assertEqual(args["map_reads_cpus"], 8)
+        self.assertEqual(args["perform_qc_ram"], 16)
+        # Untouched rules keep the defaults.
+        self.assertEqual(args["detect_isnv_cpus"], 2)
+        self.assertEqual(args["trim_primer_sequences_ram"], 4)
+
+    def test_nanopore_resource_options_land_in_args(self):
+        args = self._invoke("nanopore", ["--infer-consensus-sequence-cpus", "6"])
+        self.assertEqual(args["infer_consensus_sequence_cpus"], 6)
+        self.assertNotIn("perform_qc_cpus", args)
+
+
 class Test_ConsensusNanoporeCommand(unittest.TestCase):
     """Tests for `viralconseq consensus nanopore`."""
 

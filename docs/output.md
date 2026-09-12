@@ -19,12 +19,13 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 │               └── samples_alignment.fasta
 ├── input_references/                 # segmented: per-segment reference FASTAs split
 │                                     #   from a multi-record --reference
-├── reference/
-│   └── reference.sanitized.fasta     # reference with sanitised headers (nanopore)
+├── reference/                        # nanopore only: reference with sanitised headers
+│   ├── reference.sanitized.fasta     #   single reference
+│   └── {segment}.sanitized.fasta     #   segmented run (one per segment)
 ├── qc/reports/multiqc_report.html    # illumina only
 ├── isnvs/isnvs_summary.tsv           # illumina + --run-isnv only
 ├── samples/
-│   └── {sample_name}/                # symlinks to the per-sample results
+│   └── sample-{sample_id}/           # symlinks to the per-sample results (note the prefix)
 │       ├── consensus.fasta
 │       ├── consensus.vcf.gz
 │       ├── raw.vcf.gz                # nanopore
@@ -37,30 +38,46 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 └── benchmark.tsv                     # per-task runtime
 ```
 
+Every sample id from the sample sheet appears with a `sample-` prefix in the output
+tree (`samples/sample-<id>/`), in the `sample_name` column of
+`assembly_stats_summary.csv`, in the coverage-table file names and in the consensus
+FASTA headers. Only `benchmark.tsv` reports the bare id.
+
 In segmented runs the per-sample symlinks are nested one level deeper, under
-`samples/{sample_name}/{segment}/`.
+`samples/sample-{sample_id}/{segment}/`, and the per-segment results live under
+`assembly/{segment}/`.
+
+Intermediate files are kept as well (useful for debugging, safe to delete):
+`assembly/mapped_reads/{raw,trimmed}/` (BAMs and the ampliconclip `*.trimmed.txt`
+reports), `assembly/consensus/final_consensus/` (per-sample consensus FASTAs and VCFs
+before symlinking, `aln.consensus.sam`, the indel-masked alignment),
+`assembly/clair3/{sample}/` (nanopore variant calls), `assembly/isnvs/` (LoFreq VCFs
+with `--run-isnv`), `qc/data/` and `qc/reports/` (fastp-trimmed reads and per-sample
+fastp reports, illumina), and `logs/` / `assembly/logs/` (per-rule logs and
+`*.benchmark.txt`).
 
 ## Key files
 
 | File | Description |
 |------|-------------|
 | `assembly/assembly_stats_summary.csv` | Read counts, mapped reads, average depth, breadth of coverage per sample (and per segment) |
-| `samples/{sample}/consensus.fasta` | Final consensus sequence |
-| `samples/{sample}/consensus.vcf.gz` | Variants relative to the reference |
-| `assembly/coverage_stats/{sample}.table_cov_basewise.txt` | Per-base coverage table (`RNAME`, `POS`, `DEPTH`) |
-| `samples/{sample}/raw_mapped_reads.bam` | Reads mapped to the reference, before primer clipping |
-| `samples/{sample}/trimmed_mapped_reads.bam` | Primer-clipped BAM used for consensus calling |
+| `samples/sample-{id}/consensus.fasta` | Final consensus sequence |
+| `samples/sample-{id}/consensus.vcf.gz` | Variants relative to the reference |
+| `assembly/coverage_stats/sample-{id}.table_cov_basewise.txt` | Per-base coverage table (`RNAME`, `POS`, `DEPTH`) |
+| `samples/sample-{id}/raw_mapped_reads.bam` | Reads mapped to the reference, before primer clipping |
+| `samples/sample-{id}/trimmed_mapped_reads.bam` | Primer-clipped BAM used for consensus calling |
 | `assembly/consensus/final_consensus/samples_alignment.fasta` | All consensus sequences aligned to the reference (MSA-ready) |
 | `run_manifest.json` | Provenance: version, timestamp, config path, input SHA-256 checksums |
 | `benchmark.tsv` | Runtime and resource usage per task |
 
 ## Assembly statistics columns
 
-`assembly_stats_summary.csv` has one row per sample (per segment in segmented runs):
+`assembly_stats_summary.csv` has one row per sample (one row per sample and segment in
+segmented runs, which add a `segment` column after `sample_name`):
 
 | Column | Meaning |
 |---|---|
-| `sample_name` | Sample id (and segment, where applicable) |
+| `sample_name` | Sample id, with the `sample-` prefix |
 | `number_of_reads` | Raw reads in the input FASTQ(s) |
 | `number_of_trim_paired_reads` | Reads retained after QC (Illumina); equals the raw count on Nanopore |
 | `number_of_mapped_reads` | Reads mapped to the reference |

@@ -66,7 +66,7 @@ class Test_CollectEnvYamls(unittest.TestCase):
     def test_consensus_illumina_finds_known_envs(self):
         smk = _scripts_dir() / "consensus_illumina.smk"
         yamls = _collect_env_yamls(smk)
-        # Spec lists 9 env YAMLs; consensus_illumina pulls a subset.
+        # The package ships five env YAMLs; consensus_illumina pulls a subset.
         self.assertTrue(yamls, "no envs found")
         # qc.yaml is the env that failed first in the original bug report.
         self.assertIn("qc.yaml", yamls)
@@ -103,6 +103,18 @@ class Test_SetupCli(unittest.TestCase):
         # never materialized by `viralconseq setup`. Users who later passed
         # --run-isnv hit dynamic env creation on the hot path.
         self.assertIn("consensus.yaml", result.output)
+
+    def test_pipeline_choices_are_the_two_consensus_workflows(self):
+        self.assertEqual(_ALL_PIPELINES, ["consensus-illumina", "consensus-nanopore"])
+        self.assertEqual(
+            sorted(_PIPELINE_TO_WORKFLOW),
+            ["consensus-illumina", "consensus-nanopore"],
+        )
+
+    def test_metagenomics_pipeline_is_rejected(self):
+        result = self.runner.invoke(setup, ["--pipelines", "meta-illumina", "--dry-run"])
+        self.assertEqual(result.exit_code, 2, result.output)
+        self.assertIn("meta-illumina", result.output)
 
     def test_dry_run_all_pipelines(self):
         result = self.runner.invoke(setup, ["--dry-run"], catch_exceptions=False)

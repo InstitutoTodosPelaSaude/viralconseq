@@ -26,12 +26,24 @@ exit_code = consensus_main({
     "run_name": job_id,          # must be a safe identifier — see below
     "reference": "/refs/MN908947.3.fasta",
     "primer_scheme": "/refs/nCoV-2019.scheme.bed",
+    "adapters": None,            # illumina: required key, None = fastp auto-detection
     "threads": 8, "threads_total": 8,
+    "conda_prefix": "/srv/viralconseq/conda-envs",   # shared per-rule env cache
 })
 ```
 
-Any option accepted by the CLI can be passed as a key (CLI `--foo-bar` becomes `foo_bar`);
-omitted keys take the same defaults as the CLI.
+Any option accepted by the CLI can be passed as a key (CLI `--foo-bar` becomes
+`foo_bar`). The `args` dict is the *post-Click* argument set, so a few keys are
+required rather than defaulted: `data_type`, `sample_sheet`, `config_file`, `output`,
+`run_name`, `threads`, `threads_total`, `conda_prefix`, a reference (`reference` or
+`segmented_reference`) and, for Illumina, `adapters` (`None` is fine). Tuning
+parameters (`minimum_coverage`, `af_threshold`, fastp/Clair3 options, per-rule
+`*_cpus`/`*_ram`) fall back to the CLI defaults when omitted. Always pass
+`conda_prefix`: without it Snakemake builds the per-rule envs under the job's
+working directory, i.e. once per job. Build a fresh dict per call — validation
+normalises some values in place (e.g. an absent `primer_scheme` becomes `"NA"`).
+The option lists in `viralconseq/consensus_cli.py` are the reference for the full
+key set and defaults.
 
 ## Per-job isolation (required)
 

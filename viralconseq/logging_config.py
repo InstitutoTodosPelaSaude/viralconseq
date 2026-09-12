@@ -1,6 +1,6 @@
 """Central logging configuration for viralconseq.
 
-Historically viralconseq created module loggers (``logging.getLogger(__name__)``)
+Historically the pipeline created module loggers (``logging.getLogger(__name__)``)
 and emitted ``logger.info``/``logger.error`` everywhere, but never configured a
 handler. Python's last-resort handler only prints ``WARNING`` and above,
 unformatted, to stderr, so a failed run could print nothing useful. This module

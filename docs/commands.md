@@ -306,7 +306,8 @@ minimap2_consensus_align_flags: "-a --sam-hit-only --secondary=no"
 then run Snakemake directly against the edited config:
 
 ```bash
-snakemake -s viralconseq/scripts/consensus_illumina.smk --configfile example.yml --use-conda -j 4 all
+snakemake -s "$(python -c 'import viralconseq, os; print(os.path.dirname(viralconseq.__file__))')/scripts/consensus_illumina.smk" \
+    --configfile example.yml --use-conda --conda-prefix ~/.cache/viralconseq/conda-envs -j 4 all
 ```
 
 ---

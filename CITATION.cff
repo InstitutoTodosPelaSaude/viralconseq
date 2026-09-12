@@ -25,5 +25,10 @@ abstract: >-
 references:
   - type: software
     title: ViralUnity
+    authors:
+      - family-names: Moreira
+        given-names: Filipe
+      - family-names: Nacif
+        given-names: Felippe
     repository-code: "https://github.com/InstitutoTodosPelaSaude/ViralUnity"
     notes: "viralconseq was extracted from the consensus pipeline of ViralUnity v1.5.0."

@@ -28,7 +28,7 @@ def _parse_segmented_mapping(entries: Tuple[str, ...], label: str = "reference")
 
     Args:
         entries: Tuple of strings in SEGMENT=PATH format
-        label: Noun used in error messages (e.g. "reference", "gene annotation")
+        label: Noun used in error messages (e.g. "reference")
 
     Returns:
         Dictionary mapping segment names to paths, or None if empty
@@ -207,7 +207,7 @@ def consensus() -> None:
 
     \b
     Sub-commands branch on input data type:
-    * illumina  paired-end short reads (fastp + minimap2 + LoFreq)
+    * illumina  paired-end short reads (fastp + minimap2 + samtools consensus)
     * nanopore  long reads (minimap2 + Clair3)
 
     Run ``viralconseq consensus <data_type> --help`` for the full option set.
@@ -309,9 +309,10 @@ def consensus_illumina(
 ) -> None:
     """Run consensus pipeline for Illumina paired-end data.
 
-    Performs adapter trimming (fastp), reference alignment (minimap2),
-    optional primer trimming (ivar), variant calling (LoFreq), and consensus
-    generation. Enable intra-host SNV analysis with ``--run-isnv``.
+    Performs read QC (fastp), reference alignment (minimap2), optional primer
+    clipping (samtools ampliconclip), consensus calling (samtools consensus)
+    and variant reporting (GSAlign). Enable intra-host SNV analysis with
+    LoFreq via ``--run-isnv``.
 
     For segmented references (e.g. influenza), pass a single multi-record
     FASTA to ``--reference`` (segments are named from the headers), or one
@@ -417,9 +418,11 @@ def consensus_nanopore(
 ) -> None:
     """Run consensus pipeline for Nanopore long-read data.
 
-    Performs reference alignment (minimap2), variant calling (Clair3 with a
-    user-selectable model via ``--clair3-model``), and consensus generation.
-    Reads shorter than ``--minimum-read-length`` are filtered upstream.
+    Performs reference alignment (minimap2), optional primer clipping
+    (samtools ampliconclip), variant calling (Clair3 with a user-selectable
+    model via ``--clair3-model``), and consensus generation (bcftools).
+    ``--minimum-read-length`` is applied by ``samtools ampliconclip
+    --filter-len`` when a primer scheme is given.
 
     For segmented references (e.g. influenza), pass a single multi-record
     FASTA to ``--reference`` (segments are named from the headers), or one

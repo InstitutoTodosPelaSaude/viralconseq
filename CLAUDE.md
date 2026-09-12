@@ -75,7 +75,7 @@ Each top-level `.smk` in `viralconseq/scripts/` is small — it sets up wildcard
 
 Cross-cutting conventions to know before editing rules:
 
-- **Per-rule conda envs.** Every rule has `conda: "envs/<name>.yaml"` (relative to the workflow file; `../envs/` from `rules/`). Adding a new tool means either reusing an env or adding a YAML there. Snakemake's `--use-conda` is enabled in `_orchestrator.run_workflow`. `setup_cli.py` scans the `include:`/`conda:` directives to know which envs to pre-build.
+- **Per-rule conda envs.** Every rule has `conda: "envs/<name>.yaml"` (relative to the workflow file; `../envs/` from `rules/`). Adding a new tool means either reusing an env or adding a YAML there. Snakemake's `--use-conda` is enabled in `_orchestrator.run_workflow`. `setup_cli.py --dry-run` scans the `include:`/`conda:` directives to list the envs a workflow needs; the real build lets Snakemake create them via `conda_create_envs_only`.
 - **Optional outputs are computed conditionally.** `rule all` appends `isnvs/isnvs_summary.tsv` only when `run_isnv` is set, and `organize_files` mirrors that with `expand(... if <flag> else [])`. Whenever you add an optional step, edit both places.
 - **`organize_files` is the symlink terminus.** It is the last rule before `benchmark.tsv` and creates the per-sample `samples/<sample>/...` symlinks that users actually browse. New per-sample outputs need a `ln -sf` block there to be discoverable.
 - **Reference sanitization (nanopore).** The nanopore workflow sanitizes reference FASTA headers (replacing `/ \ | , ~` and spaces with `_`) before use because Clair3 makes per-contig directories from the seq IDs. Don't bypass this; `integrity.sanitize_nanopore_contig` must stay in sync with the `sed` in `sanitize_reference`.
@@ -85,11 +85,11 @@ Cross-cutting conventions to know before editing rules:
 
 CSV with no header. Illumina has 3 columns (`sample_id,R1,R2`), Nanopore has 2 (`sample_id,fastq`). `create-samplesheet` builds them by scanning a run directory; the parser (`viralconseq/validators.py:validate_sample_sheet`) keys off the data type given on the CLI and rejects rows with the wrong column count.
 
-Sample names are prefixed with `sample-` inside the generated YAML by `ConfigGenerator.add_samples` — the `.smk` files refer to `sample-<id>` everywhere, but users only ever see `<id>` in their inputs/outputs. Tests and config inspection should expect the prefixed form.
+Sample names are prefixed with `sample-` inside the generated YAML by `ConfigGenerator.add_samples`, and the `.smk` files refer to `sample-<id>` everywhere. The prefix is visible in the outputs: `samples/sample-<id>/`, `assembly/coverage_stats/sample-<id>.table_cov_basewise.txt`, the `sample_name` column of `assembly_stats_summary.csv` and the consensus FASTA headers. Only `benchmark.tsv` strips it. Tests, docs and config inspection should expect the prefixed form.
 
 ## Tests
 
-The unittest suite under `test/` covers Python-layer behaviour (CLI parsing, validators, integrity checks, config generation, path resolution, provenance). The Snakemake dryrun suite (`test/dryrun_test.py`) runs `snakemake -n` against every workflow + a YAML in `test/dryrun_configs/`; the placeholder fixture `create_dryrun_placeholders.sh` writes empty input files so paths resolve. `test/empirical_test.py` (opt-in, `make test-empirical`) runs the real SARS-CoV-2 scenario in `test/empirical/scenarios/`. CI runs lint + mypy, the unit suite, and the dryruns in separate jobs.
+The unittest suite under `test/` covers Python-layer behaviour (CLI parsing, validators, integrity checks, config generation, path resolution, provenance). The Snakemake dryrun suite (`test/dryrun_test.py`) runs `snakemake -n` against every workflow + a YAML in `test/dryrun_configs/`; the placeholder fixture `create_dryrun_placeholders.sh` writes empty input files so paths resolve. `test/empirical_test.py` (opt-in, `make test-empirical`) runs the real SARS-CoV-2 scenario in `test/empirical/scenarios/`. CI runs lint + mypy, the unit suite + dryruns (one `test` job per Python version), a Sphinx docs build, a Docker build smoke test and a conda-env smoke test.
 
 When changing rule wiring, run `make test-dryrun` — it catches missing inputs, broken `expand` patterns, and circular dependencies that the Python suite cannot see.
 

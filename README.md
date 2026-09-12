@@ -3,7 +3,7 @@
 [![CI](https://github.com/filiperomero2/viralconseq/actions/workflows/ci.yaml/badge.svg)](https://github.com/filiperomero2/viralconseq/actions/workflows/ci.yaml)
 [![PyPI](https://img.shields.io/pypi/v/viralconseq.svg)](https://pypi.org/project/viralconseq/)
 [![Documentation](https://readthedocs.org/projects/viralconseq/badge/?version=latest)](https://viralconseq.readthedocs.io/en/latest/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/filiperomero2/viralconseq/blob/main/LICENSE)
 
 viralconseq infers consensus genome sequences from viral high-throughput sequencing data. It is a Python package that validates inputs, writes a Snakemake configuration and launches one of four reference-guided consensus workflows: Illumina paired-end or Nanopore reads, against a single or a segmented reference. viralconseq runs on *nix systems and processes entire sequencing runs in minimal time on a regular computer.
 
@@ -49,9 +49,9 @@ Per-rule conda environments under `viralconseq/scripts/envs/` are managed automa
 viralconseq setup --pipelines all                                  # pre-build per-rule conda envs (once)
 viralconseq create-samplesheet --input <run-dir> --output samples.csv
 viralconseq consensus illumina --sample-sheet samples.csv --reference ref.fasta \
-    --primer-scheme primers.bed --config-file run.yml --output results/
+    --primer-scheme primers.bed --run-name run1 --config-file run1.yml --output results/
 viralconseq consensus nanopore --sample-sheet samples.csv --reference ref.fasta \
-    --config-file run.yml --output results/
+    --run-name run1 --config-file run1.yml --output results/
 ```
 
 Global options: `--log-level {DEBUG,INFO,WARNING,ERROR}` and `--json-logs`
@@ -78,4 +78,4 @@ viralconseq is the consensus-inference half of [ViralUnity](https://github.com/I
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [`LICENSE`](https://github.com/filiperomero2/viralconseq/blob/main/LICENSE).

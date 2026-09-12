@@ -417,6 +417,13 @@ class Test_GenerateConfigFile(unittest.TestCase):
         self.assertEqual(config_dict["trim_head"], 0)
         self.assertEqual(config_dict["trim_tail"], 0)
         self.assertEqual(config_dict["run_isnv"], False)
+        # Removed features must not leak into the config contract.
+        self.assertNotIn("gene_annotation", config_dict)
+        self.assertNotIn("generate_html_report", config_dict)
+        self.assertEqual(
+            config_dict["minimap2_consensus_align_flags"],
+            "-a --sam-hit-only --secondary=no --score-N=0",
+        )
 
     @patch("builtins.open", new_callable=mock_open)
     @patch("os.makedirs")
@@ -482,6 +489,13 @@ class Test_GenerateConfigFile(unittest.TestCase):
         self.assertIn("af_threshold", config_dict)
         self.assertIn("chunk_size", config_dict)
         self.assertIn("clair3_model", config_dict)
+        self.assertEqual(config_dict["variant_quality"], 20)
+        self.assertEqual(config_dict["variant_depth"], 10)
+        self.assertEqual(config_dict["minimum_map_quality"], 30)
+        self.assertIn("minimap2_consensus_align_flags", config_dict)
+        # Removed features must not leak into the config contract.
+        self.assertNotIn("gene_annotation", config_dict)
+        self.assertNotIn("generate_html_report", config_dict)
 
     @patch("builtins.open", new_callable=mock_open)
     @patch("os.makedirs")

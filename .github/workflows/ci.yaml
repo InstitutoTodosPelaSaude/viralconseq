@@ -42,9 +42,21 @@ jobs:
       - name: Verify console script
         run: viralconseq --version
       - name: Unit tests with coverage
-        run: pytest test/ -m "not empirical" --cov=viralconseq --cov-report=term-missing
+        run: pytest test/ -m "not empirical" --ignore=test/dryrun_test.py --cov=viralconseq --cov-report=term-missing
       - name: Snakemake dry-run tests
         run: pytest test/dryrun_test.py -v
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Install Sphinx toolchain
+        run: pip install -r docs/requirements.in
+      - name: Build docs (warnings are errors)
+        run: sphinx-build -W -b html docs docs/_build
 
   security:
     runs-on: ubuntu-latest
