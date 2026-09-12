@@ -22,6 +22,8 @@ import click
 from snakemake import snakemake
 
 from viralconseq.config_generator import ConfigGenerator
+from viralconseq.constants import ViralQCDatabase
+from viralconseq.validators import missing_viralqc_database_files
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,42 @@ def _default_conda_prefix() -> str:
         "VIRALCONSEQ_CONDA_PREFIX",
         str(Path.home() / ".cache" / "viralconseq" / "conda-envs"),
     )
+
+
+_VIRALQC_SETUP_SMK = "viralqc_setup.smk"
+_VIRALQC_DB_BANNER = (
+    "  nextclade datasets + NCBI RefSeq viral BLAST reference set: about 1 GB on "
+    "disk, several GB transient during the download; typically 15-60 min.\n"
+    "  taxonkit's copy of the NCBI taxonomy dump is placed under $HOME/.taxonkit."
+)
+
+
+def _run_viralqc_db_download(db_dir: Path, prefix: Path, threads: int, workdir: Path) -> bool:
+    """Drive ``scripts/viralqc_setup.smk`` to populate *db_dir*.
+
+    Reuses the same conda prefix as the pipeline envs, so the ``viralqc.yaml``
+    env built for the rules is the one used for the download. ``workdir``
+    confines Snakemake's ``.snakemake/`` state to a scratch directory (the
+    outputs are absolute paths); ``rerun_triggers=["mtime"]`` stops a later
+    edit of the env file from silently re-downloading the databases.
+    """
+    db_dir.mkdir(parents=True, exist_ok=True)
+    cwd = os.getcwd()
+    try:
+        return bool(
+            snakemake(
+                str(_scripts_dir() / _VIRALQC_SETUP_SMK),
+                config={"viralqc_db": str(db_dir)},
+                cores=threads,
+                use_conda=True,
+                conda_prefix=str(prefix),
+                workdir=str(workdir),
+                rerun_triggers=["mtime"],
+                targets=["all"],
+            )
+        )
+    finally:
+        os.chdir(cwd)
 
 
 def _scripts_dir() -> Path:
@@ -130,18 +168,35 @@ def _expand_pipelines(selected: Tuple[str, ...]) -> List[str]:
     default=4,
     show_default=True,
     type=int,
-    help="Cores given to Snakemake while materializing envs.",
+    help="Cores given to Snakemake while materializing envs and downloading databases.",
+)
+@click.option(
+    "--viralqc-db",
+    default=ViralQCDatabase.default_dir,
+    show_default="$VIRALCONSEQ_VIRALQC_DB or ~/.cache/viralconseq/viralqc-db",
+    help="Directory where the viralQC databases (nextclade datasets + BLAST "
+    "reference set) are downloaded. 'viralconseq consensus' reads the same "
+    "location by default.",
+)
+@click.option(
+    "--skip-viralqc-db",
+    is_flag=True,
+    default=False,
+    help="Only build conda envs; do not download the viralQC databases.",
 )
 @click.option(
     "--dry-run",
     is_flag=True,
     default=False,
-    help="Print the envs that would be created and exit without running conda.",
+    help="Print the envs and databases that would be created and exit without "
+    "running conda or downloading anything.",
 )
 def setup(
     conda_prefix: str,
     pipelines: Tuple[str, ...],
     threads: int,
+    viralqc_db: str,
+    skip_viralqc_db: bool,
     dry_run: bool,
 ) -> None:
     """Pre-build per-rule conda envs into a shared cache.
@@ -151,13 +206,23 @@ def setup(
     real input data. Subsequent pipeline runs that point at the same
     ``--conda-prefix`` will reuse the cache and skip env creation
     entirely.
+
+    Unless ``--skip-viralqc-db`` is given, it also downloads the viralQC
+    databases (about 1 GB on disk, several GB transient, typically 15-60
+    min) into ``--viralqc-db``; rerunning is a no-op once they exist.
     """
-    prefix = Path(conda_prefix).expanduser()
+    # Absolute paths: the database download runs Snakemake with a scratch
+    # ``workdir`` (it chdirs), so relative prefixes/paths would resolve there.
+    prefix = Path(conda_prefix).expanduser().absolute()
+    db_dir = Path(viralqc_db).expanduser().absolute()
     selected = _expand_pipelines(pipelines)
     scripts_dir = _scripts_dir()
 
     click.echo(f"Conda prefix: {prefix}")
     click.echo(f"Pipelines:    {', '.join(selected)}")
+    click.echo(
+        f"viralQC DB:   {db_dir}{'  (skipped: --skip-viralqc-db)' if skip_viralqc_db else ''}"
+    )
 
     if dry_run:
         for name in selected:
@@ -167,6 +232,16 @@ def setup(
             click.echo(f"\n[{name}] would create {len(yamls)} envs:")
             for y in yamls:
                 click.echo(f"  - {y}")
+        if not skip_viralqc_db:
+            missing = missing_viralqc_database_files(str(db_dir))
+            if not missing:
+                click.echo(f"\n[viralqc-db] already present at {db_dir}; nothing to download.")
+            else:
+                click.echo(
+                    f"\n[viralqc-db] would download the viralQC databases into {db_dir} "
+                    f"(missing: {', '.join(missing)}):"
+                )
+                click.echo(_VIRALQC_DB_BANNER)
         return
 
     prefix.mkdir(parents=True, exist_ok=True)
@@ -205,6 +280,36 @@ def setup(
                 failures.append(name)
                 click.echo(f"[{name}] FAILED", err=True)
 
+        if not skip_viralqc_db:
+            if failures:
+                click.echo("\n[viralqc-db] skipped: env creation failed above.", err=True)
+            elif not missing_viralqc_database_files(str(db_dir)):
+                click.echo(f"\n[viralqc-db] already present at {db_dir}; skipping download.")
+            else:
+                click.echo(f"\n[viralqc-db] downloading the viralQC databases into {db_dir} ...")
+                click.echo(_VIRALQC_DB_BANNER)
+                db_workdir = tmpdir / "viralqc_setup_workdir"
+                db_workdir.mkdir()
+                ok = _run_viralqc_db_download(db_dir, prefix, threads, db_workdir)
+                still_missing = missing_viralqc_database_files(str(db_dir))
+                if ok and not still_missing:
+                    click.echo("[viralqc-db] OK")
+                else:
+                    failures.append("viralqc-db")
+                    missing_note = (
+                        f" (still missing: {', '.join(still_missing)})" if still_missing else ""
+                    )
+                    click.echo(
+                        f"[viralqc-db] FAILED{missing_note} - see {db_dir}/logs/ and rerun "
+                        f"'viralconseq setup --viralqc-db {db_dir}' (a partial "
+                        f"{db_dir}/tmp_ncbi/ may remain and can be deleted)",
+                        err=True,
+                    )
+
     if failures:
-        raise click.ClickException("Env creation failed for: " + ", ".join(failures))
-    click.echo("\nAll envs ready. Pipeline runs against this prefix will skip env creation.")
+        raise click.ClickException("Setup failed for: " + ", ".join(failures))
+    click.echo(
+        "\nAll envs ready"
+        + ("" if skip_viralqc_db else " and viralQC databases in place")
+        + ". Pipeline runs against this prefix will skip env creation."
+    )

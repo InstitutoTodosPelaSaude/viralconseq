@@ -7,6 +7,44 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
+## [Unreleased]
+
+### Added
+
+- **Consensus QC with viralQC, on by default.** Every run now ends with one
+  [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC) 1.2.0 invocation
+  over all final consensus sequences (segmented runs merge every segment with
+  `sample-<id>|<segment>` headers). Outputs: `qc/viralqc/outputs/results.tsv`
+  (virus, clade, genome-quality grade A–D per sequence), `qc/viralqc/viralqc_status.txt`,
+  and a per-sample slice symlinked at `samples/sample-<id>/viralqc.tsv`.
+  New rule module `scripts/rules/viralqc.smk` and env `scripts/envs/viralqc.yaml`.
+- `--run-viralqc/--no-run-viralqc` (default on) and `--viralqc-db PATH`
+  (default `$VIRALCONSEQ_VIRALQC_DB` or `~/.cache/viralconseq/viralqc-db`) on both
+  `consensus` subcommands; `--run-viralqc-cpus/--run-viralqc-ram` resource flags;
+  config-only key `viralqc_extra_flags`.
+- `viralconseq setup` now also downloads the viralQC databases (Nextclade
+  datasets + NCBI RefSeq viral BLAST set, ~1 GB on disk) into `--viralqc-db`
+  via `scripts/viralqc_setup.smk`; `--skip-viralqc-db` opts out; rerunning is a
+  no-op once the databases exist; `--dry-run` reports the database step.
+- `ViralQCDatabaseNotFoundError` (code `viralqc_database_not_found`): a run with
+  viralQC enabled aborts before any work starts if the database directory is
+  missing or incomplete, naming the directory and the `viralconseq setup` command.
+- `run_manifest.json` records whether viralQC ran and the database directory
+  used (`viralqc` entry).
+
+### Changed
+
+- A consensus run now requires `viralconseq setup` to have been run once (or
+  `--no-run-viralqc`). Existing per-rule environments are reused; only the new
+  `viralqc.yaml` env is built.
+- If viralQC fails at run time (a tool error), the run still completes: a
+  placeholder `results.tsv` and `viralqc_status.txt` are written and a
+  `WARNING` is printed. QC grades never affect the exit code. Delete
+  `qc/viralqc/` and rerun to retry the step.
+- The QC step needs outbound HTTPS even with the databases in place
+  (`nextclade sort` fetches its reference minimizer index from the Nextclade
+  server on every run); use `--no-run-viralqc` on air-gapped nodes.
+
 ## [0.1.0] - 2026-09-11
 
 First release of viralconseq as a standalone package. viralconseq is the

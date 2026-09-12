@@ -31,15 +31,15 @@ viralconseq --help
 
 See [Installation](../installation.md) for the macOS Apple Silicon caveat (the `clair3` environment can be sensitive there), for development installs (`pip install -e ".[dev]"`), and for the [Troubleshooting](../installation.md#troubleshooting) note if the first pipeline run fails on conda env creation.
 
-## 2. Build per-rule environments
+## 2. Build per-rule environments and download the viralQC databases
 
-Each pipeline rule runs in its own conda environment. viralconseq caches these envs across runs so they only need to be built once; pre-warm the cache now:
+Each pipeline rule runs in its own conda environment. viralconseq caches these envs across runs so they only need to be built once; the same command also downloads the databases that the final consensus-QC step (viralQC) needs. Pre-warm both caches now:
 
 ```bash
 viralconseq setup --pipelines all
 ```
 
-This materializes every per-rule env into `~/.cache/viralconseq/conda-envs/` (override with `--conda-prefix PATH` or `$VIRALCONSEQ_CONDA_PREFIX`). The subsequent pipeline runs in this tutorial — and every future run on this machine — reuse the cache and skip env creation. Restricting to a single workflow (e.g. `--pipelines consensus-illumina`) is faster if you only plan to run one flavour; add the other later.
+This materializes every per-rule env into `~/.cache/viralconseq/conda-envs/` (override with `--conda-prefix PATH` or `$VIRALCONSEQ_CONDA_PREFIX`) and then downloads the viralQC databases — the Nextclade datasets and the NCBI RefSeq viral BLAST set — into `~/.cache/viralconseq/viralqc-db/` (override with `--viralqc-db PATH` or `$VIRALCONSEQ_VIRALQC_DB`). Expect about 1 GB on disk, several GB while downloading, and 15–60 minutes depending on your connection. The subsequent pipeline runs in this tutorial — and every future run on this machine — reuse both caches. Restricting to a single workflow (e.g. `--pipelines consensus-illumina`) is faster if you only plan to run one flavour; add the other later. `--skip-viralqc-db` skips the database download (then run the pipeline with `--no-run-viralqc`).
 
 If `setup` fails with `CreateCondaEnvironmentException`, see [Troubleshooting](../installation.md#troubleshooting).
 
@@ -140,7 +140,7 @@ You should now have:
 └── samples_nanopore.csv
 ```
 
-A quick sanity check that the workflow environments are in place:
+A quick sanity check that the workflow environments and the viralQC databases are in place (`[viralqc-db] already present` means the download is complete):
 
 ```bash
 viralconseq setup --pipelines all --dry-run

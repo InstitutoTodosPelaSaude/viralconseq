@@ -20,6 +20,7 @@ rule all:
     input:
         config['output'] + "assembly/consensus/final_consensus/samples_alignment.fasta",
         config['output'] + "isnvs/isnvs_summary.tsv" if config.get("run_isnv", False) else [],
+        config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
         config['output'] + "benchmark.tsv"
 
 def get_map_input_fastqs(wildcards):
@@ -33,6 +34,7 @@ include: "rules/alignment_illumina.smk"
 include: "rules/consensus_illumina.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_illumina_common.smk"
+include: "rules/viralqc.smk"
 
 rule unify_assembly_statistics_reports:
     conda:
@@ -85,6 +87,7 @@ rule organize_files:
         consensus_files = expand(rules.infer_consensus_sequence.output.consensus, sample=config["samples"]),
         raw_mapped_reads = expand(rules.map_reads.output.bam, sample=config["samples"]),
         trimmed_mapped_reads = expand(rules.trim_primer_sequences.output.bam, sample=config["samples"]),
+        viralqc_files = expand(rules.split_viralqc_results.output.tsv, sample=config["samples"]) if config.get("run_viralqc", True) else [],
     output:
         config['output'] + "benchmark.tsv"
     params:
@@ -131,6 +134,12 @@ rule organize_files:
             ln -sf $_file.bai {params.outdir}samples/$sample/trimmed_mapped_reads.bam.bai;
         done
         
+        for _file in {input.viralqc_files} ""; do
+            if [ -z "$_file" ]; then continue; fi
+            sample=$(basename $_file .viralqc.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/viralqc.tsv;
+        done
+
         # Benchmark aggregation
         echo -e "sample\\ttask\\tseconds\\th:m:s\\tmax_rss\\tmax_vms\\tmax_uss\\tmax_pss\\tio_in\\tio_out\\tmean_load\\tcpu_time" > {output}
         find {params.outdir} -name "*.benchmark.txt" | while read -r file; do

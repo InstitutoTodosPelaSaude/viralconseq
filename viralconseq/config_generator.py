@@ -191,6 +191,28 @@ class ConfigGenerator:
             P,
         )
 
+    def add_viralqc_settings(
+        self,
+        run_viralqc: bool = True,
+        viralqc_db: str = "NA",
+        viralqc_extra_flags: str = "",
+    ) -> None:
+        """Add consensus-QC (viralQC) settings to configuration.
+
+        Args:
+            run_viralqc: Run viralQC on the final consensus sequences.
+            viralqc_db: Absolute path to the viralQC database directory. Written
+                even when ``run_viralqc`` is False so the YAML can be switched on
+                later; ``"NA"`` only when no directory is known.
+            viralqc_extra_flags: Extra flags appended to the ``vqc run`` command
+                line. Config-only (no CLI flag), like
+                ``minimap2_consensus_align_flags``.
+        """
+        P = self.SECTION_PARAMETERS
+        self._set(ConfigKeys.RUN_VIRALQC, run_viralqc, P)
+        self._set(ConfigKeys.VIRALQC_DB, viralqc_db, P)
+        self._set(ConfigKeys.VIRALQC_EXTRA_FLAGS, viralqc_extra_flags, P)
+
     def add_workflow_path(self, workflow_path: str) -> None:
         """Add workflow path to configuration.
 
@@ -296,6 +318,9 @@ class ConfigGenerator:
                     variant_depth=10,
                     minimum_map_quality=30,
                 )
+            # run_viralqc=True pulls run_viralqc (envs/viralqc.yaml) into the
+            # DAG; the placeholder DB files are listed in SKELETON_PLACEHOLDERS.
+            gen.add_viralqc_settings(run_viralqc=True, viralqc_db=f"{root}/viralqc_db")
             gen.add_workflow_path(".")
         else:
             raise ValueError(f"Unknown pipeline: {pipeline!r} (expected 'consensus')")
@@ -313,10 +338,16 @@ class ConfigGenerator:
                 "reads/skel_R1.fastq.gz",
                 "reads/skel_R2.fastq.gz",
                 "references/skel.reference.fasta",
+                "viralqc_db/blast.fasta",
+                "viralqc_db/blast.tsv",
+                "viralqc_db/.nextclade_datasets_ok",
             ],
             "nanopore": [
                 "reads/skel.fastq.gz",
                 "references/skel.reference.fasta",
+                "viralqc_db/blast.fasta",
+                "viralqc_db/blast.tsv",
+                "viralqc_db/.nextclade_datasets_ok",
             ],
         },
     }

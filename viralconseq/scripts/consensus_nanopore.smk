@@ -33,6 +33,7 @@ REFERENCE = rules.sanitize_reference.output.fasta
 rule all:
     input:
         config['output'] + "assembly/consensus/final_consensus/samples_alignment.fasta",
+        config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
         config['output'] + "benchmark.tsv"
 
 def get_map_input_fastqs(wildcards):
@@ -45,6 +46,7 @@ include: "rules/alignment_nanopore.smk"
 include: "rules/consensus_nanopore.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_nanopore_common.smk"
+include: "rules/viralqc.smk"
 
 # ``calculate_assembly_statistics`` and ``align_consensus_to_reference_genome``
 # are defined in the included ``consensus_nanopore_common.smk``. The
@@ -76,6 +78,7 @@ rule organize_files:
         consensus_files = expand(rules.rename_sequences.output.consensus_renamed, sample=config["samples"]),
         raw_mapped_reads = expand(rules.map_reads.output.bam, sample=config["samples"]),
         trimmed_mapped_reads = expand(rules.trim_primer_sequences.output.bam, sample=config["samples"]),
+        viralqc_files = expand(rules.split_viralqc_results.output.tsv, sample=config["samples"]) if config.get("run_viralqc", True) else [],
     output:
         config['output'] + "benchmark.tsv"
     params:
@@ -115,6 +118,12 @@ rule organize_files:
             sample=$(basename $_file .sorted.bam);
             ln -sf $_file {params.outdir}samples/$sample/trimmed_mapped_reads.bam;
             ln -sf $_file.bai {params.outdir}samples/$sample/trimmed_mapped_reads.bam.bai;
+        done
+
+        for _file in {input.viralqc_files} ""; do
+            if [ -z "$_file" ]; then continue; fi
+            sample=$(basename $_file .viralqc.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/viralqc.tsv;
         done
 
         # Benchmark aggregation

@@ -21,6 +21,7 @@ rule all:
             segment=SEGMENTS.keys()
         ),
         config['output'] + "isnvs/isnvs_summary.tsv" if config.get("run_isnv", False) else [],
+        config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
         config['output'] + "benchmark.tsv"
 
 def get_map_input_fastqs(wildcards):
@@ -41,6 +42,7 @@ include: "rules/alignment_illumina.smk"
 include: "rules/consensus_illumina.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_illumina_common.smk"
+include: "rules/viralqc.smk"
 
 rule unify_assembly_statistics_reports:
     conda:
@@ -123,6 +125,9 @@ rule organize_files:
             rules.trim_primer_sequences.output.bam,
             sample=config["samples"], segment=SEGMENTS.keys()
         ),
+        viralqc_files = expand(
+            rules.split_viralqc_results.output.tsv, sample=config["samples"]
+        ) if config.get("run_viralqc", True) else [],
     output:
         config['output'] + "benchmark.tsv"
     params:
@@ -182,6 +187,12 @@ rule organize_files:
             sample=$(basename $_file .sorted.bam);
             ln -sf $_file {params.outdir}samples/$sample/$segment/trimmed_mapped_reads.bam;
             ln -sf $_file.bai {params.outdir}samples/$sample/$segment/trimmed_mapped_reads.bam.bai;
+        done
+
+        for _file in {input.viralqc_files} ""; do
+            if [ -z "$_file" ]; then continue; fi
+            sample=$(basename $_file .viralqc.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/viralqc.tsv;
         done
 
         # Benchmark aggregation

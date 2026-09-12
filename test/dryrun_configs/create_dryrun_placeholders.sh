@@ -22,5 +22,9 @@ touch data/references/segment3.fasta
 # Dummy primer scheme
 touch data/references/primers.bed
 
+# Dummy viralQC database (layout per constants.ViralQCDatabase)
+mkdir -p data/viralqc_db/blast_gff
+touch data/viralqc_db/blast.fasta data/viralqc_db/blast.tsv data/viralqc_db/.nextclade_datasets_ok
+
 echo "Placeholder files created successfully in data/."
 echo "You can now run 'snakemake -n' for any of the dry-run configs."

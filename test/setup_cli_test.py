@@ -44,6 +44,22 @@ class Test_ConfigGeneratorSkeleton(unittest.TestCase):
             self.assertIn(k, cfg, f"missing key: {k}")
         self.assertEqual(cfg["data"], "nanopore")
 
+    def test_viralqc_enabled_in_skeleton(self):
+        """``run_viralqc`` must be on so ``viralconseq setup`` materializes
+        ``envs/viralqc.yaml``; the placeholder DB inputs must be declared."""
+        for data_type in ("illumina", "nanopore"):
+            with self.subTest(data_type=data_type):
+                cfg = self._write_and_load("consensus", data_type)
+                self.assertTrue(cfg["run_viralqc"])
+                self.assertTrue(cfg["viralqc_db"].endswith("viralqc_db"))
+                placeholders = ConfigGenerator.SKELETON_PLACEHOLDERS["consensus"][data_type]
+                for entry in (
+                    "viralqc_db/blast.fasta",
+                    "viralqc_db/blast.tsv",
+                    "viralqc_db/.nextclade_datasets_ok",
+                ):
+                    self.assertIn(entry, placeholders)
+
     def test_unknown_pipeline_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "skel.yaml"
@@ -70,6 +86,11 @@ class Test_CollectEnvYamls(unittest.TestCase):
         self.assertTrue(yamls, "no envs found")
         # qc.yaml is the env that failed first in the original bug report.
         self.assertIn("qc.yaml", yamls)
+
+    def test_viralqc_yaml_listed_for_both_pipelines(self):
+        for name, (_, _, smk_name) in _PIPELINE_TO_WORKFLOW.items():
+            with self.subTest(pipeline=name):
+                self.assertIn("viralqc.yaml", _collect_env_yamls(_scripts_dir() / smk_name))
 
     def test_all_pipelines_resolve_to_existing_smk(self):
         scripts = _scripts_dir()
@@ -116,6 +137,171 @@ class Test_SetupCli(unittest.TestCase):
         self.assertEqual(result.exit_code, 2, result.output)
         self.assertIn("meta-illumina", result.output)
 
+    def _make_db(self, root):
+        db = Path(root) / "vqc"
+        (db / "blast_gff").mkdir(parents=True)
+        for name in ("blast.fasta", "blast.tsv", ".nextclade_datasets_ok"):
+            (db / name).touch()
+        return db
+
+    @staticmethod
+    def _fake_download(db):
+        """``snakemake`` side effect: env builds return True; the DB download
+        call also writes the complete database layout, as the real workflow does."""
+
+        def _side_effect(*args, **kwargs):
+            if "config" in kwargs:
+                (Path(db) / "blast_gff").mkdir(parents=True, exist_ok=True)
+                for name in ("blast.fasta", "blast.tsv", ".nextclade_datasets_ok"):
+                    (Path(db) / name).touch()
+            return True
+
+        return _side_effect
+
+    def test_dry_run_mentions_viralqc_db_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = str(Path(tmp) / "absent")
+            result = self.runner.invoke(
+                setup, ["--dry-run", "--viralqc-db", db], catch_exceptions=False
+            )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("[viralqc-db] would download", result.output)
+        self.assertIn(db, result.output)
+
+    def test_dry_run_reports_db_already_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = self._make_db(tmp)
+            result = self.runner.invoke(
+                setup, ["--dry-run", "--viralqc-db", str(db)], catch_exceptions=False
+            )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("already present", result.output)
+
+    def test_dry_run_skip_viralqc_db_omits_step(self):
+        result = self.runner.invoke(
+            setup, ["--dry-run", "--skip-viralqc-db"], catch_exceptions=False
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertNotIn("would download", result.output)
+        self.assertIn("skipped: --skip-viralqc-db", result.output)
+
+    def test_viralqc_db_download_invoked_with_expected_kwargs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = str(Path(tmp) / "vqc")
+            with patch(
+                "viralconseq.setup_cli.snakemake", side_effect=self._fake_download(db)
+            ) as mock_snake:
+                result = self.runner.invoke(
+                    setup,
+                    [
+                        "--pipelines",
+                        "consensus-illumina",
+                        "--conda-prefix",
+                        tmp,
+                        "--viralqc-db",
+                        db,
+                    ],
+                    catch_exceptions=False,
+                )
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertEqual(mock_snake.call_count, 2)
+            args, kwargs = mock_snake.call_args_list[1]
+            self.assertTrue(args[0].endswith("viralqc_setup.smk"))
+            self.assertEqual(kwargs["config"], {"viralqc_db": db})
+            self.assertTrue(kwargs["use_conda"])
+            self.assertEqual(kwargs["conda_prefix"], tmp)
+            self.assertEqual(kwargs["targets"], ["all"])
+            self.assertNotIn("conda_create_envs_only", kwargs)
+            self.assertTrue(Path(db).is_dir())
+        self.assertIn("[viralqc-db] OK", result.output)
+
+    def test_viralqc_db_download_skipped_when_complete(self):
+        with (
+            patch("viralconseq.setup_cli.snakemake", return_value=True) as mock_snake,
+            tempfile.TemporaryDirectory() as tmp,
+        ):
+            db = self._make_db(tmp)
+            result = self.runner.invoke(
+                setup,
+                [
+                    "--pipelines",
+                    "consensus-illumina",
+                    "--conda-prefix",
+                    tmp,
+                    "--viralqc-db",
+                    str(db),
+                ],
+                catch_exceptions=False,
+            )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(mock_snake.call_count, 1)
+        self.assertIn("already present", result.output)
+
+    def test_viralqc_db_download_failure_exits_nonzero(self):
+        with (
+            patch("viralconseq.setup_cli.snakemake", side_effect=[True, False]) as mock_snake,
+            tempfile.TemporaryDirectory() as tmp,
+        ):
+            db = str(Path(tmp) / "vqc")
+            result = self.runner.invoke(
+                setup,
+                ["--pipelines", "consensus-illumina", "--conda-prefix", tmp, "--viralqc-db", db],
+                catch_exceptions=False,
+            )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(mock_snake.call_count, 2)
+        self.assertIn("viralqc-db", result.output)
+
+    def test_viralqc_db_skipped_after_env_failure(self):
+        with (
+            patch("viralconseq.setup_cli.snakemake", return_value=False) as mock_snake,
+            tempfile.TemporaryDirectory() as tmp,
+        ):
+            db = str(Path(tmp) / "vqc")
+            result = self.runner.invoke(
+                setup,
+                ["--pipelines", "consensus-illumina", "--conda-prefix", tmp, "--viralqc-db", db],
+                catch_exceptions=False,
+            )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(mock_snake.call_count, 1)
+        self.assertIn("skipped: env creation failed", result.output)
+
+    def test_download_reporting_success_but_incomplete_db_fails(self):
+        """A download that returns True but leaves the layout incomplete is a failure."""
+        with (
+            patch("viralconseq.setup_cli.snakemake", return_value=True),
+            tempfile.TemporaryDirectory() as tmp,
+        ):
+            db = str(Path(tmp) / "vqc")
+            result = self.runner.invoke(
+                setup,
+                ["--pipelines", "consensus-illumina", "--conda-prefix", tmp, "--viralqc-db", db],
+                catch_exceptions=False,
+            )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("still missing", result.output)
+
+    def test_default_viralqc_db_env_var(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            envdb = str(Path(tmp) / "envdb")
+            with (
+                patch.dict(os.environ, {"VIRALCONSEQ_VIRALQC_DB": envdb}),
+                patch(
+                    "viralconseq.setup_cli.snakemake", side_effect=self._fake_download(envdb)
+                ) as mock_snake,
+            ):
+                result = self.runner.invoke(
+                    setup,
+                    ["--pipelines", "consensus-illumina", "--conda-prefix", tmp],
+                    catch_exceptions=False,
+                )
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertEqual(
+                mock_snake.call_args_list[1].kwargs["config"]["viralqc_db"],
+                str(Path(tmp) / "envdb"),
+            )
+
     def test_dry_run_all_pipelines(self):
         result = self.runner.invoke(setup, ["--dry-run"], catch_exceptions=False)
         self.assertEqual(result.exit_code, 0, result.output)
@@ -134,6 +320,7 @@ class Test_SetupCli(unittest.TestCase):
                     "consensus-illumina",
                     "--conda-prefix",
                     tmp,
+                    "--skip-viralqc-db",
                 ],
                 catch_exceptions=False,
             )
@@ -149,7 +336,9 @@ class Test_SetupCli(unittest.TestCase):
             os.environ.pop("VIRALCONSEQ_CONDA_PREFIX", None)
             with patch("viralconseq.setup_cli.snakemake", return_value=True) as mock_snake:
                 result = self.runner.invoke(
-                    setup, ["--pipelines", "consensus-illumina"], catch_exceptions=False
+                    setup,
+                    ["--pipelines", "consensus-illumina", "--skip-viralqc-db"],
+                    catch_exceptions=False,
                 )
         self.assertEqual(result.exit_code, 0, result.output)
         expected = str(Path.home() / ".cache" / "viralconseq" / "conda-envs")
@@ -162,7 +351,9 @@ class Test_SetupCli(unittest.TestCase):
         ):
             with patch("viralconseq.setup_cli.snakemake", return_value=True) as mock_snake:
                 result = self.runner.invoke(
-                    setup, ["--pipelines", "consensus-illumina"], catch_exceptions=False
+                    setup,
+                    ["--pipelines", "consensus-illumina", "--skip-viralqc-db"],
+                    catch_exceptions=False,
                 )
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(mock_snake.call_args.kwargs["conda_prefix"], tmp)
@@ -175,7 +366,7 @@ class Test_SetupCli(unittest.TestCase):
         ):
             result = self.runner.invoke(
                 setup,
-                ["--pipelines", "consensus-illumina", "--conda-prefix", tmp],
+                ["--pipelines", "consensus-illumina", "--conda-prefix", tmp, "--skip-viralqc-db"],
                 catch_exceptions=False,
             )
         self.assertNotEqual(result.exit_code, 0)

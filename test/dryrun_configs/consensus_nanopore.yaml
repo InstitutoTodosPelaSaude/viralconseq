@@ -18,3 +18,10 @@ clair3_model: "r1041_e82_400bps_sup_v500"
 variant_quality: 20
 variant_depth: 10
 minimum_map_quality: 30
+
+# viralQC consensus QC
+run_viralqc: true
+viralqc_db: data/viralqc_db
+viralqc_extra_flags: ""
+run_viralqc_cpus: 2
+run_viralqc_ram: 4

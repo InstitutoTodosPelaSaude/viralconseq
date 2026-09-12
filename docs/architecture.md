@@ -23,6 +23,8 @@ snakemake(workflow.smk, config)   viralconseq/scripts/consensus_<datatype>[_segm
    │  rule all → include: rules/*.smk
    ▼
 per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
+   │  incl. envs/viralqc.yaml (viralQC + nextclade + BLAST) for the final QC step,
+   │  which reads the databases cached by `viralconseq setup` (~/.cache/viralconseq/viralqc-db)
 ```
 
 ## Module map
@@ -33,17 +35,17 @@ per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
 | `consensus_cli.py` | Click options for `consensus illumina` / `consensus nanopore` → plain `args` dict. |
 | `consensus.py` | Owns `validate_args`, `generate_config_file`, `run_snakemake_workflow`; calls the orchestrator. |
 | `create_samplesheet.py` | `create-samplesheet` subcommand. |
-| `setup_cli.py` | `setup` subcommand: pre-builds per-rule conda envs into a shared cache. |
+| `setup_cli.py` | `setup` subcommand: pre-builds per-rule conda envs into a shared cache and downloads the viralQC databases via `scripts/viralqc_setup.smk`. |
 | `_orchestrator.py` | Shared `run_pipeline` skeleton (resolve → validate → config → manifest → run) with structured error handling. |
-| `validators.py` | File existence, sample-sheet parsing, reference/primer checks, input sanitization, and content-level input-integrity orchestration (`validate_consensus_input_integrity`). |
+| `validators.py` | File existence, sample-sheet parsing, reference/primer checks, the viralQC database check (`validate_viralqc_database`), input sanitization, and content-level input-integrity orchestration (`validate_consensus_input_integrity`). |
 | `integrity.py` | Streaming, pure-stdlib content validators for FASTQ / FASTA / BED; collect `IntegrityIssue`s rather than raising. |
 | `reference_splitter.py` | Splits a multi-record `--reference` FASTA into the per-segment `{segment: path}` dict the segmented workflows consume. |
 | `config_generator.py` | Writes the YAML config (the contract with the `.smk` files). |
-| `constants.py` | `ConfigKeys`, `DataType`, `ResourceDefaults` (per-workflow rule lists). |
+| `constants.py` | `ConfigKeys`, `DataType`, `ResourceDefaults` (per-workflow rule lists), `ViralQCDatabase` (the database directory layout contract). |
 | `exceptions.py` | Typed error hierarchy with machine-readable `code`s. |
 | `logging_config.py` | Central logging (run id, text/JSON). |
 | `provenance.py` | `run_manifest.json` (version, config, input checksums). |
-| `scripts/*.smk`, `scripts/rules/*.smk` | The actual workflows. |
+| `scripts/*.smk`, `scripts/rules/*.smk` | The actual workflows. `rules/viralqc.smk` is the consensus-QC stage; `scripts/viralqc_setup.smk` is the database download driven by `setup`. |
 | `scripts/python/*.py` | Helpers run via Snakemake's `script:` directive. |
 
 ## The config is the contract

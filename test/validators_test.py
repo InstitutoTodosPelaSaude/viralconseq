@@ -8,12 +8,19 @@ import os
 import tempfile
 import unittest
 
-from viralconseq.exceptions import SampleSheetError, ValidationError
+from viralconseq.constants import ViralQCDatabase
+from viralconseq.exceptions import (
+    SampleSheetError,
+    ValidationError,
+    ViralQCDatabaseNotFoundError,
+)
 from viralconseq.validators import (
     ensure_within_base,
+    missing_viralqc_database_files,
     sanitize_identifier,
     validate_numeric_parameters,
     validate_sample_sheet,
+    validate_viralqc_database,
 )
 
 
@@ -137,6 +144,69 @@ class Test_Sanitization(unittest.TestCase):
         with tempfile.TemporaryDirectory() as base:
             with self.assertRaises(ValidationError):
                 ensure_within_base("../../etc/passwd", base)
+
+
+def _make_viralqc_db(root, omit=()):
+    """Create a complete viralQC database layout under *root*, minus *omit*."""
+    db = os.path.join(root, "vqc")
+    os.makedirs(db, exist_ok=True)
+    for name in ViralQCDatabase.REQUIRED_FILES:
+        if name not in omit:
+            open(os.path.join(db, name), "w").close()
+    for name in ViralQCDatabase.REQUIRED_DIRS:
+        if name not in omit:
+            os.makedirs(os.path.join(db, name), exist_ok=True)
+    return db
+
+
+class Test_ViralQCDatabase(unittest.TestCase):
+    def test_missing_files_reports_absent_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(
+                missing_viralqc_database_files(os.path.join(tmp, "nope")), ["<directory>"]
+            )
+
+    def test_missing_files_empty_when_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(missing_viralqc_database_files(_make_viralqc_db(tmp)), [])
+
+    def test_missing_files_lists_each_absent_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = _make_viralqc_db(tmp, omit=("blast.tsv", "blast_gff"))
+            self.assertEqual(missing_viralqc_database_files(db), ["blast.tsv", "blast_gff/"])
+
+    def test_validator_ok_when_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            validate_viralqc_database({"run_viralqc": True, "viralqc_db": _make_viralqc_db(tmp)})
+
+    def test_validator_missing_dir_raises_with_setup_hint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = os.path.join(tmp, "absent")
+            with self.assertRaises(ViralQCDatabaseNotFoundError) as ctx:
+                validate_viralqc_database({"run_viralqc": True, "viralqc_db": missing})
+        self.assertIn(missing, str(ctx.exception))
+        self.assertIn(f"viralconseq setup --viralqc-db {missing}", str(ctx.exception))
+        self.assertEqual(ctx.exception.code, "viralqc_database_not_found")
+
+    def test_validator_missing_sentinel_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = _make_viralqc_db(tmp, omit=(ViralQCDatabase.NEXTCLADE_SENTINEL,))
+            with self.assertRaises(ViralQCDatabaseNotFoundError) as ctx:
+                validate_viralqc_database({"run_viralqc": True, "viralqc_db": db})
+        self.assertIn(ViralQCDatabase.NEXTCLADE_SENTINEL, str(ctx.exception))
+
+    def test_validator_skipped_when_run_viralqc_false(self):
+        validate_viralqc_database({"run_viralqc": False, "viralqc_db": "/definitely/absent"})
+
+    def test_validator_unset_db_raises(self):
+        for value in (None, "", "NA"):
+            with self.subTest(value=value):
+                with self.assertRaises(ViralQCDatabaseNotFoundError):
+                    validate_viralqc_database({"run_viralqc": True, "viralqc_db": value})
+
+    def test_validator_defaults_run_viralqc_true_when_key_absent(self):
+        with self.assertRaises(ViralQCDatabaseNotFoundError):
+            validate_viralqc_database({"viralqc_db": "/definitely/absent"})
 
 
 if __name__ == "__main__":

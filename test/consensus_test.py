@@ -13,6 +13,7 @@ from viralconseq.exceptions import (
     AdaptersNotFoundError,
     SampleConfigurationNotFoundError,
     ValidationError,
+    ViralQCDatabaseNotFoundError,
 )
 
 
@@ -44,6 +45,9 @@ class Test_ValidateArgs(unittest.TestCase):
             "create_config_only": False,
             "threads": 1,
             "threads_total": 1,
+            # Keep the existing tests off the filesystem; the viralQC database
+            # check has its own tests below.
+            "run_viralqc": False,
         }
 
     @patch("viralconseq.consensus.validate_consensus_input_integrity")
@@ -195,6 +199,66 @@ class Test_ValidateArgs(unittest.TestCase):
 
         with self.assertRaises(AdaptersNotFoundError):
             validate_args(self.args)
+
+
+class Test_ValidateArgsViralQC(unittest.TestCase):
+    """The viralQC database check runs inside ``validate_args`` for every run
+    with ``run_viralqc`` on, is not gated by ``--skip-input-validation``, and
+    is skipped by ``--no-run-viralqc``."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.args = {
+            "data_type": "nanopore",
+            "sample_sheet": "sample_sheet.csv",
+            "config_file": "config_file.yaml",
+            "output": "output_dir",
+            "run_name": "run_name",
+            "reference": "reference.fasta",
+            "segmented_reference": None,
+            "primer_scheme": None,
+            "threads": 1,
+            "threads_total": 1,
+            "run_viralqc": True,
+            "viralqc_db": os.path.join(self.tmp, "absent"),
+        }
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _patches(self):
+        return (
+            patch("viralconseq.consensus.get_samples_from_args", return_value={"s": ["a"]}),
+            patch("viralconseq.consensus.validate_consensus_requirements"),
+            patch("viralconseq.consensus.validate_consensus_input_integrity"),
+        )
+
+    def test_validate_args_calls_viralqc_db_check(self):
+        p1, p2, p3 = self._patches()
+        with p1, p2, p3, patch("viralconseq.consensus.validate_viralqc_database") as mock_db:
+            validate_args(self.args)
+        mock_db.assert_called_once_with(self.args)
+
+    def test_validate_args_viralqc_db_missing_raises(self):
+        p1, p2, p3 = self._patches()
+        with p1, p2, p3:
+            with self.assertRaises(ViralQCDatabaseNotFoundError):
+                validate_args(self.args)
+
+    def test_validate_args_viralqc_check_not_gated_by_skip_input_validation(self):
+        self.args["skip_input_validation"] = True
+        p1, p2, p3 = self._patches()
+        with p1, p2, p3:
+            with self.assertRaises(ViralQCDatabaseNotFoundError):
+                validate_args(self.args)
+
+    def test_validate_args_no_run_viralqc_skips_db_check(self):
+        self.args["run_viralqc"] = False
+        p1, p2, p3 = self._patches()
+        with p1, p2, p3:
+            samples = validate_args(self.args)
+        self.assertEqual(samples, {"s": ["a"]})
 
 
 class Test_ValidateConsensusMultiFastaReference(unittest.TestCase):
@@ -420,6 +484,12 @@ class Test_GenerateConfigFile(unittest.TestCase):
         # Removed features must not leak into the config contract.
         self.assertNotIn("gene_annotation", config_dict)
         self.assertNotIn("generate_html_report", config_dict)
+        # viralQC defaults: on, no db known, resources emitted.
+        self.assertTrue(config_dict["run_viralqc"])
+        self.assertEqual(config_dict["viralqc_db"], "NA")
+        self.assertEqual(config_dict["viralqc_extra_flags"], "")
+        self.assertEqual(config_dict["run_viralqc_cpus"], 2)
+        self.assertEqual(config_dict["run_viralqc_ram"], 4)
         self.assertEqual(
             config_dict["minimap2_consensus_align_flags"],
             "-a --sam-hit-only --secondary=no --score-N=0",
@@ -496,6 +566,9 @@ class Test_GenerateConfigFile(unittest.TestCase):
         # Removed features must not leak into the config contract.
         self.assertNotIn("gene_annotation", config_dict)
         self.assertNotIn("generate_html_report", config_dict)
+        self.assertTrue(config_dict["run_viralqc"])
+        self.assertEqual(config_dict["run_viralqc_cpus"], 2)
+        self.assertEqual(config_dict["run_viralqc_ram"], 4)
 
     @patch("builtins.open", new_callable=mock_open)
     @patch("os.makedirs")
@@ -582,6 +655,52 @@ class Test_MainFunction(unittest.TestCase):
         )
         self.assertEqual(result, 1)
         mock_run_workflow.assert_called_once()
+
+
+class Test_GenerateConfigFileViralQC(unittest.TestCase):
+    def _generate(self, args):
+        import yaml as _yaml
+
+        with tempfile.TemporaryDirectory() as tmp:
+            args = dict(args, config_file=os.path.join(tmp, "config.yml"))
+            files = ["a.fq"] if args["data_type"] == "nanopore" else ["a.fq", "b.fq"]
+            generate_config_file({"s": files}, args)
+            with open(args["config_file"]) as fh:
+                return _yaml.safe_load(fh)
+
+    def _base(self, **overrides):
+        args = {
+            "data_type": "illumina",
+            "output": "output_dir",
+            "run_name": "run",
+            "reference": "reference.fasta",
+            "primer_scheme": "NA",
+            "adapters": "NA",
+            "threads": 1,
+            "threads_total": 1,
+        }
+        args.update(overrides)
+        return args
+
+    def test_viralqc_db_kept_when_disabled(self):
+        cfg = self._generate(self._base(run_viralqc=False, viralqc_db="/abs/vqc"))
+        self.assertFalse(cfg["run_viralqc"])
+        self.assertEqual(cfg["viralqc_db"], "/abs/vqc")
+
+    def test_viralqc_extra_flags_and_resources_passthrough(self):
+        cfg = self._generate(
+            self._base(
+                data_type="nanopore",
+                viralqc_db="/abs/vqc",
+                viralqc_extra_flags="--blast-task dc-megablast",
+                run_viralqc_cpus=8,
+                run_viralqc_ram=16,
+            )
+        )
+        self.assertTrue(cfg["run_viralqc"])
+        self.assertEqual(cfg["viralqc_extra_flags"], "--blast-task dc-megablast")
+        self.assertEqual(cfg["run_viralqc_cpus"], 8)
+        self.assertEqual(cfg["run_viralqc_ram"], 16)
 
 
 if __name__ == "__main__":

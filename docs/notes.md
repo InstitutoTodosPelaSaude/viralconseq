@@ -44,6 +44,38 @@ The nanopore workflow automatically sanitizes reference FASTA headers before use
 
 Every rule runs inside a pinned conda environment from `viralconseq/scripts/envs/`. Snakemake builds them on first use; `viralconseq setup` pre-builds them into a shared cache (`~/.cache/viralconseq/conda-envs/` or `$VIRALCONSEQ_CONDA_PREFIX`) so that real runs never pay the environment-creation cost.
 
+## Consensus QC (viralQC)
+
+The final stage of every run is [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC)
+(`vqc`, pinned to 1.2.0 in `viralconseq/scripts/envs/viralqc.yaml`). All final
+consensus sequences of the run are merged into `qc/viralqc/input.fasta`
+(reference excluded; in segmented runs headers become `sample-<id>|<segment>`
+so every segment can go into the same table) and analysed in one `vqc run`.
+The databases are local, but `nextclade sort` still fetches its reference
+minimizer index from `data.clades.nextstrain.org` on each run, so the QC step
+needs outbound HTTPS; use `--no-run-viralqc` on air-gapped nodes.
+
+**Databases.** `viralconseq setup` downloads the Nextclade datasets and the
+NCBI RefSeq viral BLAST set into one directory: `--viralqc-db`,
+`$VIRALCONSEQ_VIRALQC_DB`, or `~/.cache/viralconseq/viralqc-db` by default.
+The directory is considered complete when it contains `blast.fasta`,
+`blast.tsv`, `blast_gff/` and the marker `.nextclade_datasets_ok` (written by
+`setup` once the Nextclade download finished). `viralconseq consensus` checks
+this during argument validation, before any work starts, and aborts with
+`viralqc_database_not_found` otherwise; `--no-run-viralqc` skips both the check and the step. To refresh
+the databases (new Nextclade datasets, new RefSeq release) delete the directory
+and rerun `viralconseq setup`. The download also leaves NCBI's taxonomy dump
+under `$HOME/.taxonkit` (used by taxonkit during the BLAST-set build).
+
+**Failure policy.** A viralQC tool error never fails the run: the rule writes
+a placeholder `results.tsv`, records the outcome in `qc/viralqc/viralqc_status.txt`
+and prints a `WARNING`. QC grades are data, not exit codes. To retry after
+fixing the cause, delete `qc/viralqc/` in the run directory and rerun.
+
+**Tuning.** `run_viralqc` gets its own `--run-viralqc-cpus/--run-viralqc-ram`;
+other `vqc run` options (BLAST task, identity, e-value, Nextclade sort
+thresholds) can be appended through the config-only key `viralqc_extra_flags`.
+
 ## Running tests
 
 ```bash

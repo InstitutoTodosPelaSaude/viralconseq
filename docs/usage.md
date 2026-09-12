@@ -25,7 +25,7 @@ Global options go before the subcommand: `--log-level {DEBUG,INFO,WARNING,ERROR}
 
 ## General workflow
 
-1. **Build the per-rule environments once** with `viralconseq setup --pipelines all`
+1. **Build the per-rule environments and download the viralQC databases once** with `viralconseq setup --pipelines all`
 2. **Generate a sample sheet** with `viralconseq create-samplesheet` (or write the CSV by hand)
 3. **Run the pipeline** with `viralconseq consensus illumina` or `viralconseq consensus nanopore`
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-viralconseq is a Python package whose only job at runtime is to validate inputs, write a YAML config, and launch one of four Snakemake workflows for reference-guided viral consensus inference. All of the actual bioinformatics — QC, alignment, primer clipping, variant and consensus calling, coverage statistics — lives in the Snakemake files under `viralconseq/scripts/`. Treat the Python layer as a CLI + orchestration shim; treat the `.smk` rule files as the substantive code.
+viralconseq is a Python package whose only job at runtime is to validate inputs, write a YAML config, and launch one of four Snakemake workflows for reference-guided viral consensus inference. All of the actual bioinformatics — QC, alignment, primer clipping, variant and consensus calling, coverage statistics, and the final consensus QC with viralQC — lives in the Snakemake files under `viralconseq/scripts/`. Treat the Python layer as a CLI + orchestration shim; treat the `.smk` rule files as the substantive code.
 
 viralconseq was extracted from the consensus half of [ViralUnity](https://github.com/InstitutoTodosPelaSaude/ViralUnity) v1.5.0. The retained rule modules, env YAMLs and helper scripts were copied byte-for-byte; keep it that way unless a change is deliberately about pipeline behaviour.
 
@@ -40,7 +40,7 @@ Pipeline invocations (the user runs these against real data; for editing, prefer
 
 ```bash
 viralconseq create-samplesheet --input <runs-dir> --output samples.csv
-viralconseq setup --pipelines all
+viralconseq setup --pipelines all          # builds per-rule envs AND downloads the viralQC databases
 viralconseq consensus illumina --sample-sheet ... --reference ... --config-file ... --output ...
 viralconseq consensus nanopore --sample-sheet ... --reference ... --config-file ... --output ...
 ```
@@ -63,20 +63,24 @@ The single console entry point `viralconseq` (declared in `pyproject.toml`'s `[p
 
 `ConfigGenerator.add_resource_settings(args, rule_list)` emits one `{rule}_cpus` / `{rule}_ram` pair per rule. The rule lists are declared as class attributes on `ResourceDefaults` in `constants.py` (`CONSENSUS_ILLUMINA_RULES`, `CONSENSUS_NANOPORE_RULES`). When you add a computationally heavy rule, add it to the right list so its resources land in the generated config.
 
-One tool-level flag is config-only (no CLI), defaulted to the historical value for backwards compatibility: `minimap2_consensus_align_flags`. Users edit it by re-running with `--create-config-only`, editing the YAML, and rerunning Snakemake directly. Don't promote it to a CLI flag without discussion.
+Two tool-level settings are config-only (no CLI): `minimap2_consensus_align_flags` (historical default kept for backwards compatibility) and `viralqc_extra_flags` (extra `vqc run` arguments, default empty). Users edit them by re-running with `--create-config-only`, editing the YAML, and rerunning Snakemake directly. Don't promote them to CLI flags without discussion.
 
 ### Input validation
 
-`validators.py` does existence and cross-dependency checks; `integrity.py` streams FASTQ / FASTA / BED content (pure stdlib) and collects `IntegrityIssue`s, which `validators.validate_consensus_input_integrity` aggregates into one `InputIntegrityError`. Integrity checks run even under `--create-config-only`; `--skip-input-validation` bypasses them.
+`validators.py` does existence and cross-dependency checks; `integrity.py` streams FASTQ / FASTA / BED content (pure stdlib) and collects `IntegrityIssue`s, which `validators.validate_consensus_input_integrity` aggregates into one `InputIntegrityError`. Integrity checks run even under `--create-config-only`; `--skip-input-validation` bypasses them. The viralQC database check (`validators.validate_viralqc_database`, error code `viralqc_database_not_found`) is an existence check and is bypassed only by `--no-run-viralqc`; the required directory layout is single-sourced in `constants.ViralQCDatabase` and must stay in sync with `scripts/viralqc_setup.smk`'s `rule all` and the inputs of `run_viralqc`.
+
+### Consensus QC (viralQC)
+
+`rules/viralqc.smk` (included by all four workflows) merges every sample's renamed consensus FASTA into `qc/viralqc/input.fasta` (segmented runs suffix headers with `|<segment>`), runs one `vqc run` inside `envs/viralqc.yaml` (viralQC pinned from PyPI plus nextclade/BLAST/seqtk; it nests its own Snakemake, hence `snakemake-minimal` and `pulp<2.8` in that env), and slices `results.tsv` per sample. The `run_viralqc` rule is lenient by design: a `vqc` failure writes a placeholder table and `viralqc_status.txt` and the run still succeeds. `viralconseq setup` downloads the databases through `scripts/viralqc_setup.smk` using the same env cache.
 
 ### Snakemake workflows
 
-Each top-level `.smk` in `viralconseq/scripts/` is small — it sets up wildcard helpers, `rule all`, and `include:`s rule modules from `viralconseq/scripts/rules/` (`qc_illumina`, `alignment_{illumina,nanopore}`, `consensus_{illumina,nanopore}`, `consensus_{illumina,nanopore}_common`, `stats`).
+Each top-level `.smk` in `viralconseq/scripts/` is small — it sets up wildcard helpers, `rule all`, and `include:`s rule modules from `viralconseq/scripts/rules/` (`qc_illumina`, `alignment_{illumina,nanopore}`, `consensus_{illumina,nanopore}`, `consensus_{illumina,nanopore}_common`, `stats`, `viralqc`).
 
 Cross-cutting conventions to know before editing rules:
 
 - **Per-rule conda envs.** Every rule has `conda: "envs/<name>.yaml"` (relative to the workflow file; `../envs/` from `rules/`). Adding a new tool means either reusing an env or adding a YAML there. Snakemake's `--use-conda` is enabled in `_orchestrator.run_workflow`. `setup_cli.py --dry-run` scans the `include:`/`conda:` directives to list the envs a workflow needs; the real build lets Snakemake create them via `conda_create_envs_only`.
-- **Optional outputs are computed conditionally.** `rule all` appends `isnvs/isnvs_summary.tsv` only when `run_isnv` is set, and `organize_files` mirrors that with `expand(... if <flag> else [])`. Whenever you add an optional step, edit both places.
+- **Optional outputs are computed conditionally.** `rule all` appends `isnvs/isnvs_summary.tsv` only when `run_isnv` is set and `qc/viralqc/outputs/results.tsv` only when `run_viralqc` is set (default on), and `organize_files` mirrors both with `expand(... if <flag> else [])`. Whenever you add an optional step, edit both places.
 - **`organize_files` is the symlink terminus.** It is the last rule before `benchmark.tsv` and creates the per-sample `samples/<sample>/...` symlinks that users actually browse. New per-sample outputs need a `ln -sf` block there to be discoverable.
 - **Reference sanitization (nanopore).** The nanopore workflow sanitizes reference FASTA headers (replacing `/ \ | , ~` and spaces with `_`) before use because Clair3 makes per-contig directories from the seq IDs. Don't bypass this; `integrity.sanitize_nanopore_contig` must stay in sync with the `sed` in `sanitize_reference`.
 - **Multi-contig single reference.** `align_consensus_to_reference_genome` builds the cross-sample alignment one reference contig at a time (gofasta aborts on multi-contig references) and concatenates them into `samples_alignment.fasta`.

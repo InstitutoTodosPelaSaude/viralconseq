@@ -298,5 +298,77 @@ class Test_ConsensusCondaPrefix(unittest.TestCase):
         self.assertEqual(mock_main.call_args[0][0]["conda_prefix"], "/srv/shared/envs")
 
 
+class Test_ConsensusViralQCOptions(unittest.TestCase):
+    """``--run-viralqc/--no-run-viralqc`` and ``--viralqc-db`` (plus the
+    ``$VIRALCONSEQ_VIRALQC_DB`` env var) must land in the args dict."""
+
+    def setUp(self):
+        self.runner = CliRunner()
+
+    def _required(self, data_type):
+        return [
+            data_type,
+            "--sample-sheet",
+            "sample_sheet.csv",
+            "--config-file",
+            "config_file.yaml",
+            "--output",
+            "output_dir",
+            "--reference",
+            "reference.fasta",
+        ]
+
+    def _invoke(self, cli_args, env=None):
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0) as mock_main:
+            result = self.runner.invoke(consensus, cli_args, env=env or {}, catch_exceptions=False)
+        self.assertEqual(result.exit_code, 0, result.output)
+        return mock_main.call_args[0][0]
+
+    def test_run_viralqc_defaults_true(self):
+        for dt in ("illumina", "nanopore"):
+            with self.subTest(data_type=dt):
+                args = self._invoke(self._required(dt))
+                self.assertTrue(args["run_viralqc"])
+
+    def test_no_run_viralqc_flag_threads_into_args(self):
+        for dt in ("illumina", "nanopore"):
+            with self.subTest(data_type=dt):
+                args = self._invoke(self._required(dt) + ["--no-run-viralqc"])
+                self.assertFalse(args["run_viralqc"])
+
+    def test_explicit_viralqc_db_threads_into_args(self):
+        args = self._invoke(self._required("illumina") + ["--viralqc-db", "/srv/vqc"])
+        self.assertEqual(args["viralqc_db"], "/srv/vqc")
+
+    def test_default_viralqc_db_is_cache_dir(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("VIRALCONSEQ_VIRALQC_DB", None)
+            args = self._invoke(self._required("nanopore"))
+        self.assertEqual(
+            args["viralqc_db"], str(Path.home() / ".cache" / "viralconseq" / "viralqc-db")
+        )
+
+    def test_env_var_viralqc_db(self):
+        args = self._invoke(
+            self._required("illumina"), env={"VIRALCONSEQ_VIRALQC_DB": "/shared/vqc"}
+        )
+        self.assertEqual(args["viralqc_db"], "/shared/vqc")
+
+    def test_viralqc_db_tilde_expanded(self):
+        args = self._invoke(self._required("illumina") + ["--viralqc-db", "~/vqc"])
+        self.assertEqual(args["viralqc_db"], os.path.join(str(Path.home()), "vqc"))
+
+    def test_run_viralqc_resource_options_do_not_clash_with_flag(self):
+        args = self._invoke(
+            self._required("illumina")
+            + ["--no-run-viralqc", "--run-viralqc-cpus", "8", "--run-viralqc-ram", "16"]
+        )
+        self.assertFalse(args["run_viralqc"])
+        self.assertEqual(args["run_viralqc_cpus"], 8)
+        self.assertEqual(args["run_viralqc_ram"], 16)
+        nano = self._invoke(self._required("nanopore"))
+        self.assertEqual(nano["run_viralqc_cpus"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()

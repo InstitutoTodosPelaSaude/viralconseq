@@ -124,6 +124,15 @@ class TestResolvePathArgs(unittest.TestCase):
             finally:
                 os.chdir(old_cwd)
 
+    def test_viralqc_db_is_a_path_key(self):
+        self.assertIn("viralqc_db", CONSENSUS_PATH_ARG_KEYS)
+        args = {"viralqc_db": "dbs/vqc"}
+        resolve_path_args(args, CONSENSUS_PATH_ARG_KEYS, base_dir="/work/proj")
+        self.assertEqual(args["viralqc_db"], "/work/proj/dbs/vqc")
+        args = {"viralqc_db": "NA"}
+        resolve_path_args(args, CONSENSUS_PATH_ARG_KEYS, base_dir="/work/proj")
+        self.assertEqual(args["viralqc_db"], "NA")
+
     def test_returns_args_dict_for_chaining(self):
         args = {"output": "results"}
         returned = resolve_path_args(args, ("output",), base_dir="/x")

@@ -84,6 +84,14 @@ def build_run_manifest(
             else None
         ),
         "sample_count": len(samples or {}),
+        "viralqc": {
+            "enabled": bool(args.get("run_viralqc", True)),
+            "db": (
+                os.path.abspath(str(args["viralqc_db"]))
+                if args.get("viralqc_db") not in (None, "", "NA")
+                else None
+            ),
+        },
         "samples": sample_inputs,
     }
 

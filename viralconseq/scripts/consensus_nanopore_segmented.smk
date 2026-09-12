@@ -20,6 +20,7 @@ rule all:
             config['output'] + "assembly/{segment}/consensus/final_consensus/samples_alignment.fasta",
             segment=SEGMENTS.keys()
         ),
+        config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
         config['output'] + "benchmark.tsv"
 
 rule sanitize_reference:
@@ -50,6 +51,7 @@ include: "rules/alignment_nanopore.smk"
 include: "rules/consensus_nanopore.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_nanopore_common.smk"
+include: "rules/viralqc.smk"
 
 rule unify_assembly_statistics_reports:
     conda:
@@ -97,6 +99,9 @@ rule organize_files:
             rules.trim_primer_sequences.output.bam,
             sample=config["samples"], segment=SEGMENTS.keys()
         ),
+        viralqc_files = expand(
+            rules.split_viralqc_results.output.tsv, sample=config["samples"]
+        ) if config.get("run_viralqc", True) else [],
     output:
         config['output'] + "benchmark.tsv"
     params:
@@ -151,6 +156,12 @@ rule organize_files:
             sample=$(basename $_file .sorted.bam);
             ln -sf $_file {params.outdir}samples/$sample/$segment/trimmed_mapped_reads.bam;
             ln -sf $_file.bai {params.outdir}samples/$sample/$segment/trimmed_mapped_reads.bam.bai;
+        done
+
+        for _file in {input.viralqc_files} ""; do
+            if [ -z "$_file" ]; then continue; fi
+            sample=$(basename $_file .viralqc.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/viralqc.tsv;
         done
 
         # Benchmark aggregation

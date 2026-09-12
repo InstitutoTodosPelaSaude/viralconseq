@@ -23,6 +23,12 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 │   ├── reference.sanitized.fasta     #   single reference
 │   └── {segment}.sanitized.fasta     #   segmented run (one per segment)
 ├── qc/reports/multiqc_report.html    # illumina only
+├── qc/viralqc/                       # unless --no-run-viralqc
+│   ├── input.fasta                   # merged consensus sequences handed to viralQC
+│   ├── outputs/results.tsv           # one row per consensus sequence
+│   ├── outputs/...                   # viralQC's own sub-directories (nextclade_results/, blast_results/, gff_files/, ...)
+│   ├── per_sample/                   # per-sample slices of results.tsv
+│   └── viralqc_status.txt            # ok / partial / failed and why
 ├── isnvs/isnvs_summary.tsv           # illumina + --run-isnv only
 ├── samples/
 │   └── sample-{sample_id}/           # symlinks to the per-sample results (note the prefix)
@@ -33,6 +39,7 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 │       ├── fastp.html                # illumina
 │       ├── stats_summary.csv         # illumina
 │       ├── table_cov_basewise.txt    # nanopore
+│       ├── viralqc.tsv               # unless --no-run-viralqc
 │       ├── raw_mapped_reads.bam
 │       └── trimmed_mapped_reads.bam
 └── benchmark.tsv                     # per-task runtime
@@ -67,6 +74,8 @@ fastp reports, illumina), and `logs/` / `assembly/logs/` (per-rule logs and
 | `samples/sample-{id}/raw_mapped_reads.bam` | Reads mapped to the reference, before primer clipping |
 | `samples/sample-{id}/trimmed_mapped_reads.bam` | Primer-clipped BAM used for consensus calling |
 | `assembly/consensus/final_consensus/samples_alignment.fasta` | All consensus sequences aligned to the reference (MSA-ready) |
+| `qc/viralqc/outputs/results.tsv` | viralQC table: virus, clade and genome-quality score per consensus sequence (see below) |
+| `samples/sample-{id}/viralqc.tsv` | The rows of `results.tsv` belonging to one sample |
 | `run_manifest.json` | Provenance: version, timestamp, config path, input SHA-256 checksums |
 | `benchmark.tsv` | Runtime and resource usage per task |
 
@@ -84,3 +93,32 @@ segmented runs, which add a `segment` column after `sample_name`):
 | `average_depth` | Mean depth over all reference positions |
 | `percentage_above_10x` / `_100x` / `_1000x` | Fraction of reference positions at or above each depth |
 | `horizontal_coverage` | Fraction of reference positions at or above `--minimum-coverage` |
+
+## viralQC results
+
+`qc/viralqc/outputs/results.tsv` is written by [viralQC](https://viralqc.readthedocs.io/)
+and has one row per consensus sequence (the reference is not included). The most
+useful columns (read them by name, not position):
+
+| Column | Meaning |
+|---|---|
+| `seqName` | The consensus header, normalised to `sample-<id>[\|<contig>][\|<segment>]`: `sample-<id>` for a single reference, `sample-<id>\|<segment>` in segmented runs, `sample-<id>\|<contig>` for a multi-contig single reference |
+| `virus`, `virus_species`, `segment` | Virus identified by Nextclade sort or BLAST (`Unclassified` when nothing matched) |
+| `clade` (+ `lineage`, `subclade`, …) | Clade/lineage from the matching Nextclade dataset, when one exists |
+| `genomeQuality` | Overall grade A–D (empty when the virus could not be identified) |
+| `genomeQualityScore` | The numeric score behind the grade (0–24) |
+| `coverage`, `cdsCoverage`, `targetRegionsCoverage` | Fraction of the genome / CDS / target regions covered by called bases |
+| `privateMutationsQuality`, `frameShiftsQuality`, `stopCodonsQuality`, … | The individual QC components |
+| `dataset`, `datasetVersion` | Nextclade dataset (and version) used |
+| `inputSequenceStatus` | Empty when the sequence was analysed; explains why it was not (e.g. no usable bases) |
+
+The full column reference is in viralQC's [output documentation](https://viralqc.readthedocs.io/en/latest/output.html).
+`samples/sample-<id>/viralqc.tsv` holds the header plus that sample's rows (all
+segments in a segmented run).
+
+`qc/viralqc/viralqc_status.txt` records `status` (`ok`, `partial` or `failed`),
+the `vqc` exit code, the number of input records and result rows, and the log
+path. If viralQC fails (a tool error, not a bad QC verdict) the run still
+completes and `results.tsv` is a placeholder with one row per sequence whose
+`inputSequenceStatus` reads `viralQC failed (exit N)`; check
+`logs/consensus_<data>/run_viralqc/run_viralqc.log`.

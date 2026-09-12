@@ -2,7 +2,7 @@
 
 ## `viralconseq setup`
 
-Pre-builds the per-rule conda environments declared in the Snakemake workflows into a shared cache directory. Run once after installing viralconseq (or after upgrading); subsequent `viralconseq consensus` runs reuse the cached envs and skip env creation.
+Pre-builds the per-rule conda environments declared in the Snakemake workflows into a shared cache directory and downloads the viralQC databases into a second cache directory. Run once after installing viralconseq (or after upgrading); subsequent `viralconseq consensus` runs reuse both caches. Rerunning is a no-op once everything is in place.
 
 ```bash
 viralconseq setup --pipelines all
@@ -14,8 +14,10 @@ viralconseq setup --pipelines all
 |--------|---------|-------------|
 | `--conda-prefix` | `$VIRALCONSEQ_CONDA_PREFIX` or `~/.cache/viralconseq/conda-envs` | Directory where per-rule envs are cached. Reused by every later pipeline run that points at the same prefix. |
 | `--pipelines` | `all` | Repeatable. Pick from `consensus-illumina`, `consensus-nanopore`, or `all`. Segmented variants share envs with their non-segmented counterparts. |
-| `--threads` | `4` | Cores given to Snakemake while materializing envs. |
-| `--dry-run` | off | Print the envs that would be created and exit without invoking conda. |
+| `--threads` | `4` | Cores given to Snakemake while materializing envs and downloading databases. |
+| `--viralqc-db` | `$VIRALCONSEQ_VIRALQC_DB` or `~/.cache/viralconseq/viralqc-db` | Directory where the viralQC databases (Nextclade datasets + BLAST reference set) are downloaded. `viralconseq consensus` reads the same location by default. |
+| `--skip-viralqc-db` | off | Only build conda envs; do not download the viralQC databases. |
+| `--dry-run` | off | Print the envs and databases that would be created and exit without invoking conda or downloading anything. |
 
 ### Examples
 
@@ -36,6 +38,14 @@ viralconseq setup --pipelines consensus-illumina
 ```bash
 viralconseq setup --pipelines consensus-illumina --dry-run
 ```
+
+**Envs only (e.g. a node that must not download databases):**
+
+```bash
+viralconseq setup --skip-viralqc-db
+```
+
+Run the pipeline with `--no-run-viralqc` afterwards, or copy a populated `--viralqc-db` directory over from another machine.
 
 **Use a shared cache on a cluster:**
 
@@ -135,6 +145,8 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--create-config-only` | off | Only generate the config file; do not run the workflow. |
 | `--skip-input-validation` | off | Skip content-level integrity checks of the input files (FASTQ/FASTA/BED). Existence checks still run. |
 | `--conda-prefix` | `~/.cache/viralconseq/conda-envs` | Cache directory for per-rule conda envs. Picked up from `$VIRALCONSEQ_CONDA_PREFIX` if set. Pre-warm with `viralconseq setup`. |
+| `--run-viralqc` / `--no-run-viralqc` | on | Run viralQC on the final consensus sequences (virus and clade assignment plus genome-quality scoring via Nextclade + BLAST). |
+| `--viralqc-db` | `~/.cache/viralconseq/viralqc-db` | Directory with the viralQC databases. Picked up from `$VIRALCONSEQ_VIRALQC_DB` if set. Populate once with `viralconseq setup`. Ignored with `--no-run-viralqc`. |
 
 ### Input integrity validation
 
@@ -160,6 +172,37 @@ would break the run or silently produce wrong results:
 
 All problems in a file are reported together. Pass `--skip-input-validation` to
 bypass these checks (existence checks still run).
+
+### Consensus QC (viralQC)
+
+Unless `--no-run-viralqc` is given, the last step of every run merges all final
+consensus sequences into one FASTA and runs [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC)
+on it. viralQC identifies the virus of each sequence (Nextclade datasets first,
+BLAST against the NCBI RefSeq viral set for anything else), assigns a clade
+where a dataset exists, and scores each genome A–D from coverage, private
+mutations, frameshifts and stop codons. Results land in `qc/viralqc/outputs/results.tsv`
+(one row per consensus sequence) with a per-sample slice symlinked at
+`samples/sample-<id>/viralqc.tsv`; see [Output layout](output.md#viralqc-results).
+
+The step needs the databases downloaded by `viralconseq setup`. If the
+`--viralqc-db` directory is missing or incomplete, the run aborts **before any
+work starts** with error code `viralqc_database_not_found` naming the directory
+and the exact `viralconseq setup --viralqc-db ...` command to run. This check is
+an existence check, so it is not bypassed by `--skip-input-validation` and it
+also runs under `--create-config-only`; `--no-run-viralqc` is the only opt-out.
+
+If viralQC itself fails at run time (a tool error, not a poor QC verdict), the
+run still completes: a placeholder `results.tsv` is written (one row per
+sequence, `inputSequenceStatus` explaining the failure), `qc/viralqc/viralqc_status.txt`
+records the outcome, and a `WARNING` is printed. QC verdicts themselves are data
+in the `genomeQuality` column and never affect the exit code. Snakemake then
+considers the step complete: to retry viralQC after fixing the cause, delete
+`<output>/<run_name>/qc/viralqc/` and rerun the same command.
+
+Note that the step needs outbound HTTPS even with the databases in place:
+`nextclade sort` downloads its reference minimizer index from
+`data.clades.nextstrain.org` on every run. On an air-gapped node use
+`--no-run-viralqc`.
 
 ### Options — Illumina only
 
@@ -296,6 +339,7 @@ Open the generated YAML config file after running with `--create-config-only` an
 | Config key | Default | Effect |
 |------------|---------|--------|
 | `minimap2_consensus_align_flags` | `-a --sam-hit-only --secondary=no --score-N=0` | Flags passed to `minimap2` when re-aligning the per-sample consensus back to the reference for the final multiple-sequence alignment. |
+| `viralqc_extra_flags` | `""` | Extra flags appended to the `vqc run` command line (e.g. `--blast-task dc-megablast --blast-pident 75`); see `vqc run --help` inside `envs/viralqc.yaml`. |
 
 Example: edit the YAML config to
 
@@ -318,8 +362,8 @@ snakemake -s "$(python -c 'import viralconseq, os; print(os.path.dirname(viralco
 
 The exact set depends on the data type — run the relevant subcommand's `--help` to list them all (flags replace `_` with `-` and append `-cpus` / `-ram`):
 
-- **Illumina** — `perform_qc`, `map_reads`, `trim_primer_sequences`, `detect_isnv`.
-- **Nanopore** — `map_reads`, `trim_primer_sequences`, `infer_consensus_sequence`.
+- **Illumina** — `perform_qc`, `map_reads`, `trim_primer_sequences`, `detect_isnv`, `run_viralqc`.
+- **Nanopore** — `map_reads`, `trim_primer_sequences`, `infer_consensus_sequence`, `run_viralqc`.
 
 ```bash
 viralconseq consensus illumina ... \

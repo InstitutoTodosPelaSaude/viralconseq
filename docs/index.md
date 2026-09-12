@@ -10,6 +10,7 @@ viralconseq runs on *nix systems and processes entire sequencing runs in minimal
 - **Amplicon support** — primer clipping from a BED scheme, with primer/reference consistency checks
 - **Segmented viruses** — a multi-record reference FASTA is split per segment and every segment is assembled in one run
 - **Intra-host variant calling** (Illumina, optional) with LoFreq
+- **Consensus QC** — every consensus sequence is assigned a virus and clade and scored A–D by [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC) (Nextclade + BLAST); opt out with `--no-run-viralqc`
 - **Content-level input validation** — truncated FASTQs, protein FASTAs or mismatched primer schemes are rejected before the run starts
 - **Reproducibility** — every run writes a `run_manifest.json` with input checksums and the tool version; per-rule conda environments are pinned
 

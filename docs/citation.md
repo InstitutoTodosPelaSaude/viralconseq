@@ -26,6 +26,14 @@ In preparation.
 
 **[GSAlign](https://github.com/hsinnan75/GSAlign):** Lin HN, Hsu WL. GSAlign: an efficient sequence alignment tool for intra-species genomes. *BMC Genomics*. 2020; 21:182.
 
+**[viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC):** Instituto Todos pela Saúde. viralQC: quality control of consensus virus genomes. https://viralqc.readthedocs.io/ (publication in preparation).
+
+**[Nextclade](https://clades.nextstrain.org/):** Aksamentov I, Roemer C, Hodcroft EB, Neher RA. Nextclade: clade assignment, mutation calling and quality control for viral genomes. *Journal of Open Source Software*. 2021; 6(67):3773.
+
+**[BLAST+](https://blast.ncbi.nlm.nih.gov/):** Camacho C, Coulouris G, Avagyan V, et al. BLAST+: architecture and applications. *BMC Bioinformatics*. 2009; 10:421.
+
+**[TaxonKit](https://github.com/shenwei356/taxonkit):** Shen W, Ren H. TaxonKit: a practical and efficient NCBI taxonomy toolkit. *Journal of Genetics and Genomics*. 2021; 48(9):844–850.
+
 **[gofasta](https://github.com/virus-evolution/gofasta):** Jackson B. gofasta: command-line utilities for genomic epidemiology research. *Bioinformatics*. 2022; 38(16):4033–4035.
 
 For visualization of FASTA and BAM files, we recommend [AliView](https://ormbunkar.se/aliview/) and [Tablet](https://ics.hutton.ac.uk/tablet/), respectively.

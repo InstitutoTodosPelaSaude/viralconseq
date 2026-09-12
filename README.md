@@ -15,6 +15,7 @@ viralconseq infers consensus genome sequences from viral high-throughput sequenc
 - **Amplicon** primer clipping from a BED scheme, with primer/reference consistency checks
 - **Segmented viruses**: a multi-record reference FASTA is split per segment and every segment is assembled in one run
 - Optional **intra-host variant calling** (LoFreq) for Illumina data
+- **Consensus QC with [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC)**: virus and clade assignment plus a genome-quality score (A–D) for every consensus sequence (Nextclade + BLAST), on by default
 - **Content-level input validation**: truncated FASTQs, protein FASTAs or mismatched primer schemes are rejected before the run starts
 - Per-sample coverage statistics, a multi-sample alignment ready for phylogenetics, and a `run_manifest.json` with input checksums for reproducibility
 
@@ -29,7 +30,8 @@ pip install viralconseq
 > **conda/mamba is required at runtime.** viralconseq orchestrates Snakemake, which builds
 > the per-rule tool environments (aligner, variant callers, QC tools) via `--use-conda` on
 > first run. Make sure conda or mamba is installed and on your `PATH`; pre-build those
-> environments up front with `viralconseq setup --pipelines all`.
+> environments and download the viralQC databases (about 1 GB) up front with
+> `viralconseq setup --pipelines all`.
 
 To install from source for development instead:
 
@@ -46,7 +48,7 @@ Per-rule conda environments under `viralconseq/scripts/envs/` are managed automa
 ## Quick start
 
 ```bash
-viralconseq setup --pipelines all                                  # pre-build per-rule conda envs (once)
+viralconseq setup --pipelines all                                  # pre-build per-rule conda envs + download viralQC databases (once)
 viralconseq create-samplesheet --input <run-dir> --output samples.csv
 viralconseq consensus illumina --sample-sheet samples.csv --reference ref.fasta \
     --primer-scheme primers.bed --run-name run1 --config-file run1.yml --output results/
@@ -70,7 +72,7 @@ make typecheck     # mypy
 
 ## Citation
 
-A scientific publication describing viralconseq is being prepared. Meanwhile, please cite this repository (see `CITATION.cff`). Primary references for the upstream tools (fastp, MultiQC, minimap2, SAMtools/BCFtools, BEDtools, LoFreq, Clair3, GSAlign, gofasta) are listed in the [documentation](https://viralconseq.readthedocs.io/en/latest/citation.html).
+A scientific publication describing viralconseq is being prepared. Meanwhile, please cite this repository (see `CITATION.cff`). Primary references for the upstream tools (fastp, MultiQC, minimap2, SAMtools/BCFtools, BEDtools, LoFreq, Clair3, GSAlign, gofasta, viralQC, Nextclade, BLAST+) are listed in the [documentation](https://viralconseq.readthedocs.io/en/latest/citation.html).
 
 ## Acknowledgements
 

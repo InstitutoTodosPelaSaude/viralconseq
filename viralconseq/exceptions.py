@@ -100,3 +100,11 @@ class AdaptersNotFoundError(ViralConseqError):
     """Raised when the Illumina adapter sequences file is not found or not provided."""
 
     code = "adapters_not_found"
+
+
+class ViralQCDatabaseNotFoundError(ViralConseqError):
+    """Raised when viralQC is enabled but its database directory is missing or
+    incomplete. The message names the directory and the ``viralconseq setup``
+    command that populates it."""
+
+    code = "viralqc_database_not_found"

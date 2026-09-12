@@ -79,5 +79,17 @@ class Test_RunManifest(unittest.TestCase):
         self.assertEqual(loaded["finished_utc"], "2026-01-02T00:00:00+00:00")
 
 
+class Test_RunManifestViralQC(unittest.TestCase):
+    def test_manifest_records_viralqc_db(self):
+        manifest = build_run_manifest(
+            {"output": "out", "run_name": "r", "run_viralqc": True, "viralqc_db": "dbs/vqc"}, {}
+        )
+        self.assertEqual(manifest["viralqc"], {"enabled": True, "db": os.path.abspath("dbs/vqc")})
+
+    def test_manifest_viralqc_disabled(self):
+        manifest = build_run_manifest({"output": "out", "run_name": "r", "run_viralqc": False}, {})
+        self.assertEqual(manifest["viralqc"], {"enabled": False, "db": None})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,7 @@ from viralconseq.validators import (
     validate_consensus_requirements,
     validate_illumina_requirements,
     validate_numeric_parameters,
+    validate_viralqc_database,
 )
 
 # Set up logging
@@ -66,6 +67,11 @@ def validate_args(args: Dict[str, Any]) -> Dict[str, list]:
 
     # Validate data-type specific requirements
     validate_illumina_requirements(args)
+
+    # viralQC databases must exist before we write a config that points at
+    # them. Existence-level check: not gated by --skip-input-validation and
+    # also run under --create-config-only; --no-run-viralqc skips it.
+    validate_viralqc_database(args)
 
     # ``validate_consensus_requirements`` parses ``--segmented-reference``
     # (``L=/path/L.fasta``) into a dict stored under ``reference``. Now that
@@ -139,6 +145,13 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
             af_isnv_threshold=args.get("af_isnv_threshold", 0),
             run_isnv=args.get("run_isnv", False),
         )
+
+    # Consensus QC (viralQC) - shared by both data types
+    generator.add_viralqc_settings(
+        run_viralqc=args.get("run_viralqc", True),
+        viralqc_db=args.get("viralqc_db") or "NA",
+        viralqc_extra_flags=args.get("viralqc_extra_flags", ""),
+    )
 
     # Add resource settings
     if data_type == DataType.ILLUMINA:

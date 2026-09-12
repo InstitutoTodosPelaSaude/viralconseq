@@ -80,7 +80,9 @@ After installing viralconseq, build the per-rule conda environments once with:
 viralconseq setup --pipelines all
 ```
 
-This downloads and resolves every workflow dependency into `~/.cache/viralconseq/conda-envs/` (override with `--conda-prefix PATH`, or set `$VIRALCONSEQ_CONDA_PREFIX`). Future `viralconseq consensus` runs reuse the cached envs and do not need to re-create them per working directory, which both speeds up first runs and isolates env-creation failures from real pipeline runs.
+This downloads and resolves every workflow dependency into `~/.cache/viralconseq/conda-envs/` (override with `--conda-prefix PATH`, or set `$VIRALCONSEQ_CONDA_PREFIX`) and then downloads the viralQC databases (Nextclade datasets + the NCBI RefSeq viral BLAST set, about 1 GB on disk, several GB while downloading, typically 15–60 min) into `~/.cache/viralconseq/viralqc-db/` (override with `--viralqc-db PATH` or `$VIRALCONSEQ_VIRALQC_DB`). Future `viralconseq consensus` runs reuse both caches, which speeds up first runs and isolates env-creation and download failures from real pipeline runs.
+
+On a node without internet access, build the envs and databases elsewhere and copy the two cache directories over, and run the pipeline with `--no-run-viralqc`: the consensus workflows themselves are offline, but the viralQC step still contacts the Nextclade server for a small index on every run. To skip the database download entirely use `viralconseq setup --skip-viralqc-db`.
 
 Run `viralconseq setup --pipelines consensus-illumina --dry-run` first to inspect what would be built.
 

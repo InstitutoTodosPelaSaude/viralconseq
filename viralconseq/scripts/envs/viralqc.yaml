@@ -1,0 +1,19 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - pip
+  - setuptools=70
+  - snakemake-minimal=7.32.4
+  - pulp<2.8
+  - pandas=2.2
+  - blast=2.16
+  - nextclade=3.15
+  - seqtk=1.5
+  - ncbi-datasets-cli=18.9
+  - taxonkit=0.20
+  - wget
+  - unzip
+  - pip:
+      - viralQC==1.2.0

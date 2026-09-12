@@ -52,6 +52,9 @@ pipelines:
       - assembly/assembly_stats_summary.csv
       - assembly/consensus/final_consensus/samples_alignment.fasta
       - qc/reports/multiqc_report.html
+      - qc/viralqc/outputs/results.tsv
+      - qc/viralqc/viralqc_status.txt
+      - samples/sample-itps-0001/viralqc.tsv
       - benchmark.tsv
 
   - id: consensus_nanopore
@@ -69,4 +72,7 @@ pipelines:
       - samples/sample-barcode05/consensus.fasta
       - samples/sample-barcode09/consensus.fasta
       - assembly/consensus/final_consensus/samples_alignment.fasta
+      - qc/viralqc/outputs/results.tsv
+      - qc/viralqc/viralqc_status.txt
+      - samples/sample-barcode05/viralqc.tsv
       - benchmark.tsv

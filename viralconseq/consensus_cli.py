@@ -7,7 +7,7 @@ from typing import Any, Optional, Tuple
 import click
 
 from viralconseq.consensus import main as consensus_main
-from viralconseq.constants import ResourceDefaults
+from viralconseq.constants import ResourceDefaults, ViralQCDatabase
 
 
 def _default_conda_prefix() -> str:
@@ -154,6 +154,23 @@ _COMMON_OPTIONS = [
         help="Directory where per-rule conda envs are cached. Reused across runs. "
         "Pre-warm with 'viralconseq setup' to avoid env creation during pipeline runs.",
     ),
+    click.option(
+        "--run-viralqc/--no-run-viralqc",
+        default=True,
+        show_default=True,
+        help="Run viralQC on the final consensus sequences (virus and clade "
+        "assignment plus genome-quality scoring via nextclade + BLAST). Needs the "
+        "databases downloaded by 'viralconseq setup' (see --viralqc-db).",
+    ),
+    click.option(
+        "--viralqc-db",
+        default=ViralQCDatabase.default_dir,
+        show_default="$VIRALCONSEQ_VIRALQC_DB or ~/.cache/viralconseq/viralqc-db",
+        help="Directory with the viralQC databases (nextclade datasets + BLAST "
+        "reference set). Populate it once with 'viralconseq setup'. A missing or "
+        "incomplete directory aborts the run before any work starts; ignored with "
+        "--no-run-viralqc.",
+    ),
 ]
 
 
@@ -295,6 +312,8 @@ def consensus_illumina(
     create_config_only: bool,
     skip_input_validation: bool,
     conda_prefix: str,
+    run_viralqc: bool,
+    viralqc_db: str,
     adapters: Optional[str],
     trim_head: int,
     trim_tail: int,
@@ -312,7 +331,8 @@ def consensus_illumina(
     Performs read QC (fastp), reference alignment (minimap2), optional primer
     clipping (samtools ampliconclip), consensus calling (samtools consensus)
     and variant reporting (GSAlign). Enable intra-host SNV analysis with
-    LoFreq via ``--run-isnv``.
+    LoFreq via ``--run-isnv``. Final consensus sequences are quality-checked
+    with viralQC unless ``--no-run-viralqc`` is given.
 
     For segmented references (e.g. influenza), pass a single multi-record
     FASTA to ``--reference`` (segments are named from the headers), or one
@@ -334,6 +354,8 @@ def consensus_illumina(
         create_config_only=create_config_only,
         skip_input_validation=skip_input_validation,
         conda_prefix=conda_prefix,
+        run_viralqc=run_viralqc,
+        viralqc_db=os.path.expanduser(viralqc_db),
         adapters=adapters,
         trim_head=trim_head,
         trim_tail=trim_tail,
@@ -408,6 +430,8 @@ def consensus_nanopore(
     create_config_only: bool,
     skip_input_validation: bool,
     conda_prefix: str,
+    run_viralqc: bool,
+    viralqc_db: str,
     af_threshold: float,
     chunk_size: int,
     clair3_model: str,
@@ -422,7 +446,8 @@ def consensus_nanopore(
     (samtools ampliconclip), variant calling (Clair3 with a user-selectable
     model via ``--clair3-model``), and consensus generation (bcftools).
     ``--minimum-read-length`` is applied by ``samtools ampliconclip
-    --filter-len`` when a primer scheme is given.
+    --filter-len`` when a primer scheme is given. Final consensus sequences
+    are quality-checked with viralQC unless ``--no-run-viralqc`` is given.
 
     For segmented references (e.g. influenza), pass a single multi-record
     FASTA to ``--reference`` (segments are named from the headers), or one
@@ -444,6 +469,8 @@ def consensus_nanopore(
         create_config_only=create_config_only,
         skip_input_validation=skip_input_validation,
         conda_prefix=conda_prefix,
+        run_viralqc=run_viralqc,
+        viralqc_db=os.path.expanduser(viralqc_db),
         af_threshold=af_threshold,
         chunk_size=chunk_size,
         clair3_model=clair3_model,

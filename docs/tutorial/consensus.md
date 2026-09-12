@@ -95,6 +95,8 @@ assembly/
 └── consensus/final_consensus/
     └── samples_alignment.fasta          # all samples + reference, MSA-ready
 qc/reports/multiqc_report.html           # combined fastp/QC report
+qc/viralqc/outputs/results.tsv           # viralQC: virus, clade, genome-quality grade per consensus
+samples/<sample>/viralqc.tsv             # that sample's rows of the viralQC table
 benchmark.tsv                            # wall time + memory per rule per sample
 ```
 
@@ -121,6 +123,24 @@ awk '$3 < 20' results/consensus_illumina/sarscov2/assembly/coverage_stats/sample
 **`assembly/consensus/final_consensus/samples_alignment.fasta`** — all per-sample consensuses plus the reference, aligned (built by `minimap2` followed by `gofasta sam toMultiAlign`). Drop this straight into a tree-builder such as IQ-TREE for a quick phylogeny.
 
 **`benchmark.tsv`** — every Snakemake task's runtime, memory, and CPU. Useful when you scale up to a real run.
+
+### Consensus QC (viralQC)
+
+The last rule of every run hands all consensus sequences to [viralQC](https://viralqc.readthedocs.io/), which identifies the virus, assigns a clade where a Nextclade dataset exists, and grades each genome. The headline table is `qc/viralqc/outputs/results.tsv`:
+
+```bash
+awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)c[$i]=i} {print $c["seqName"],$c["virus"],$c["clade"],$c["genomeQuality"],$c["coverage"],$c["inputSequenceStatus"]}' OFS='\t' \
+    results/consensus_illumina/sarscov2/qc/viralqc/outputs/results.tsv | column -t -s$'\t'
+```
+
+Columns worth checking first (names are stable; positions are not, hence the name-based `awk`):
+
+- **`virus` / `clade`** — a sanity check that the reference matched the sample. For the example data expect *Severe acute respiratory syndrome coronavirus 2* and a Pango lineage / Nextstrain clade.
+- **`genomeQuality`** — A (complete, clean) to D (fragmentary or suspicious), derived from `genomeQualityScore`, which combines coverage, private-mutation counts, frameshifts and premature stop codons reported by Nextclade. Treat B as fine for most surveillance use, C as "look at the sample" and D as not suitable for phylogenetics.
+- **`coverage`** — should agree with `horizontal_coverage` in `assembly_stats_summary.csv`.
+- **`inputSequenceStatus`** — empty for analysed sequences; set when viralQC could not analyse a record (e.g. all `N`).
+
+`samples/<sample>/viralqc.tsv` contains the header plus that sample's rows. Pass `--no-run-viralqc` to skip the step (for instance on a node without the databases or without internet access: `nextclade sort` fetches a small index from the Nextclade server on every run); if viralQC itself fails, the run still completes and `qc/viralqc/viralqc_status.txt` says why. Because the step is then considered done, delete `qc/viralqc/` and rerun the same command to retry it after fixing the cause.
 
 ### Optional: intra-host SNVs
 
@@ -248,6 +268,7 @@ The full set is in the [Commands reference](../commands.md#viralconseq-consensus
 - **Primer scheme contig names must match the reference.** The BED file must use the same chromosome/contig names as the reference FASTA. viralconseq checks this before running and aborts with an `InputIntegrityError` if the primer BED chrom matches no reference contig (so `samtools ampliconclip` would clip nothing) — no more silently un-clipped runs.
 - **Inputs are content-validated before the run.** FASTQ, reference FASTA, and primer BED are streamed and checked (record structure, gzip integrity, nucleotide alphabet, chrom matching); a broken, truncated, or mismatched file stops the run up front rather than failing deep inside Snakemake. Pass `--skip-input-validation` to bypass.
 - **`--reference` and `--segmented-reference` are mutually exclusive.** Pass one or the other.
+- **`viralqc_database_not_found` at start-up.** viralQC is on by default and its databases live in `~/.cache/viralconseq/viralqc-db` (or `$VIRALCONSEQ_VIRALQC_DB`). Run `viralconseq setup` once (see [Setup §2](setup.md#2-build-per-rule-environments-and-download-the-viralqc-databases)) or pass `--no-run-viralqc`.
 
 ## Reference
 

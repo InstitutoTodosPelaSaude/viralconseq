@@ -28,3 +28,10 @@ cut_right_mean_quality: 15
 af_threshold: 0.51
 af_isnv_threshold: 0.05
 run_isnv: false
+
+# viralQC consensus QC
+run_viralqc: true
+viralqc_db: data/viralqc_db
+viralqc_extra_flags: ""
+run_viralqc_cpus: 2
+run_viralqc_ram: 4

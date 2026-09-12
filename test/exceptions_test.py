@@ -7,6 +7,7 @@ from viralconseq.exceptions import (
     ValidationError,
     ViralConseqError,
     ViralConseqFileNotFoundError,
+    ViralQCDatabaseNotFoundError,
 )
 
 
@@ -18,6 +19,8 @@ class Test_StructuredErrors(unittest.TestCase):
         self.assertEqual(ValidationError("x").code, "validation_error")
         self.assertEqual(ViralConseqFileNotFoundError("x").code, "file_not_found")
         self.assertEqual(SampleSheetError("x").code, "sample_sheet_error")
+        self.assertEqual(ViralQCDatabaseNotFoundError("x").code, "viralqc_database_not_found")
+        self.assertIsInstance(ViralQCDatabaseNotFoundError("x"), ViralConseqError)
 
     def test_message_preserved(self):
         err = ValidationError("bad thing")

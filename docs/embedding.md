@@ -29,6 +29,7 @@ exit_code = consensus_main({
     "adapters": None,            # illumina: required key, None = fastp auto-detection
     "threads": 8, "threads_total": 8,
     "conda_prefix": "/srv/viralconseq/conda-envs",   # shared per-rule env cache
+    "viralqc_db": "/srv/viralconseq/viralqc-db",     # populated by `viralconseq setup`
 })
 ```
 
@@ -36,7 +37,8 @@ Any option accepted by the CLI can be passed as a key (CLI `--foo-bar` becomes
 `foo_bar`). The `args` dict is the *post-Click* argument set, so a few keys are
 required rather than defaulted: `data_type`, `sample_sheet`, `config_file`, `output`,
 `run_name`, `threads`, `threads_total`, `conda_prefix`, a reference (`reference` or
-`segmented_reference`) and, for Illumina, `adapters` (`None` is fine). Tuning
+`segmented_reference`), `viralqc_db` (unless `run_viralqc` is `False`) and, for
+Illumina, `adapters` (`None` is fine). Tuning
 parameters (`minimum_coverage`, `af_threshold`, fastp/Clair3 options, per-rule
 `*_cpus`/`*_ram`) fall back to the CLI defaults when omitted. Always pass
 `conda_prefix`: without it Snakemake builds the per-rule envs under the job's
@@ -94,6 +96,10 @@ except ViralConseqError as e:
 `run_pipeline` already logs these as `[<code>] <message>` and returns `1`;
 catch them earlier if you need the structured payload.
 
+`ViralQCDatabaseNotFoundError` (code `viralqc_database_not_found`) is raised at
+validation time when viralQC is enabled but its database directory is missing or
+incomplete; the message names the directory and the `viralconseq setup` command.
+
 `InputIntegrityError` (code `input_integrity_error`) additionally carries an
 `issues` list in its `to_dict()`; each issue has `path`, `kind`
 (`fastq`/`fasta`/`bed`), `code`, `severity`, `message`, and an optional
@@ -102,7 +108,8 @@ catch them earlier if you need the structured payload.
 ## Provenance
 
 Each run writes `<output>/<run_name>/run_manifest.json` with the viralconseq
-version (`viralconseq_version`), a UTC timestamp, the resolved config path, and a
+version (`viralconseq_version`), a UTC timestamp, the resolved config path, whether
+viralQC ran and against which database directory (`viralqc`), and a
 `sha256`+size for every input FASTQ — enough to reproduce a result by record.
 Persist it alongside job outputs. Per-rule tool versions are pinned in the
 per-rule conda environment files under `viralconseq/scripts/envs/`.

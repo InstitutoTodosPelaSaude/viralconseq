@@ -1,5 +1,8 @@
 """Constants used throughout the viralconseq pipeline."""
 
+import os
+from pathlib import Path
+
 
 class DataType:
     """Sequencing data types supported by viralconseq."""
@@ -41,6 +44,35 @@ class ConfigKeys:
     VARIANT_DEPTH = "variant_depth"
     MINIMUM_MAP_QUALITY = "minimum_map_quality"
     RUN_ISNV = "run_isnv"
+    RUN_VIRALQC = "run_viralqc"
+    VIRALQC_DB = "viralqc_db"
+    VIRALQC_EXTRA_FLAGS = "viralqc_extra_flags"
+
+
+class ViralQCDatabase:
+    """Layout contract of the viralQC database directory.
+
+    Shared by ``validators.validate_viralqc_database``, ``viralconseq setup``
+    and ``scripts/viralqc_setup.smk`` (whose ``rule all`` produces exactly these
+    entries). ``rules/viralqc.smk`` declares the files as rule inputs.
+    """
+
+    ENV_VAR = "VIRALCONSEQ_VIRALQC_DB"
+    NEXTCLADE_SENTINEL = ".nextclade_datasets_ok"
+    REQUIRED_FILES = ("blast.fasta", "blast.tsv", NEXTCLADE_SENTINEL)
+    REQUIRED_DIRS = ("blast_gff",)
+
+    @classmethod
+    def default_dir(cls) -> str:
+        """Default database directory, resolved at call time.
+
+        ``$VIRALCONSEQ_VIRALQC_DB`` first, then ``~/.cache/viralconseq/viralqc-db``.
+        Used as the click default of ``--viralqc-db`` on ``consensus`` and
+        ``setup`` so both commands agree on the location.
+        """
+        return os.environ.get(
+            cls.ENV_VAR, str(Path.home() / ".cache" / "viralconseq" / "viralqc-db")
+        )
 
 
 class SampleSheetPattern:
@@ -73,6 +105,7 @@ class ResourceDefaults:
         "map_reads",
         "trim_primer_sequences",
         "detect_isnv",
+        "run_viralqc",
     ]
 
     # Nanopore computational rules
@@ -80,4 +113,5 @@ class ResourceDefaults:
         "map_reads",
         "trim_primer_sequences",
         "infer_consensus_sequence",
+        "run_viralqc",
     ]

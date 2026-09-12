@@ -7,7 +7,7 @@ import re
 from typing import Any, Dict, List, Optional, cast
 
 from viralconseq import integrity
-from viralconseq.constants import DataType
+from viralconseq.constants import DataType, ViralQCDatabase
 from viralconseq.exceptions import (
     AdaptersNotFoundError,
     InputIntegrityError,
@@ -17,6 +17,7 @@ from viralconseq.exceptions import (
     SampleSheetError,
     ValidationError,
     ViralConseqFileNotFoundError,
+    ViralQCDatabaseNotFoundError,
 )
 from viralconseq.reference_splitter import count_records, split_multifasta
 
@@ -461,6 +462,70 @@ def validate_consensus_input_integrity(args: Dict[str, Any], samples: Dict[str, 
 
 
 # ---------------------------------------------------------------------------
+# viralQC database
+# ---------------------------------------------------------------------------
+
+
+def missing_viralqc_database_files(db_dir: str) -> List[str]:
+    """Return the required viralQC database entries missing from *db_dir*.
+
+    An empty list means the database is complete; ``["<directory>"]`` means the
+    directory itself does not exist. Shared with ``viralconseq setup`` (dry-run
+    report, "already present" short-circuit, post-download check).
+    """
+    if not os.path.isdir(db_dir):
+        return ["<directory>"]
+    missing = [
+        name
+        for name in ViralQCDatabase.REQUIRED_FILES
+        if not os.path.isfile(os.path.join(db_dir, name))
+    ]
+    missing += [
+        f"{name}/"
+        for name in ViralQCDatabase.REQUIRED_DIRS
+        if not os.path.isdir(os.path.join(db_dir, name))
+    ]
+    return missing
+
+
+def viralqc_setup_hint(db_dir: str) -> str:
+    """The exact command that populates *db_dir* (used in errors and docs)."""
+    return f"viralconseq setup --viralqc-db {db_dir}"
+
+
+def validate_viralqc_database(args: Dict[str, Any]) -> None:
+    """Fail fast when viralQC is enabled but its databases are not on disk.
+
+    Existence-level check: it runs regardless of ``skip_input_validation`` and
+    also under ``create_config_only`` (the config would otherwise point at a
+    missing database). Skipped when ``args["run_viralqc"]`` is False.
+
+    Raises:
+        ViralQCDatabaseNotFoundError: If ``viralqc_db`` is unset, is not a
+            directory, or lacks any required entry.
+    """
+    if not args.get("run_viralqc", True):
+        logger.info("viralQC disabled (--no-run-viralqc); skipping database check.")
+        return
+    db_dir = args.get("viralqc_db")
+    if _is_path_sentinel(db_dir):
+        raise ViralQCDatabaseNotFoundError(
+            "viralQC is enabled but no database directory is set (viralqc_db). "
+            "Pass --viralqc-db PATH, set $VIRALCONSEQ_VIRALQC_DB, or use --no-run-viralqc."
+        )
+    db_dir = cast(str, db_dir)
+    missing = missing_viralqc_database_files(db_dir)
+    if missing:
+        raise ViralQCDatabaseNotFoundError(
+            f"viralQC database not found or incomplete at {db_dir} "
+            f"(missing: {', '.join(missing)}).\n"
+            f"Download it with:\n    {viralqc_setup_hint(db_dir)}\n"
+            f"or pass --no-run-viralqc to skip consensus QC."
+        )
+    logger.info("viralQC database found: %s", db_dir)
+
+
+# ---------------------------------------------------------------------------
 # Path resolution
 # ---------------------------------------------------------------------------
 #
@@ -480,6 +545,7 @@ CONSENSUS_PATH_ARG_KEYS = (
     "reference",
     "primer_scheme",
     "adapters",
+    "viralqc_db",
 )
 
 
