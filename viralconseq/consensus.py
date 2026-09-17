@@ -181,6 +181,10 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
         generator.add_resource_settings(args, ResourceDefaults.CONSENSUS_NANOPORE_RULES)
 
     # Save config file
+    generator.add_collect_settings(
+        consensus_coverage_threshold=float(args.get("consensus_coverage_threshold", 70.0))
+    )
+
     # Self-check the contract before writing: the same check ``viralconseq
     # rerun`` and the Snakefile apply to a saved YAML.
     validate_config_dict(generator.config)

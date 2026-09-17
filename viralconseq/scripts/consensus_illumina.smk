@@ -12,6 +12,7 @@ TERMINAL_INPUTS = [
     config['output'] + "isnvs/isnvs_summary.tsv" if config.get("run_isnv", False) else [],
     config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
     config['output'] + "summary.tsv",
+    config['output'] + "consensus/consensus.cov" + f"{float(config['consensus_coverage_threshold']):g}" + ".fasta",
 ]
 
 rule all:

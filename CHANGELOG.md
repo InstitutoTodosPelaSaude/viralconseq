@@ -11,6 +11,15 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ### Added
 
+- `<run>/consensus/`: a flat, share-ready copy of the consensus sequences
+  (rule `collect_consensus`, `scripts/python/collect_consensus.py`):
+  `sample-<id>[.<segment>].fasta` per sample with headers normalised to
+  `sample-<id>[|<contig>][|<segment>]` and one-line sequences,
+  `consensus[.<segment>].fasta` pooling every sample without the reference,
+  and `consensus[.<segment>].cov<T>.fasta` with the samples whose
+  `coverage_min_depth` reaches the new `--consensus-coverage-threshold`
+  (percent, default 70, config key `consensus_coverage_threshold`).
+
 - `<run>/versions.tsv`: the versions of every tool that ran, probed inside the
   per-rule conda environments at run time (`component<TAB>version`), with the
   viralconseq and Snakemake versions on top and, when viralQC ran, the database

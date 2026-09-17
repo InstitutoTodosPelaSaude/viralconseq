@@ -31,6 +31,7 @@ TERMINAL_INPUTS = [
     config['output'] + "assembly/consensus/final_consensus/samples_alignment.fasta",
     config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
     config['output'] + "summary.tsv",
+    config['output'] + "consensus/consensus.cov" + f"{float(config['consensus_coverage_threshold']):g}" + ".fasta",
 ]
 
 rule all:

@@ -26,6 +26,7 @@ cut_tail_mean_quality: 10
 cut_right_window_size: 4
 cut_right_mean_quality: 15
 af_threshold: 0.51
+consensus_coverage_threshold: 70
 af_isnv_threshold: 0.05
 run_isnv: false
 

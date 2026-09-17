@@ -44,6 +44,7 @@ _KEY_SECTIONS: Dict[str, str] = {
     ConfigKeys.MINIMUM_DEPTH: "consensus",
     ConfigKeys.MINIMAP2_CONSENSUS_ALIGN_FLAGS: "consensus",
     ConfigKeys.AF_THRESHOLD: "consensus",
+    ConfigKeys.CONSENSUS_COVERAGE_THRESHOLD: "consensus",
     ConfigKeys.ADAPTERS: "read_qc",
     ConfigKeys.MINIMUM_LENGTH: "read_qc",
     ConfigKeys.TRIM_HEAD: "read_qc",
@@ -366,6 +367,19 @@ class ConfigGenerator:
         self._set(ConfigKeys.VIRALQC_DB, viralqc_db, P)
         self._set(ConfigKeys.VIRALQC_EXTRA_FLAGS, viralqc_extra_flags, P)
 
+    def add_collect_settings(self, consensus_coverage_threshold: float = 70.0) -> None:
+        """Settings of the collection step (``rules/collect.smk``).
+
+        Args:
+            consensus_coverage_threshold: ``coverage_min_depth`` (percent) a
+                sample needs to enter ``consensus/consensus.cov<T>.fasta``.
+        """
+        self._set(
+            ConfigKeys.CONSENSUS_COVERAGE_THRESHOLD,
+            float(consensus_coverage_threshold),
+            self.SECTION_CONSENSUS,
+        )
+
     def add_provenance(self, viralconseq_version: str) -> None:
         """Record the viralconseq version that wrote this config.
 
@@ -503,6 +517,7 @@ class ConfigGenerator:
             # run_viralqc=True pulls run_viralqc (envs/viralqc.yaml) into the
             # DAG; the placeholder DB files are listed in SKELETON_PLACEHOLDERS.
             gen.add_viralqc_settings(run_viralqc=True, viralqc_db=f"{root}/viralqc_db")
+            gen.add_collect_settings()
             gen.add_workflow_path(".")
             gen.add_provenance(__version__)
             rules = (

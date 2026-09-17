@@ -16,6 +16,7 @@ workflow_path: .
 
 # Nanopore-specific settings
 af_threshold: 0.51
+consensus_coverage_threshold: 70
 chunk_size: 10000
 # per-sample mapping form (samples basecalled with different models)
 clair3_model:

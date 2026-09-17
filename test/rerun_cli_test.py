@@ -25,6 +25,7 @@ def _config(**overrides):
         "minimum_depth": 20,
         "minimum_length": 50,
         "af_threshold": 0.51,
+        "consensus_coverage_threshold": 70.0,
         "chunk_size": 10000,
         "clair3_model": "r941_prom_hac_g360+g422",
         "clair3_model_dir": "/models",

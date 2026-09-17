@@ -148,6 +148,7 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--minimum-coverage` | `20` | Minimum depth for consensus base inclusion. |
 | `--minimum-read-length` | `50` | Minimum read length threshold. |
 | `--af-threshold` | `0.51` | Min allele frequency to call variant into consensus. |
+| `--consensus-coverage-threshold` | `70` | Percent of reference positions at or above `--minimum-coverage` (`coverage_min_depth` in `summary.tsv`) a sample needs to enter `consensus/consensus.cov<T>.fasta`; 0–100. Every sample is always in `consensus/consensus.fasta`. |
 | `--run-name` | `undefined` | Name for the sequencing run. |
 | `--threads` | `1` | Threads per individual task (at least 1); the baseline every rule uses unless a `--<rule>-cpus` override is given. |
 | `--threads-total` | cores available minus one | Total cores Snakemake may use at once across all running jobs (at least 1). Detected from the CPUs available to the process (affinity, so container and cgroup limits are honoured), leaving one core free. |

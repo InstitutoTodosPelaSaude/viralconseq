@@ -13,6 +13,10 @@ TERMINAL_INPUTS = [
     ),
     config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
     config['output'] + "summary.tsv",
+    expand(
+        config['output'] + "consensus/consensus.{segment}.cov" + f"{float(config['consensus_coverage_threshold']):g}" + ".fasta",
+        segment=SEGMENTS.keys(),
+    ),
 ]
 
 rule all:

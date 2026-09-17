@@ -34,6 +34,7 @@ _REQUIRED_KEYS = [
     "minimum_depth",
     "minimum_length",
     "af_threshold",
+    "consensus_coverage_threshold",
 ]
 if config.get("data") == "illumina":
     _REQUIRED_KEYS += [

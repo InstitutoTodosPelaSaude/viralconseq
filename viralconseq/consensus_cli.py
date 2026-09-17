@@ -115,6 +115,15 @@ _COMMON_OPTIONS = [
         help="Minimum coverage depth for consensus base inclusion.",
     ),
     click.option(
+        "--consensus-coverage-threshold",
+        default=70.0,
+        show_default=True,
+        type=click.FloatRange(min=0, max=100),
+        help="Percent of reference positions at or above --minimum-coverage a sample needs "
+        "to enter the share-ready consensus/consensus.cov<T>.fasta (summary.tsv column "
+        "coverage_min_depth). Every sample is always in consensus/consensus.fasta.",
+    ),
+    click.option(
         "--minimum-read-length",
         default=50,
         show_default=True,

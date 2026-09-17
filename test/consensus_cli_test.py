@@ -226,6 +226,31 @@ class Test_Clair3ModelOptions(unittest.TestCase):
         args = self._invoke([], env={"VIRALCONSEQ_CLAIR3_MODELS": "/from/env"})
         self.assertEqual(args["clair3_model_dir"], "/from/env")
 
+    def test_consensus_coverage_threshold(self):
+        self.assertEqual(self._invoke([])["consensus_coverage_threshold"], 70.0)
+        self.assertEqual(
+            self._invoke(["--consensus-coverage-threshold", "90"])["consensus_coverage_threshold"],
+            90.0,
+        )
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0):
+            result = CliRunner().invoke(
+                consensus, self._invoke_args_nanopore(["--consensus-coverage-threshold", "101"])
+            )
+        self.assertEqual(result.exit_code, 2)
+
+    def _invoke_args_nanopore(self, extra):
+        return [
+            "nanopore",
+            "--sample-sheet",
+            "s.csv",
+            "--config-file",
+            "c.yml",
+            "--output",
+            "o",
+            "--reference",
+            "r.fa",
+        ] + extra
+
     def test_minimum_mapped_reads(self):
         self.assertEqual(self._invoke([])["minimum_mapped_reads"], 10)
         self.assertEqual(self._invoke(["--minimum-mapped-reads", "0"])["minimum_mapped_reads"], 0)

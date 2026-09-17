@@ -49,6 +49,7 @@ REQUIRED_COMMON = [
     "minimum_depth",
     "minimum_length",
     "af_threshold",
+    "consensus_coverage_threshold",
 ]
 # plus run_viralqc_ram when run_viralqc is on, and infer_consensus_sequence_ram
 # on nanopore (ConfigGenerator always writes them for the memory rules).

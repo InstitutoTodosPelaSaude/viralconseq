@@ -116,6 +116,7 @@ _NUMERIC_BOUNDS = {
     "threads_total": (1, None),
     "max_memory": (0, None),
     "minimum_mapped_reads": (0, None),
+    "consensus_coverage_threshold": (0.0, 100.0),
     "minimum_coverage": (1, None),
     "minimum_depth": (1, None),
     "minimum_length": (0, None),
@@ -173,6 +174,7 @@ CONFIG_REQUIRED_COMMON = (
     "minimum_depth",
     "minimum_length",
     "af_threshold",
+    "consensus_coverage_threshold",
 )
 CONFIG_REQUIRED_ILLUMINA = (
     "adapters",
@@ -200,6 +202,7 @@ _CONFIG_NUMERIC = {
     "minimum_length": (0, None, True),
     "af_threshold": (0.0, 1.0, False),
     "af_isnv_threshold": (0.0, 1.0, False),
+    "consensus_coverage_threshold": (0.0, 100.0, False),
     "trim_head": (0, None, True),
     "trim_tail": (0, None, True),
     "cut_front_mean_quality": (0, None, True),

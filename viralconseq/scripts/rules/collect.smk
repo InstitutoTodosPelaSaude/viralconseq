@@ -1,5 +1,4 @@
-# Collection step: the run-level summary.tsv (and, later in the same module,
-# the flat consensus/ directory).
+# Collection step: the run-level summary.tsv and the flat consensus/ directory.
 #
 # Included by the four entry-point workflows after rules/viralqc.smk and before
 # organize_files. Expects: config (output, data, samples, minimum_depth,
@@ -19,6 +18,10 @@ COLLECT_DATA = str(config.get("data", "illumina"))
 COLLECT_RUN_VIRALQC = bool(config.get("run_viralqc", True))
 COLLECT_RUN_ISNV = COLLECT_DATA == "illumina" and bool(config.get("run_isnv", False))
 SEGMENT_KEYS = list(SEGMENTS.keys()) if SEGMENT_WILDCARD else []
+COLLECT_COV_T = float(config["consensus_coverage_threshold"])
+COLLECT_COV_TAG = f"cov{COLLECT_COV_T:g}"
+# ".{segment}" in per-file names of segmented runs, "" otherwise.
+COLLECT_SEG_SUFFIX = ".{segment}" if SEGMENT_WILDCARD else ""
 
 
 def _per_sample(pattern):
@@ -83,4 +86,46 @@ rule summary:
             --min-depth {params.min_depth} --data-type {params.data_type} \
             {params.viralqc:q} {params.isnvs:q} {params.status_files:q} {params.model_files:q} \
             --output {output.summary:q} --legacy-csv {output.legacy:q}
+        """
+
+
+rule collect_consensus:
+    # consensus/<sample>[.<segment>].fasta (one-line sequences, headers
+    # sample-<id>[|<contig>][|<segment>]), consensus[.<segment>].fasta pooled
+    # without the reference, and consensus[.<segment>].cov<T>.fasta holding
+    # the samples at or above the coverage threshold.
+    conda:
+        "../envs/utils.yaml"
+    input:
+        script = os.path.join(PY, "collect_consensus.py"),
+        consensus = expand(
+            rules.rename_sequences.output.consensus_renamed,
+            sample=config["samples"],
+            allow_missing=True,
+        ),
+        summary = rules.summary.output.summary,
+    output:
+        per_sample = expand(
+            config["output"] + "consensus/{sample}" + COLLECT_SEG_SUFFIX + ".fasta",
+            sample=config["samples"],
+            allow_missing=True,
+        ),
+        pooled = config["output"] + "consensus/consensus" + COLLECT_SEG_SUFFIX + ".fasta",
+        filtered = config["output"] + "consensus/consensus" + COLLECT_SEG_SUFFIX + "." + COLLECT_COV_TAG + ".fasta",
+    params:
+        outdir = config["output"] + "consensus",
+        threshold = COLLECT_COV_T,
+        samples = list(config["samples"].keys()),
+        segment = (lambda wildcards: ["--segment", wildcards.segment]) if SEGMENT_WILDCARD else [],
+    log:
+        LOG("collect_consensus", target="collect_consensus", per_segment=True)
+    benchmark:
+        BENCH("collect_consensus", target="collect_consensus", per_segment=True)
+    shell:
+        """
+        set -euo pipefail
+        exec > {log} 2>&1
+        python {input.script:q} --consensus {input.consensus:q} --summary {input.summary:q} \
+            --threshold {params.threshold} {params.segment:q} --samples {params.samples:q} \
+            --output-dir {params.outdir:q}
         """
