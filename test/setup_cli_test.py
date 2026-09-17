@@ -378,5 +378,12 @@ class Test_SetupCli(unittest.TestCase):
         self.assertIn("FAILED", result.output)
 
 
+class Test_SetupThreadsRange(unittest.TestCase):
+    def test_zero_threads_rejected(self):
+        result = CliRunner().invoke(setup, ["--threads", "0", "--dry-run"])
+        self.assertEqual(result.exit_code, 2, result.output)
+        self.assertIn("is not in the range", result.output)
+
+
 if __name__ == "__main__":
     unittest.main()

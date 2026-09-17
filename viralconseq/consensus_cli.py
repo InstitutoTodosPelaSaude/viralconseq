@@ -125,14 +125,14 @@ _COMMON_OPTIONS = [
         "--threads",
         default=1,
         show_default=True,
-        type=int,
+        type=click.IntRange(min=1),
         help="Threads for individual tasks.",
     ),
     click.option(
         "--threads-total",
         default=1,
         show_default=True,
-        type=int,
+        type=click.IntRange(min=1),
         help="Total threads for the entire workflow.",
     ),
     click.option(
@@ -192,7 +192,7 @@ def _generate_resource_options(rules: list) -> list:
                 f"--{cmd_rule}-cpus",
                 default=ResourceDefaults.DEFAULT_CPUS,
                 show_default=True,
-                type=int,
+                type=click.IntRange(min=1),
                 help=f"Threads for {rule} rule.",
             )
         )
@@ -201,7 +201,7 @@ def _generate_resource_options(rules: list) -> list:
                 f"--{cmd_rule}-ram",
                 default=ResourceDefaults.DEFAULT_RAM,
                 show_default=True,
-                type=int,
+                type=click.IntRange(min=1),
                 help=f"RAM (GB) for {rule} rule.",
             )
         )

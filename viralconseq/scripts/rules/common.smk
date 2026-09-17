@@ -15,6 +15,52 @@ import datetime
 import os
 import re
 
+from snakemake.exceptions import WorkflowError
+
+# Analysis parameters are REQUIRED keys: the rules read config["key"] with no
+# fallback, so a default can only live in one place (the CLI). A hand-edited
+# YAML missing one fails here with the full list instead of a KeyError deep in
+# a rule. Optional/sentinel keys (scheme, adapters, run_isnv, run_viralqc, the
+# two *_flags strings, per-rule *_cpus/*_ram, viralconseq_version) stay
+# optional on purpose.
+_REQUIRED_KEYS = [
+    "samples",
+    "data",
+    "output",
+    "threads",
+    "reference",
+    "scheme",
+    "minimum_depth",
+    "minimum_length",
+    "af_threshold",
+]
+if config.get("data") == "illumina":
+    _REQUIRED_KEYS += [
+        "adapters",
+        "trim_head",
+        "trim_tail",
+        "cut_front_mean_quality",
+        "cut_tail_mean_quality",
+        "cut_right_window_size",
+        "cut_right_mean_quality",
+        "af_isnv_threshold",
+    ]
+else:
+    _REQUIRED_KEYS += [
+        "chunk_size",
+        "clair3_model",
+        "variant_quality",
+        "variant_depth",
+        "minimum_map_quality",
+    ]
+_missing = [k for k in _REQUIRED_KEYS if k not in config]
+if _missing:
+    raise WorkflowError(
+        "config is missing required key(s): "
+        + ", ".join(_missing)
+        + " - regenerate it with 'viralconseq consensus ... --create-config-only'"
+    )
+
 wildcard_constraints:
     sample="|".join(re.escape(s) for s in config["samples"]),
     segment=r"[^/]+",

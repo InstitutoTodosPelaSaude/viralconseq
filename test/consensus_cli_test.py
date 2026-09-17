@@ -160,6 +160,42 @@ class Test_RemovedOptionsRejected(unittest.TestCase):
                     self.assertIn("No such option", result.output)
 
 
+class Test_ThreadOptionsRequireAtLeastOne(unittest.TestCase):
+    """``--threads``, ``--threads-total`` and every ``--<rule>-cpus/-ram`` are
+    ``IntRange(min=1)``: a zero would make Snakemake plan with no cores or a
+    rule with no memory, which fails late and confusingly."""
+
+    def setUp(self):
+        self.runner = CliRunner()
+
+    def _required(self, data_type):
+        return [
+            data_type,
+            "--sample-sheet",
+            "sample_sheet.csv",
+            "--config-file",
+            "config_file.yaml",
+            "--output",
+            "output_dir",
+            "--reference",
+            "reference.fasta",
+        ]
+
+    def test_zero_or_negative_values_rejected(self):
+        cases = [
+            ("illumina", ["--threads", "0"]),
+            ("illumina", ["--threads-total", "-1"]),
+            ("illumina", ["--map-reads-cpus", "0"]),
+            ("nanopore", ["--infer-consensus-sequence-ram", "0"]),
+        ]
+        for data_type, extra in cases:
+            with self.subTest(option=extra[0]):
+                with patch("viralconseq.consensus_cli.consensus_main", return_value=0):
+                    result = self.runner.invoke(consensus, self._required(data_type) + extra)
+                self.assertEqual(result.exit_code, 2, result.output)
+                self.assertIn("is not in the range", result.output)
+
+
 class Test_ResourceOptions(unittest.TestCase):
     """Per-rule ``--<rule>-cpus`` / ``--<rule>-ram`` options are routed through
     ``**kwargs`` into the args dict under their snake_case key."""

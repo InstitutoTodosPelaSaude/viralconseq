@@ -80,3 +80,30 @@ def test_snakemake_dryrun(config_filename):
     assert (
         result.returncode == 0
     ), f"Snakemake dry-run failed for {config_filename}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+
+
+def test_missing_required_key_is_reported_at_parse_time(tmp_path):
+    """A hand-edited YAML lacking an analysis key fails with the key named,
+    before any rule is planned (rules/common.smk guard)."""
+    import yaml
+
+    with open(os.path.join(CONFIG_DIR, "consensus_illumina.yaml")) as fh:
+        config = yaml.safe_load(fh)
+    del config["minimum_depth"]
+    broken = tmp_path / "broken.yaml"
+    broken.write_text(yaml.safe_dump(config))
+
+    cmd = [
+        "snakemake",
+        "-s",
+        get_workflow_file("consensus_illumina.yaml"),
+        "--configfile",
+        str(broken),
+        "-n",
+        "--cores",
+        "1",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert "missing required key(s): minimum_depth" in combined, combined

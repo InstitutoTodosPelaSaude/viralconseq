@@ -26,6 +26,15 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   ids (no ambiguity between ids that are prefixes of one another), `rule all`
   is the default target (a bare `snakemake -s <workflow>` plans the whole
   DAG), and `onstart`/`onsuccess`/`onerror` append to `<run>/logs/run.log`.
+- Analysis parameters (`minimum_depth`, `af_threshold`, `af_isnv_threshold`,
+  `chunk_size`, `clair3_model`, `variant_quality`, `variant_depth`,
+  `minimum_map_quality`, `minimum_length`) are required config keys: the rules
+  read them without a fallback, so the CLI is the single source of defaults.
+  The old rule-side fallbacks had drifted from the CLI (min depth 10 vs 20,
+  AF 0.5/0.7 vs 0.51, chunk 50000 vs 10000, variant depth 5 vs 10, MAPQ 20 vs
+  30). A hand-edited YAML missing a key fails at parse time with the key named.
+- `--threads`, `--threads-total`, every `--<rule>-cpus`/`--<rule>-ram` and
+  `setup --threads` reject values below 1 at the command line.
 - Every rule now declares `log:` and `benchmark:` and redirects its shell
   output into the log (`sanitize_reference`, nanopore `trim_primer_sequences`,
   `calculate_coverage_basewise`, `rename_sequences`, nanopore

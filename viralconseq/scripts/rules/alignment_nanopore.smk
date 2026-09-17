@@ -11,7 +11,7 @@ rule map_reads:
         reference = REFERENCE,
         fastq = get_map_input_fastqs
     params:
-        minimum_map_quality = config.get("minimum_map_quality", 20)
+        minimum_map_quality = config["minimum_map_quality"]
     output:
         bam = config['output'] + "assembly/" + SEGMENT_WILDCARD + "mapped_reads/raw/{sample}.sorted.bam",
         bam_index = config['output'] + "assembly/" + SEGMENT_WILDCARD + "mapped_reads/raw/{sample}.sorted.bam.bai",
@@ -44,7 +44,7 @@ rule trim_primer_sequences:
         trimmed_info = config['output'] + "assembly/" + SEGMENT_WILDCARD + "mapped_reads/trimmed/{sample}.trimmed.txt"
     params:
         bed = config.get("scheme", "NA"),
-        minimum_length = config.get("minimum_length", 200),
+        minimum_length = config["minimum_length"],
         path = config['output'] + "assembly/" + SEGMENT_WILDCARD + "mapped_reads/raw/"
     log:
         config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/samtools/ampliconclip/{sample}.log"

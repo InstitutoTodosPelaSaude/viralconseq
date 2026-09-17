@@ -168,7 +168,7 @@ def _expand_pipelines(selected: Tuple[str, ...]) -> List[str]:
     "--threads",
     default=4,
     show_default=True,
-    type=int,
+    type=click.IntRange(min=1),
     help="Cores given to Snakemake while materializing envs and downloading databases.",
 )
 @click.option(

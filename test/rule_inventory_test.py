@@ -13,6 +13,8 @@ import unittest
 from pathlib import Path
 from typing import Dict, Iterator, List, Tuple
 
+import yaml
+
 import viralconseq
 from viralconseq.constants import ResourceDefaults
 
@@ -31,6 +33,46 @@ DIRECTIVE_RE = {
 
 # Target-only rules never execute anything, so a log would be empty.
 LOG_EXEMPT = {"all"}
+
+# Analysis parameters the CLI always writes. Rules must read them as
+# config["key"] (required), never config.get("key", <literal>): a literal
+# fallback is a second, silently drifting default. Mirrors _REQUIRED_KEYS in
+# rules/common.smk; keep both lists in step.
+REQUIRED_COMMON = [
+    "samples",
+    "data",
+    "output",
+    "threads",
+    "reference",
+    "scheme",
+    "minimum_depth",
+    "minimum_length",
+    "af_threshold",
+]
+REQUIRED_ILLUMINA = [
+    "adapters",
+    "trim_head",
+    "trim_tail",
+    "cut_front_mean_quality",
+    "cut_tail_mean_quality",
+    "cut_right_window_size",
+    "cut_right_mean_quality",
+    "af_isnv_threshold",
+]
+REQUIRED_NANOPORE = [
+    "chunk_size",
+    "clair3_model",
+    "variant_quality",
+    "variant_depth",
+    "minimum_map_quality",
+]
+ANALYSIS_KEYS = set(REQUIRED_COMMON + REQUIRED_ILLUMINA + REQUIRED_NANOPORE) - {
+    # sentinel-valued keys are legitimately read with .get
+    "scheme",
+    "adapters",
+}
+FALLBACK_RE = re.compile(r'config\.get\("(\w+)",')
+DRYRUN_CONFIG_DIR = Path(__file__).resolve().parent / "dryrun_configs"
 
 
 def workflow_files(entry: Path) -> List[Path]:
@@ -129,6 +171,16 @@ class Test_RuleInventory(unittest.TestCase):
                 # `exec 2> {log}`, `cmd > {log} 2>&1`, `2> {log}`.
                 self.assertIn("{log", body, "shell body never redirects into {log}")
 
+    def test_analysis_parameters_have_no_literal_fallback(self):
+        for (entry, name), (path, body) in self.rules.items():
+            fallbacks = set(FALLBACK_RE.findall(body)) & ANALYSIS_KEYS
+            with self.subTest(workflow=entry, rule=name, file=path.name):
+                self.assertFalse(
+                    fallbacks,
+                    f"rule {name} reads {sorted(fallbacks)} with a literal default; "
+                    "use config[key] (the CLI owns the default)",
+                )
+
     def test_rules_read_only_their_own_resource_keys(self):
         for (entry, name), (path, body) in self.rules.items():
             keys = set(RESOURCE_KEY_RE.findall(body))
@@ -159,3 +211,20 @@ class Test_RuleInventory(unittest.TestCase):
                     listed,
                     "rules reading a _cpus/_ram key must be exactly the ResourceDefaults list",
                 )
+
+
+class Test_DryrunConfigsCarryRequiredKeys(unittest.TestCase):
+    """Every regression config must carry the keys the rules read as required,
+    or the dry-run suite would stop guarding the DAG on that workflow."""
+
+    def test_required_keys_present(self):
+        configs = sorted(DRYRUN_CONFIG_DIR.glob("*.yaml"))
+        self.assertTrue(configs, "no dry-run configs found")
+        for path in configs:
+            with open(path) as fh:
+                config = yaml.safe_load(fh)
+            required = list(REQUIRED_COMMON)
+            required += REQUIRED_ILLUMINA if config["data"] == "illumina" else REQUIRED_NANOPORE
+            missing = [k for k in required if k not in config]
+            with self.subTest(config=path.name):
+                self.assertFalse(missing, f"missing {missing}")
