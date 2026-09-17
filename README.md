@@ -17,6 +17,8 @@ viralconseq infers consensus genome sequences from viral high-throughput sequenc
 - Optional **intra-host variant calling** (LoFreq) for Illumina data
 - **Consensus QC with [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC)**: virus and clade assignment plus a genome-quality score (A–D) for every consensus sequence (Nextclade + BLAST), on by default
 - **Content-level input validation**: truncated FASTQs, protein FASTAs or mismatched primer schemes are rejected before the run starts
+- **Nanopore models resolved for you**: `--clair3-model auto` reads the basecalling model from the reads; models are cached by `viralconseq setup`; barcodes without mapped reads degrade to an all-N consensus instead of failing the run
+- **Resources that bind**: detected cores and a memory budget are passed to Snakemake by default (`--threads-total`, `--max-memory`)
 - **One place to look**: `summary.tsv` with a status column per sample, a share-ready `consensus/` directory and a self-contained interactive `report.html`
 - Per-sample coverage statistics, a multi-sample alignment ready for phylogenetics, `versions.tsv`, and a `run_manifest.json` with input checksums for reproducibility
 
@@ -34,11 +36,24 @@ pip install viralconseq
 > environments and download the viralQC databases (about 1 GB) up front with
 > `viralconseq setup --pipelines all`.
 
-To install from source for development instead:
+To install from source instead, `setup.sh` does the whole thing in one command: it
+finds conda/mamba/micromamba (even when they are not on `PATH`), creates or updates the
+`viralconseq` environment from `environment.yml`, installs the package into it and then runs
+`viralconseq setup --pipelines all` (per-rule envs, viralQC databases, Clair3 models):
 
 ```bash
 git clone https://github.com/filiperomero2/viralconseq.git
 cd viralconseq
+bash setup.sh                        # everything; re-running is a no-op for what is already there
+bash setup.sh --no-setup             # environment + package only
+bash setup.sh --skip-clair3-models   # Illumina-only site: no Clair3 models
+```
+
+`bash setup.sh --help` lists the pass-through options (`--conda-prefix`, `--viralqc-db`,
+`--clair3-model-dir`, `--clair3-models`, `--skip-viralqc-db`, `--cores`, `--env-name`). Or do
+the same steps by hand:
+
+```bash
 conda env create -n viralconseq -f environment.yml
 conda activate viralconseq
 pip install -e ".[dev]"

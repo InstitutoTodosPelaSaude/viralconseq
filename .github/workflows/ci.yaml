@@ -102,3 +102,56 @@ jobs:
         run: |
           python -m unittest discover ./test -p '*test.py'
           pytest test/dryrun_test.py -v
+
+  wheel-smoke:
+    # Build the wheel and install it into a clean interpreter, then drive the CLI from
+    # outside the checkout so the test exercises the installed package (not the source
+    # tree) and proves the wheel ships every workflow, env, template and helper script.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Build wheel
+        run: pip wheel . --no-deps -w dist/
+      - name: Install the wheel
+        # pulp<2.8: Snakemake 7.32 calls pulp.list_solvers(), removed in pulp 2.8.
+        run: pip install dist/*.whl "pulp<2.8"
+      - name: CLI smoke from outside the checkout
+        working-directory: /tmp
+        run: |
+          viralconseq --help
+          viralconseq rerun --help
+          viralconseq create-report --help
+          viralconseq setup --dry-run --skip-viralqc-db --skip-clair3-models
+      - name: Installed package ships every workflow asset
+        working-directory: /tmp
+        run: |
+          python - "$GITHUB_WORKSPACE" <<'EOF'
+          import importlib.resources
+          import importlib.util
+          import pathlib
+          import sys
+
+          checkout = pathlib.Path(sys.argv[1]).resolve()
+          src = checkout / "viralconseq" / "scripts"
+          patterns = ("*.smk", "rules/*.smk", "envs/clair3.yaml", "templates/report.html", "python/*.py")
+          expected = sorted(
+              p.relative_to(src).as_posix() for pat in patterns for p in src.glob(pat)
+          )
+          assert expected, f"no assets matched under {src}"
+          assert any(f.endswith(".smk") for f in expected)
+          assert "envs/clair3.yaml" in expected and "templates/report.html" in expected
+
+          spec = importlib.util.find_spec("viralconseq")
+          installed = pathlib.Path(spec.origin).resolve().parent
+          assert not installed.is_relative_to(checkout), (
+              f"viralconseq imported from the checkout ({installed}), not the wheel"
+          )
+
+          pkg = importlib.resources.files("viralconseq.scripts")
+          missing = [f for f in expected if not pkg.joinpath(f).is_file()]
+          assert not missing, "missing from the installed package: " + ", ".join(missing)
+          print(f"OK: {len(expected)} assets present in {installed}")
+          EOF

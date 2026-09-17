@@ -20,11 +20,31 @@ setup](#first-time-environment-setup) below).
 
 ## Clone and create the environment
 
-To work from a source checkout instead (required for development):
+To work from a source checkout instead (required for development), the one-command route is
+`setup.sh`: it locates conda, mamba or micromamba (falling back to `$CONDA_EXE`/`$MAMBA_EXE` and
+the usual install roots when none is on `PATH`), creates or updates the `viralconseq` environment
+from `environment.yml`, runs `pip install -e ".[dev]"` inside it and then `viralconseq setup
+--pipelines all`. Re-running it is safe: the environment is updated in place and assets already
+present are skipped.
 
 ```bash
 git clone https://github.com/filiperomero2/viralconseq.git
 cd viralconseq/
+bash setup.sh                        # environment + package + per-rule envs, viralQC databases, Clair3 models
+bash setup.sh --no-setup             # environment + package only
+bash setup.sh --skip-clair3-models   # Illumina-only site: no Clair3 models
+```
+
+`bash setup.sh --help` lists every option; `--conda-prefix`, `--viralqc-db`, `--clair3-model-dir`,
+`--clair3-models`, `--skip-viralqc-db` and `--skip-clair3-models` are passed straight through to
+`viralconseq setup`, `--cores` sets its `--threads`, `--env-name` (or `$VIRALCONSEQ_ENV_NAME`)
+picks the environment name and `$VIRALCONSEQ_CONDA_BIN` forces a particular conda front end.
+On WSL keep `--conda-prefix` on the Linux filesystem (the default `~/.cache/viralconseq/conda-envs`
+already is), not under `/mnt/c`.
+
+The same steps by hand:
+
+```bash
 conda env create -f environment.yml
 conda activate viralconseq
 ```
