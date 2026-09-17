@@ -1,7 +1,15 @@
 # Nanopore consensus rules: infer_consensus_sequence (clair3 + bcftools)
 # These rules expect the following variables to be defined in the entry-point workflow:
 # - REFERENCE: path to reference genome (str)
-# - config: standard Snakemake config dict
+# - config: standard Snakemake config dict (clair3_model; optional clair3_model_dir,
+#   else the models bundled in the Clair3 conda env)
+# - LOG / BENCH / cpus / ram_mb from rules/common.smk
+
+# Clair3 2.x: models are two PyTorch checkpoints (pileup.pt, full_alignment.pt)
+# in <model_dir>/<model>/. run_clair3.sh checks only that the directory exists
+# and a stale (TensorFlow-era) directory dies inside torch.load with a bare
+# exit 2, hence the exit-code decoding below.
+CLAIR3_MODEL_DIR = str(config.get("clair3_model_dir") or "") or "$CONDA_PREFIX/bin/models"
 
 
 rule infer_consensus_sequence:
@@ -18,9 +26,11 @@ rule infer_consensus_sequence:
         vcf = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.vcf.gz",
         vcf_index = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.vcf.gz.tbi",
         low_cov_bed = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.low_cov.bed",
-        consensus = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.consensus.fasta"
+        consensus = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.consensus.fasta",
+        model_txt = config['output'] + "assembly/" + SEGMENT_WILDCARD + "clair3/{sample}/model.txt"
     params:
         output_prefix_dir = config['output'] + "assembly/" + SEGMENT_WILDCARD + "clair3/{sample}",
+        model_dir = CLAIR3_MODEL_DIR,
         minimum_depth = config["minimum_depth"],
         af_threshold = config["af_threshold"],
         chunk_size = config["chunk_size"],
@@ -39,21 +49,36 @@ rule infer_consensus_sequence:
         """
         set -euo pipefail
         exec > {log} 2>&1
+        model_path="{params.model_dir}/{params.clair3_model}"
+        # Value-taking flags first, bare boolean flags last with nothing after
+        # them: Clair3 2.x parses booleans as nargs="?" and would swallow a
+        # following token as their value.
+        rc=0
         run_clair3.sh \
             --bam_fn={input.bam} \
             --ref_fn={input.reference} \
+            --model_path="$model_path" \
+            --output={params.output_prefix_dir} \
+            --platform=ont \
+            --threads={threads} \
+            --chunk_size={params.chunk_size} \
             --qual={params.variant_quality} \
             --min_mq={params.minimum_map_quality} \
-            --model_path=$CONDA_PREFIX/bin/models/{params.clair3_model} \
-            --chunk_size={params.chunk_size} \
-            --threads={threads} \
             --enable_long_indel \
             --haploid_sensitive \
             --no_phasing_for_fa \
-            --output={params.output_prefix_dir} \
-            --platform='ont' \
-            --include_all_ctgs 
-        
+            --include_all_ctgs || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            echo "ERROR: run_clair3.sh exited $rc for {wildcards.sample} (model $model_path)" >&2
+            case "$rc" in
+                1) echo "  exit 1: argument or environment error - see {params.output_prefix_dir}/run_clair3.log" >&2 ;;
+                2) echo "  exit 2: the model checkpoints failed to load (torch.load); expected $model_path/pileup.pt and full_alignment.pt from Clair3 2.x. Fetch them with 'viralconseq setup --clair3-models {params.clair3_model}'." >&2 ;;
+                127) echo "  exit 127: run_clair3.sh is not on PATH - the clair3 env is broken; rebuild it with 'viralconseq setup'." >&2 ;;
+            esac
+            exit "$rc"
+        fi
+        printf 'model\t%s\nmodel_dir\t%s\n' {params.clair3_model:q} "{params.model_dir}" > {output.model_txt}
+
         cp {params.output_prefix_dir}/merge_output.vcf.gz {output.vcf_raw}
         cp {params.output_prefix_dir}/merge_output.vcf.gz.tbi {output.vcf_raw_index}
 
@@ -66,5 +91,5 @@ rule infer_consensus_sequence:
         
         bcftools consensus -f {input.reference} --mask {output.low_cov_bed} {output.vcf} > {output.consensus}
 
-        find {params.output_prefix_dir} -mindepth 1 ! -name '*.raw.vcf.gz' ! -name '*.raw.vcf.gz.tbi' -exec rm -rf {{}} +
+        find {params.output_prefix_dir} -mindepth 1 ! -name '*.raw.vcf.gz' ! -name '*.raw.vcf.gz.tbi' ! -name 'model.txt' -exec rm -rf {{}} +
         """

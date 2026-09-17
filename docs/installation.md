@@ -37,7 +37,7 @@ micromamba activate viralconseq
 ```
 
 ```{warning}
-On macOS with Apple Silicon (M1 or later), the `viralconseq/scripts/envs/clair3.yaml` environment may not install correctly due to compatibility constraints in the clair3 dependencies.
+The nanopore variant caller is Clair3 2.x (`viralconseq/scripts/envs/clair3.yaml`), which pulls in PyTorch (CPU build, roughly 1–2 GB on disk) and Python 3.11. bioconda publishes it for linux-64 and osx-64 only; on macOS with Apple Silicon (M1 or later) that environment may not install. Build the environments once with `viralconseq setup` and keep `--conda-prefix` on a local disk (on WSL, not under `/mnt/c`).
 ```
 
 ## Troubleshooting

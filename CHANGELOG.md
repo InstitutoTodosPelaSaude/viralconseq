@@ -44,6 +44,13 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ### Changed
 
+- Nanopore variant calling uses Clair3 2.0.2 (was 1.2). Clair3 2.x ships
+  PyTorch models (`pileup.pt` + `full_alignment.pt`); the `run_clair3.sh`
+  invocation passes value flags before the bare boolean flags (2.x parses
+  booleans as optional-value arguments), decodes Clair3's exit codes into a
+  readable message (a stale TensorFlow-era model directory is a bare exit 2)
+  and records the model used in `assembly/clair3/<sample>/model.txt`, linked
+  as `samples/<sample>/clair3_model.txt`.
 - Per-rule threads follow `--<rule>-cpus` > `--threads`: a `--<rule>-cpus`
   option now defaults to unset and the config carries `<rule>_cpus` only when
   you gave it; every rule otherwise uses the `--threads` baseline (rules used
