@@ -11,6 +11,18 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ### Added
 
+- `<run>/report.html`: a self-contained interactive report of the run (rule
+  `report`, `scripts/python/build_report.py`, shell
+  `scripts/templates/report.html`; vanilla JS and hand-drawn SVG, no external
+  resources, light/dark theme, print CSS). Headline figures, a sortable and
+  filterable table of every `summary.tsv` row, a per-sample panel with the
+  depth trace and masked regions, variant counts, fastp figures (Illumina) or
+  the Clair3 model and mapped-read gate (nanopore), primer extents and
+  amplicon depths when a scheme was given, the viralQC verdict with its six
+  checks, and tool versions and run parameters in the footer. Segmented runs
+  facet by segment; unsegmented runs with several viruses facet by virus. The
+  page self-checks against `summary.tsv` before it is written. Toggle with
+  `--report/--no-report` (config key `run_report`, section `report`).
 - `<run>/consensus/`: a flat, share-ready copy of the consensus sequences
   (rule `collect_consensus`, `scripts/python/collect_consensus.py`):
   `sample-<id>[.<segment>].fasta` per sample with headers normalised to

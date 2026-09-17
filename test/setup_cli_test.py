@@ -59,6 +59,7 @@ class Test_ConfigGeneratorSkeleton(unittest.TestCase):
             with self.subTest(data_type=data_type):
                 cfg = self._write_and_load("consensus", data_type)
                 self.assertTrue(cfg["run_viralqc"])
+                self.assertTrue(cfg["run_report"])
                 self.assertTrue(cfg["viralqc_db"].endswith("viralqc_db"))
                 placeholders = ConfigGenerator.SKELETON_PLACEHOLDERS["consensus"][data_type]
                 for entry in (

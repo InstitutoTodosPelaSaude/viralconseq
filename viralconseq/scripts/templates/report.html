@@ -1,0 +1,1184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>viralconseq run report</title>
+<style>
+/* ---------------------------------------------------------------------------
+   Tokens. Chrome colours are a neutral navy/ink/accent set. Data colours are a
+   validated viz palette: eight categorical slots (--cat-1..8) for the run's
+   facets (segments or viruses), a one-hue blue ramp for magnitude, and the
+   reserved status steps. Both modes were run through the palette checks
+   (lightness band, chroma floor, CVD dE, normal-vision floor, contrast).
+--------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+  --is-dark: 0;
+  --brand:          #1e3a5f;
+  --brand-deep:     #162c48;
+  --accent:         #bf0404;
+
+  --page:           #f3f4f6;
+  --surface:        #ffffff;
+  --surface-sunk:   #f7f8fa;
+  --ink:            #1a1d21;
+  --ink-2:          #434242;
+  --muted:          #85898f;
+  --grid:           #e8eaed;
+  --axis:           #c9ced5;
+  --border:         rgba(30, 58, 95, 0.13);
+  --shadow:         0 1px 2px rgba(16, 30, 50, 0.05), 0 1px 10px rgba(16, 30, 50, 0.04);
+
+  --cat-1:          #2a78d6;
+  --cat-2:          #eb6834;
+  --cat-3:          #1baf7a;
+  --cat-4:          #eda100;
+  --cat-5:          #8e5bd6;
+  --cat-6:          #d63d7a;
+  --cat-7:          #16a5b8;
+  --cat-8:          #7a8a1e;
+
+  /* ordinal blue ramp - funnel stages (light end no lighter than step 250) */
+  --ord-1:          #86b6ef;
+  --ord-2:          #3987e5;
+  --ord-3:          #256abf;
+  --ord-4:          #104281;
+
+  /* the coverage meter: fill below the threshold, and a lighter step of the same
+     hue for the unfilled track, so state reads across the whole bar */
+  --seq-mid:        #86b6ef;
+  --seq-track:      #e6eef9;
+
+  --good:           #0ca30c;
+  --warning:        #fab219;
+  --warning-ink:    #8a6100;
+  --serious:        #ec835a;
+  --critical:       #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --is-dark: 1;
+    --brand:        #0f1b2d;
+    --brand-deep:   #0a1220;
+    --accent:       #e35b5b;
+
+    --page:         #0c0e12;
+    --surface:      #14181f;
+    --surface-sunk: #191e26;
+    --ink:          #ffffff;
+    --ink-2:        #c3c2b7;
+    --muted:        #898781;
+    --grid:         #242a33;
+    --axis:         #333b46;
+    --border:       rgba(255, 255, 255, 0.11);
+    --shadow:       none;
+
+    --cat-1:        #3987e5;
+    --cat-2:        #d95926;
+    --cat-3:        #199e70;
+    --cat-4:        #c98500;
+    --cat-5:        #a074e6;
+    --cat-6:        #e0558f;
+    --cat-7:        #23b7cb;
+    --cat-8:        #9db233;
+
+    --ord-1:        #cde2fb;
+    --ord-2:        #86b6ef;
+    --ord-3:        #3987e5;
+    --ord-4:        #184f95;
+
+    --seq-mid:      #256abf;
+    --seq-track:    #1c2532;
+    --warning-ink:  #fab219;
+  }
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --is-dark: 1;
+    --brand:        #0f1b2d;
+    --brand-deep:   #0a1220;
+    --accent:       #e35b5b;
+
+    --page:         #0c0e12;
+    --surface:      #14181f;
+    --surface-sunk: #191e26;
+    --ink:          #ffffff;
+    --ink-2:        #c3c2b7;
+    --muted:        #898781;
+    --grid:         #242a33;
+    --axis:         #333b46;
+    --border:       rgba(255, 255, 255, 0.11);
+    --shadow:       none;
+
+    --cat-1:        #3987e5;
+    --cat-2:        #d95926;
+    --cat-3:        #199e70;
+    --cat-4:        #c98500;
+    --cat-5:        #a074e6;
+    --cat-6:        #e0558f;
+    --cat-7:        #23b7cb;
+    --cat-8:        #9db233;
+
+    --ord-1:        #cde2fb;
+    --ord-2:        #86b6ef;
+    --ord-3:        #3987e5;
+    --ord-4:        #184f95;
+
+    --seq-mid:      #256abf;
+    --seq-track:    #1c2532;
+    --warning-ink:  #fab219;
+  }
+
+* { box-sizing: border-box; }
+html { background: var(--page); }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { font-family: "Roboto Condensed", "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+code { font-size: 0.92em; }
+
+.wrap { max-width: 1360px; margin: 0 auto; padding: 0 28px 72px; }
+
+/* --- header --- */
+.masthead { background: var(--brand); color: #fff; padding: 26px 0 24px; }
+.masthead .wrap { padding-bottom: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 20px 40px; }
+.masthead h1 { margin: 0; font-size: 25px; font-weight: 700; letter-spacing: 0.2px; }
+.masthead h1 span { font-weight: 300; opacity: 0.62; }
+.masthead .sub { margin: 4px 0 0; font-size: 13px; color: rgba(255,255,255,0.66); }
+.mast-meta { margin-left: auto; display: flex; gap: 30px; flex-wrap: wrap; }
+.mast-meta div { font-size: 12px; color: rgba(255,255,255,0.6); }
+.mast-meta b { display: block; font-size: 14px; font-weight: 600; color: #fff; }
+.mast-meta .platform {
+  display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+  padding: 2px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.35); color: #fff; margin-top: 2px;
+}
+.theme-toggle {
+  font: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; min-height: 30px;
+  cursor: pointer; border-radius: 999px; align-self: center;
+  border: 1px solid rgba(255,255,255,0.28); background: transparent; color: rgba(255,255,255,0.86);
+}
+.theme-toggle:hover { border-color: rgba(255,255,255,0.6); color: #fff; }
+
+/* --- sections --- */
+section { margin-top: 34px; }
+.sec-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.sec-head h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: 0.2px; }
+.sec-head p { margin: 0; font-size: 13px; color: var(--muted); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 18px 20px 16px;
+}
+.card > h3 { margin: 0 0 2px; font-size: 14px; font-weight: 700; }
+.card > h3 + .note { margin: 0 0 12px; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.note b { color: var(--ink-2); font-weight: 600; }
+.sub-h3 { margin: 0 0 2px; font-size: 14px; font-weight: 700; }
+
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 1080px) { .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+
+/* --- KPI tiles --- */
+.kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+.kpis[data-n="5"] { grid-template-columns: repeat(5, 1fr); }
+.kpis[data-n="4"] { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1080px) { .kpis, .kpis[data-n] { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 660px)  { .kpis, .kpis[data-n] { grid-template-columns: repeat(2, 1fr); } }
+.kpi {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 14px 16px 13px;
+  border-top: 3px solid var(--brand);
+}
+.kpi .label { font-size: 11.5px; color: var(--muted); letter-spacing: 0.25px; text-transform: uppercase; }
+.kpi .value { font-size: 30px; font-weight: 600; line-height: 1.12; margin-top: 5px; letter-spacing: -0.5px; }
+.kpi .value .unit { font-size: 15px; font-weight: 500; color: var(--ink-2); letter-spacing: 0; }
+.kpi .foot { font-size: 12px; color: var(--ink-2); margin-top: 3px; }
+
+/* --- pills, chips --- */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600; padding: 2px 8px 2px 6px;
+  border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--surface-sunk); color: var(--ink-2);
+}
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.pill.good     { color: var(--good); }
+.pill.warning  { color: var(--warning-ink); }
+.pill.warning .dot { background: var(--warning); }
+.pill.critical { color: var(--critical); }
+.pill.neutral  { color: var(--muted); }
+/* viralQC genome grades A-D: an ordinal set from good through critical */
+.pill.grade-a  { color: var(--good); }
+.pill.grade-b  { color: var(--ord-3); }
+.pill.grade-c  { color: var(--warning-ink); }
+.pill.grade-c .dot { background: var(--warning); }
+.pill.grade-d  { color: var(--critical); }
+.pill.grade    { font-weight: 700; letter-spacing: 0.3px; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--ink-2); white-space: nowrap;
+}
+.chip .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+
+/* --- filter row --- */
+.filters {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-bottom: 12px;
+}
+.filters .fbtn {
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink-2);
+  min-height: 32px;
+}
+.filters .fbtn:hover { border-color: var(--axis); }
+.filters .fbtn[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #fff; }
+.filters .fbtn .n { opacity: 0.62; font-weight: 500; margin-left: 4px; }
+.filters input[type="search"] {
+  font: inherit; font-size: 13px; padding: 6px 11px; min-height: 32px; min-width: 210px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--ink); margin-left: auto;
+}
+.filters input[type="search"]::placeholder { color: var(--muted); }
+
+/* --- table --- */
+.tablewrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); overflow-x: auto; }
+table.data { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.data th, table.data td { padding: 7px 12px; text-align: left; white-space: nowrap; }
+table.data thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-sunk); color: var(--ink-2);
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
+}
+table.data thead th.num, table.data td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.data thead th .arrow { opacity: 0.4; font-size: 9px; margin-left: 3px; }
+table.data thead th[aria-sort] .arrow { opacity: 1; color: var(--brand); }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) table.data thead th[aria-sort] .arrow { color: var(--cat-1); }
+}
+:root[data-theme="dark"] table.data thead th[aria-sort] .arrow { color: var(--cat-1); }
+table.data tbody tr { border-bottom: 1px solid var(--grid); cursor: pointer; }
+table.data tbody tr:last-child { border-bottom: none; }
+table.data tbody tr:hover { background: var(--surface-sunk); }
+table.data tbody tr[aria-selected="true"] { background: var(--surface-sunk); box-shadow: inset 3px 0 0 var(--brand); }
+table.data td.dim { color: var(--muted); }
+table.data td.id { font-weight: 600; }
+
+/* coverage meter inside the table */
+.meter { display: inline-flex; align-items: center; gap: 8px; }
+.meter .track { width: 74px; height: 7px; border-radius: 4px; background: var(--seq-track); overflow: hidden; flex: none; }
+.meter .fill { height: 100%; border-radius: 4px; display: block; }
+.meter .val { font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
+
+/* --- detail --- */
+.detail-head {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--grid);
+}
+.detail-head h3 { margin: 0; font-size: 18px; font-weight: 700; }
+.detail-nav { margin-left: auto; display: flex; gap: 6px; }
+.detail-nav button {
+  font: inherit; font-size: 12.5px; padding: 5px 11px; min-height: 30px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--ink-2);
+}
+.detail-nav button:hover:not(:disabled) { border-color: var(--axis); }
+.detail-nav button:disabled { opacity: 0.4; cursor: default; }
+
+.statstrip { display: grid; grid-template-columns: repeat(auto-fit, minmax(122px, 1fr)); gap: 2px 0; margin-bottom: 16px; }
+.statstrip .s { padding: 8px 14px 8px 0; border-right: 1px solid var(--grid); }
+.statstrip .s:last-child { border-right: none; }
+.statstrip .s .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.25px; }
+.statstrip .s .v { font-size: 17px; font-weight: 600; margin-top: 1px; overflow-wrap: anywhere; }
+.statstrip .s .v small { font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.statstrip .s .n { font-size: 11.5px; color: var(--muted); }
+
+.callout {
+  border-left: 3px solid var(--axis); background: var(--surface-sunk);
+  padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 12.5px; color: var(--ink-2);
+  margin: 0 0 16px;
+}
+.callout b { color: var(--ink); }
+.callout.flag { border-left-color: var(--accent); }
+
+/* --- legends --- */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 10px; }
+/* --- svg chart chrome --- */
+svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
+svg .grid-line { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; }
+svg .axis-line { stroke: var(--axis); stroke-width: 1; shape-rendering: crispEdges; }
+svg .contig-line { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; shape-rendering: crispEdges; }
+svg .rule      { stroke: var(--accent); stroke-width: 1; shape-rendering: crispEdges; }
+svg .tick      { fill: var(--muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+svg .lbl       { fill: var(--ink-2); font-size: 11.5px; }
+svg .lbl-strong{ fill: var(--ink); font-size: 11.5px; font-weight: 600; }
+svg .rule-lbl  { fill: var(--accent); font-size: 10.5px; font-weight: 600; }
+svg .hit       { fill: transparent; cursor: pointer; }
+svg .in-bar    { font-size: 11px; font-weight: 600; }
+
+/* --- tooltip --- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; opacity: 0;
+  transition: opacity 90ms linear;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(16, 30, 50, 0.16);
+  padding: 8px 11px; font-size: 12px; max-width: 280px; line-height: 1.5;
+}
+#tip .t { font-weight: 700; margin-bottom: 2px; }
+#tip .r { display: flex; justify-content: space-between; gap: 16px; color: var(--ink-2); }
+#tip .r b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* --- footer --- */
+footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); }
+.prov { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px 32px; font-size: 12px; }
+.prov .row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--grid); }
+.prov .row span { color: var(--muted); }
+.prov .row b { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+footer .fine { font-size: 11.5px; color: var(--muted); margin-top: 18px; line-height: 1.6; overflow-wrap: anywhere; }
+
+@media print {
+  .filters, .detail-nav, .theme-toggle { display: none; }
+  .card, .kpi, .tablewrap { box-shadow: none; }
+  section { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <div>
+      <h1 id="run-title">viralconseq <span>run report</span></h1>
+      <p class="sub" id="run-sub"></p>
+    </div>
+    <div class="mast-meta" id="mast-meta"></div>
+    <button class="theme-toggle" type="button" id="theme" aria-label="Switch colour theme">Theme</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section id="kpi-section">
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>Run overview</h2>
+      <p>What the run yielded, where samples were lost, and how depth converts into a genome.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card">
+        <h3>From sample to genome</h3>
+        <p class="note" id="funnel-note">Each stage counts unique samples.</p>
+        <div id="funnel"></div>
+      </div>
+      <div class="card">
+        <h3>Genome completeness, ranked</h3>
+        <p class="note" id="ranked-note"></p>
+        <div id="ranked"></div>
+        <div class="legend" id="ranked-legend"></div>
+      </div>
+      <div class="card">
+        <h3>Depth against completeness</h3>
+        <p class="note">Median depth over every reference position, zeros included.
+          The relationship shown is descriptive and does not establish the cause of low coverage.</p>
+        <div id="scatter"></div>
+        <div class="legend" id="scatter-legend"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>Samples</h2>
+      <p id="table-caption"></p>
+    </div>
+    <div class="filters" id="filters"></div>
+    <div class="tablewrap">
+      <table class="data" id="table">
+        <thead><tr id="thead-row"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:8px" id="table-foot"></p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>Sample detail</h2>
+      <p>Select any row above.</p>
+    </div>
+    <div class="card" id="detail"></div>
+  </section>
+
+  <footer>
+    <div class="sec-head"><h2>Provenance</h2><p>Everything the page reports comes from these versions and settings.</p></div>
+    <div class="prov" id="prov"></div>
+    <p class="fine" id="fine"></p>
+  </footer>
+
+</div>
+
+<div id="tip" role="tooltip" aria-hidden="true"></div>
+
+<script id="run-data" type="application/json">/*{{DATA}}*/</script>
+<script>
+"use strict";
+const DATA = JSON.parse(document.getElementById("run-data").textContent);
+const P = DATA.run.params;
+const T = P.consensus_coverage_threshold;
+const FACETS = DATA.run.facets || [];
+const FK = DATA.run.facet_kind || "none";
+const IS_ILLUMINA = DATA.run.data_type === "illumina";
+const PLATFORM = IS_ILLUMINA ? "Illumina" : "Nanopore";
+const FACET_LABEL = FK === "segment" ? "Segment" : FK === "virus" ? "Virus" : null;
+const FACET_PLURAL = FK === "segment" ? "Segments" : "Viruses";
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+/* facets take the categorical slots in run order; an unknown facet is muted */
+const facetSlot = (f) => { const i = FACETS.indexOf(f); return i < 0 ? null : `--cat-${(i % 8) + 1}`; };
+const facetColor = (f) => { const s = facetSlot(f); return s ? `var(${s})` : "var(--muted)"; };
+const facetChip = (f, extra = "") => f
+  ? `<span class="chip"><i class="sw" style="background:${facetColor(f)}"></i>${esc(f)}${extra}</span>` : "";
+
+/* ---------- formatting ---------- */
+const fmt = (n) => n === null || n === undefined ? "—" : n.toLocaleString("en-US");
+const fmt1 = (n) => n === null || n === undefined ? "—" : n.toLocaleString("en-US", { maximumFractionDigits: 1 });
+const pct = (n) => n === null || n === undefined ? "—" : n.toFixed(1) + "%";
+const pctOf = (a, b) => a === null || a === undefined || !b ? "—" : (100 * a / b).toFixed(1) + "%";
+const compact = (n) => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M"
+                     : n >= 1e4 ? Math.round(n / 1e3) + "K" : n.toLocaleString("en-US");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const niceStep = (span) => { const p = 10 ** Math.floor(Math.log10(Math.max(1, span))); const r = span / p;
+  return (r >= 5 ? 5 : r >= 2 ? 2 : 1) * p; };
+const short = (s, n = 18) => s && s.length > n ? s.slice(0, n - 1) + "…" : s;
+
+/* ---------- derived run figures ---------- */
+const S = DATA.samples;
+const IDS = [...new Set(S.map((d) => d.id))];
+const rowsOf = (id) => S.filter((d) => d.id === id);
+const anyRow = (id, pred) => rowsOf(id).some(pred);
+const firstRow = (id) => rowsOf(id)[0];
+const isComplete = (d) => d.cov_min !== null && d.cov_min >= T;
+const gradeOf = (d) => d.viralqc && d.viralqc.grade ? String(d.viralqc.grade).toUpperCase() : null;
+const isGoodGrade = (d) => ["A", "B"].includes(gradeOf(d));
+const HAS_VQC = S.some((d) => d.viralqc !== null);
+const withCov = S.filter((d) => d.cov_min !== null);
+const complete = S.filter(isComplete);
+const goodGrade = S.filter(isGoodGrade);
+const totalReads = IDS.reduce((a, id) => a + (firstRow(id).total_reads || 0), 0);
+const median = (a) => { if (!a.length) return null; const b = [...a].sort((x, y) => x - y), m = b.length >> 1;
+  return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+const medDepth = median(S.map((d) => d.median_depth).filter((v) => v !== null));
+const medMapped = median(S.map((d) => d.pct_mapped).filter((v) => v !== null));
+const facetCount = FACETS.map((f) => [f, S.filter((d) => d.facet === f).length]).filter(([, n]) => n);
+const version = DATA.run.version || "—";
+
+/* status -> pill class + human wording; unknown statuses show verbatim */
+const STATUS = {
+  ok:               { cls: "good",     text: "Assembled" },
+  no_mapped_reads:  { cls: "warning",  text: "No mapped reads" },
+  empty_consensus:  { cls: "critical", text: "Empty consensus" },
+  viralqc_failed:   { cls: "warning",  text: "viralQC failed" },
+  viralqc_partial:  { cls: "warning",  text: "viralQC partial" },
+  viralqc_skipped:  { cls: "neutral",  text: "viralQC skipped" },
+  viralqc_missing:  { cls: "neutral",  text: "viralQC missing" },
+  missing_stats:    { cls: "critical", text: "Missing stats" },
+};
+const statusMeta = (k) => STATUS[k] || { cls: "neutral", text: k };
+const pill = (k) => { const m = statusMeta(k); return `<span class="pill ${m.cls}"><i class="dot"></i>${esc(m.text)}</span>`; };
+const gradePill = (g, extra = "") => g
+  ? `<span class="pill grade grade-${esc(String(g).toLowerCase())}"><i class="dot"></i>${esc(g)}${extra}</span>`
+  : `<span class="dim">—</span>`;
+
+/* ---------- tooltip ---------- */
+const tipEl = document.getElementById("tip");
+function showTip(evt, title, rows) {
+  tipEl.innerHTML = `<div class="t">${title}</div>` +
+    rows.map(([k, v]) => `<div class="r"><span>${k}</span><b>${v}</b></div>`).join("");
+  tipEl.style.opacity = "1";
+  tipEl.setAttribute("aria-hidden", "false");
+  moveTip(evt);
+}
+function moveTip(evt) {
+  const r = tipEl.getBoundingClientRect();
+  let x = evt.clientX + 14, y = evt.clientY + 16;
+  if (x + r.width > innerWidth - 8) x = evt.clientX - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = evt.clientY - r.height - 16;
+  tipEl.style.left = Math.max(8, x) + "px";
+  tipEl.style.top = Math.max(8, y) + "px";
+}
+function hideTip() { tipEl.style.opacity = "0"; tipEl.setAttribute("aria-hidden", "true"); }
+/* attach hover + keyboard focus to a mark; both show the same thing */
+function hoverable(node, title, rows, onActivate) {
+  node.addEventListener("mouseenter", (e) => showTip(e, title, rows));
+  node.addEventListener("mousemove", moveTip);
+  node.addEventListener("mouseleave", hideTip);
+  if (onActivate) {
+    node.setAttribute("tabindex", "0");
+    node.addEventListener("focus", (e) => {
+      const b = node.getBoundingClientRect();
+      showTip({ clientX: b.left + b.width / 2, clientY: b.top }, title, rows);
+    });
+    node.addEventListener("blur", hideTip);
+    node.addEventListener("click", onActivate);
+    node.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(); } });
+  }
+}
+
+/* ---------- svg helpers ---------- */
+const NS = "http://www.w3.org/2000/svg";
+function el(name, attrs = {}, parent = null) {
+  const n = document.createElementNS(NS, name);
+  for (const k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function svgRoot(host, w, h) {
+  host.innerHTML = "";
+  const s = el("svg", { class: "chart", viewBox: `0 0 ${w} ${h}`, width: w, height: h,
+                        preserveAspectRatio: "xMinYMin meet", role: "img" }, host);
+  s.style.width = "100%"; s.style.height = "auto";
+  return s;
+}
+function text(parent, x, y, str, cls = "lbl", extra = {}) {
+  const t = el("text", Object.assign({ x, y, class: cls }, extra), parent);
+  t.textContent = str;
+  return t;
+}
+/* Approximate rendered width — used to decide whether a label fits inside a mark. */
+const textWidth = (str, size) => String(str).length * size * 0.56;
+
+/* A label set inside a coloured fill takes white or ink by the fill's luminance,
+   so it clears contrast in either theme. */
+function inkOn(cssVar) {
+  const hex = css(cssVar).replace("#", "");
+  if (hex.length !== 6) return "#fff";
+  const lum = [0, 2, 4].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+  return (lum + 0.05) / 0.05 > 4.5 ? css("--brand-deep") : "#fff";
+}
+
+/* Re-render on resize so type stays one size and nothing is clipped. */
+let mounted = [];
+function mount(host, render) {
+  if (!host) return;
+  mounted.push([host, render]);
+  render(host, Math.max(240, host.clientWidth || 320));
+}
+/* Detail charts are replaced wholesale on every selection; drop the ones whose
+   host has left the document so the resize handler stays bounded. */
+const dropDetached = () => { mounted = mounted.filter(([h]) => h.isConnected); };
+function redrawAll() {
+  dropDetached();
+  mounted.forEach(([h, r]) => r(h, Math.max(240, h.clientWidth || 320)));
+}
+let rAF = null;
+addEventListener("resize", () => {
+  if (rAF) cancelAnimationFrame(rAF);
+  rAF = requestAnimationFrame(redrawAll);
+});
+
+/* ---------- header ---------- */
+document.getElementById("run-title").innerHTML = `${esc(DATA.run.label)} <span>run report</span>`;
+document.getElementById("run-sub").textContent =
+  `viralconseq consensus genomes · ${PLATFORM} · generated ${DATA.run.generated}`;
+document.getElementById("mast-meta").innerHTML = [
+  ["Platform", `<span class="platform">${PLATFORM}</span>`, true],
+  ["Samples", IDS.length],
+  [`Genomes ≥${T}%`, complete.length],
+  ["Pipeline", "viralconseq " + version],
+].map(([k, v, raw]) => `<div>${k}<b>${raw ? v : esc(String(v))}</b></div>`).join("");
+document.title = `${DATA.run.label} — viralconseq run report`;
+
+/* ---------- KPI tiles ---------- */
+const kpiTiles = [
+  { label: "Samples processed", value: IDS.length, foot: `${fmt(totalReads)} reads sequenced` },
+  { label: `≥${T}% covered at ≥${P.min_depth}×`, value: complete.length,
+    foot: `${(100 * complete.length / (S.length || 1)).toFixed(0)}% of ${S.length} ${FK === "segment" ? "sample–segment rows" : "samples"}` },
+  HAS_VQC ? { label: "viralQC grade A or B", value: goodGrade.length,
+    foot: `${S.filter((d) => gradeOf(d)).length} graded genomes` } : null,
+  { label: "Median depth", value: fmt1(medDepth), unit: "×", foot: "across rows with depth" },
+  FK !== "none" ? { label: `${FACET_PLURAL} detected`, value: facetCount.length,
+    foot: facetCount.map(([f, n]) => `${f} ${n}`).join(" · ") || "none" } : null,
+  { label: "Median % mapped", value: fmt1(medMapped), unit: "%", foot: "of reads, per row" },
+].filter(Boolean);
+const kpiHost = document.getElementById("kpis");
+kpiHost.dataset.n = kpiTiles.length;
+kpiHost.innerHTML = kpiTiles.map((k) => `<div class="kpi">
+    <div class="label">${esc(k.label)}</div>
+    <div class="value">${esc(String(k.value))}${k.unit ? `<span class="unit">${k.unit}</span>` : ""}</div>
+    <div class="foot">${esc(k.foot)}</div>
+  </div>`).join("");
+
+/* ---------- funnel ---------- */
+const funnelStages = [
+  { label: "Samples with reads", n: IDS.filter((id) => anyRow(id, (d) => (d.total_reads || 0) > 0)).length,
+    note: `${fmt(totalReads)} reads`, share: false },
+  IS_ILLUMINA ? { label: "QC-passed", n: IDS.filter((id) => anyRow(id, (d) => (d.qc_passed_reads || 0) > 0)).length,
+    note: "reads surviving fastp", share: true } : null,
+  { label: "Mapped", n: IDS.filter((id) => anyRow(id, (d) => (d.mapped_reads || 0) > 0)).length,
+    note: "at least one read on the reference", share: true },
+  { label: `Covered ≥${T}% at ≥${P.min_depth}×`, n: new Set(complete.map((d) => d.id)).size,
+    note: FK === "segment" ? "samples with at least one qualifying segment" : "in the filtered multi-FASTA", share: true },
+  HAS_VQC ? { label: "viralQC grade A or B", n: new Set(goodGrade.map((d) => d.id)).size,
+    note: "samples with at least one A/B genome", share: true } : null,
+].filter(Boolean);
+document.getElementById("funnel-note").textContent = FK === "segment"
+  ? "Each stage counts unique samples. A sample with several segments contributes once here and one row per segment in the table."
+  : "Each stage counts unique samples.";
+mount(document.getElementById("funnel"), (host, W) => {
+  const rowH = 58, padT = 4, h = funnelStages.length * rowH + padT;
+  const barMax = W - 46;
+  const s = svgRoot(host, W, h);
+  s.setAttribute("aria-label", "Samples with reads through coverage filtering");
+  const top = funnelStages[0].n || 1;
+  const nStages = funnelStages.length;
+  funnelStages.forEach((st, i) => {
+    const y = padT + i * rowH;
+    const w = Math.max(3, barMax * st.n / top);
+    const ord = `--ord-${nStages > 1 ? Math.round(i * 3 / (nStages - 1)) + 1 : 1}`;
+    text(s, 0, y + 12, st.label, "lbl-strong");
+    const g = el("g", {}, s);
+    el("rect", { x: 0, y: y + 19, width: w, height: 16, rx: 4, fill: `var(${ord})` }, g);
+    /* square the baseline end, round the data end */
+    el("rect", { x: 0, y: y + 19, width: Math.min(6, w), height: 16, fill: `var(${ord})` }, g);
+    const val = `${st.n}`;
+    const inside = textWidth(val, 11) + 18 < w;
+    text(s, inside ? w - 8 : w + 8, y + 31, val,
+         inside ? "in-bar" : "lbl-strong",
+         inside ? { "text-anchor": "end", fill: inkOn(ord) } : {});
+    text(s, 0, y + 49, st.note + (st.share ? ` · ${(100 * st.n / top).toFixed(0)}% of samples` : ""), "tick");
+    hoverable(g, st.label, [["Samples", fmt(st.n)],
+      ["Share of run", (100 * st.n / top).toFixed(1) + "%"], ["This stage keeps", st.note]]);
+  });
+});
+
+/* ---------- ranked completeness ---------- */
+document.getElementById("ranked-note").textContent =
+  `Percent of reference positions with depth ≥${P.min_depth}×. Masking and variant filters also affect the consensus.`;
+const ranked = withCov.slice().sort((a, b) => b.cov_min - a.cov_min);
+const facetRows = (d) => FACET_LABEL && d.facet ? [[FACET_LABEL, esc(d.facet)]] : [];
+mount(document.getElementById("ranked"), (host, W) => {
+  const padL = 30, padR = 8, padT = 8, plotH = 168, axisH = 26;
+  const s = svgRoot(host, W, plotH + axisH + padT);
+  s.setAttribute("aria-label", `Genome completeness at ${P.min_depth}x for each row, ranked`);
+  const innerW = W - padL - padR;
+  const band = innerW / Math.max(1, ranked.length);
+  const barW = Math.max(3, Math.min(24, band - 2)); /* 2px surface gap between bars */
+  const y = (v) => padT + plotH - (v / 100) * plotH;
+
+  [0, 25, 50, 75, 100].forEach((v) => {
+    el("line", { class: "grid-line", x1: padL, x2: W - padR, y1: y(v), y2: y(v) }, s);
+    text(s, padL - 6, y(v) + 3.5, v, "tick", { "text-anchor": "end" });
+  });
+  ranked.forEach((d, i) => {
+    const x = padL + i * band + (band - barW) / 2;
+    const g = el("g", {}, s);
+    el("rect", { x, y: y(d.cov_min), width: barW, height: plotH + padT - y(d.cov_min), rx: 3,
+                 fill: facetColor(d.facet) }, g);
+    el("rect", { x, y: plotH + padT - 3, width: barW, height: 3, fill: facetColor(d.facet) }, g);
+    el("rect", { class: "hit", x: padL + i * band, y: padT, width: band, height: plotH }, g);
+    hoverable(g, esc(d.key), [...facetRows(d), [`≥${P.min_depth}× coverage`, pct(d.cov_min)],
+                        ["10× coverage", pct(d.cov10)], ["Median depth", fmt1(d.median_depth) + "×"]],
+              () => selectSample(d.key));
+  });
+  const ty = y(T);
+  el("line", { class: "rule", x1: padL, x2: W - padR, y1: ty, y2: ty }, s);
+  text(s, W - padR, ty - 5, `${T}% threshold`, "rule-lbl", { "text-anchor": "end" });
+  el("line", { class: "axis-line", x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH }, s);
+  text(s, padL, padT + plotH + 16, `${ranked.length} rows with coverage, best first`, "tick");
+  text(s, W - padR, padT + plotH + 16, `${complete.length} clear the threshold`, "tick", { "text-anchor": "end" });
+});
+
+/* ---------- depth vs completeness ---------- */
+mount(document.getElementById("scatter"), (host, W) => {
+  const padL = 34, padR = 12, padT = 8, plotH = 168, axisH = 34;
+  const s = svgRoot(host, W, plotH + axisH + padT);
+  s.setAttribute("aria-label", "Median depth against genome completeness for each row");
+  const pts = S.filter((d) => d.median_depth !== null && d.cov_min !== null);
+  const lx = (v) => Math.log10(Math.max(1, v));
+  const xMax = lx(Math.max(...pts.map((d) => d.median_depth), 10)) * 1.04;
+  const x = (v) => padL + (lx(v) / xMax) * (W - padL - padR);
+  const y = (v) => padT + plotH - (v / 100) * plotH;
+
+  [0, 25, 50, 75, 100].forEach((v) => {
+    el("line", { class: "grid-line", x1: padL, x2: W - padR, y1: y(v), y2: y(v) }, s);
+    text(s, padL - 6, y(v) + 3.5, v, "tick", { "text-anchor": "end" });
+  });
+  [1, 10, 100, 1000, 10000].forEach((v) => {
+    if (lx(v) > xMax) return;
+    el("line", { class: "grid-line", x1: x(v), x2: x(v), y1: padT, y2: padT + plotH }, s);
+    text(s, x(v), padT + plotH + 15, compact(v) + "×", "tick", { "text-anchor": "middle" });
+  });
+  const ty = y(T);
+  el("line", { class: "rule", x1: padL, x2: W - padR, y1: ty, y2: ty }, s);
+  text(s, W - padR, ty - 5, `${T}%`, "rule-lbl", { "text-anchor": "end" });
+
+  pts.forEach((d) => {
+    const g = el("g", {}, s);
+    /* 2px surface ring keeps overlapping dots legible */
+    el("circle", { cx: x(d.median_depth), cy: y(d.cov_min), r: 5.5,
+                   fill: facetColor(d.facet), stroke: "var(--surface)", "stroke-width": 2 }, g);
+    el("circle", { class: "hit", cx: x(d.median_depth), cy: y(d.cov_min), r: 13 }, g);
+    hoverable(g, esc(d.key), [...facetRows(d), ["Median depth", fmt1(d.median_depth) + "×"],
+                        [`≥${P.min_depth}× coverage`, pct(d.cov_min)],
+                        ["Clade", esc((d.viralqc && (d.viralqc.clade || d.viralqc.lineage)) || "—")]],
+              () => selectSample(d.key));
+  });
+  el("line", { class: "axis-line", x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH }, s);
+  text(s, padL, padT + plotH + 29, "Median depth (log scale)", "tick");
+  text(s, 0, 0, `% covered at ≥${P.min_depth}×`, "tick",
+       { transform: `translate(11 ${padT + plotH / 2}) rotate(-90)`, "text-anchor": "middle" });
+});
+
+const facetLegend = () => facetCount.map(([f, n]) =>
+  `<span class="chip"><i class="sw" style="background:${facetColor(f)}"></i>${esc(f)} <span style="color:var(--muted);font-weight:500">${n}</span></span>`).join("");
+document.getElementById("ranked-legend").innerHTML = facetLegend();
+document.getElementById("scatter-legend").innerHTML = facetLegend();
+
+/* ---------- sample table ---------- */
+const cladeText = (d) => d.viralqc ? [d.viralqc.clade, d.viralqc.lineage].filter(Boolean).join(" · ") : "";
+const COLS = [
+  { k: "id",           t: "Sample",         num: false, get: (d) => d.id,
+    cell: (d) => `<td class="id">${esc(d.id)}</td>` },
+  { k: "status",       t: "Status",         num: false, get: (d) => d.status,
+    cell: (d) => `<td>${pill(d.status)}</td>` },
+  FACET_LABEL ? { k: "facet", t: FACET_LABEL, num: false, get: (d) => d.facet || "",
+    cell: (d) => `<td>${d.facet ? facetChip(d.facet) : `<span class="dim">—</span>`}</td>` } : null,
+  { k: "total_reads",  t: "Reads",          num: true,  get: (d) => d.total_reads,
+    cell: (d) => `<td class="num ${d.total_reads === null ? "dim" : ""}">${fmt(d.total_reads)}</td>` },
+  IS_ILLUMINA ? { k: "qc_passed_reads", t: "QC-passed", num: true, get: (d) => d.qc_passed_reads,
+    cell: (d) => `<td class="num ${d.qc_passed_reads === null ? "dim" : ""}">${fmt(d.qc_passed_reads)}</td>` } : null,
+  { k: "mapped_reads", t: "Mapped",         num: true,  get: (d) => d.mapped_reads,
+    cell: (d) => `<td class="num ${d.mapped_reads === null ? "dim" : ""}">${fmt(d.mapped_reads)}</td>` },
+  { k: "pct_mapped",   t: "% mapped",       num: true,  get: (d) => d.pct_mapped,
+    cell: (d) => `<td class="num ${d.pct_mapped === null ? "dim" : ""}">${pct(d.pct_mapped)}</td>` },
+  { k: "median_depth", t: "Median depth",   num: true,  get: (d) => d.median_depth,
+    cell: (d) => `<td class="num ${d.median_depth === null ? "dim" : ""}">${d.median_depth === null ? "—" : fmt1(d.median_depth) + "×"}</td>` },
+  { k: "cov_min",      t: `Cov ≥${P.min_depth}×`, num: true, get: (d) => d.cov_min,
+    cell: (d) => {
+      if (d.cov_min === null) return `<td class="num"><span class="dim">—</span></td>`;
+      const fill = `<span class="track"><i class="fill" style="width:${Math.max(2, d.cov_min)}%;background:${
+        isComplete(d) ? "var(--ord-3)" : "var(--seq-mid)"}"></i></span>`;
+      return `<td class="num"><span class="meter">${fill}<span class="val">${d.cov_min.toFixed(1)}%</span></span></td>`;
+    } },
+  { k: "n_pct",        t: "N %",            num: true,  get: (d) => d.consensus ? d.consensus.n_pct : null,
+    cell: (d) => `<td class="num ${!d.consensus || d.consensus.n_pct === null ? "dim" : ""}">${d.consensus ? pct(d.consensus.n_pct) : "—"}</td>` },
+  HAS_VQC ? { k: "grade", t: "Grade",       num: false, get: (d) => gradeOf(d) || "",
+    cell: (d) => `<td>${gradePill(gradeOf(d))}</td>` } : null,
+  HAS_VQC ? { k: "clade", t: "Clade / lineage", num: false, get: (d) => cladeText(d),
+    cell: (d) => `<td class="${cladeText(d) ? "" : "dim"}">${esc(cladeText(d) || "—")}</td>` } : null,
+].filter(Boolean);
+const FILTERS = [
+  { k: "all",      t: "All",                match: () => true },
+  { k: "complete", t: `≥${T}% covered`,     match: isComplete },
+  HAS_VQC ? { k: "grade", t: "Grade A/B",   match: isGoodGrade } : null,
+  { k: "flagged",  t: "Flagged",            match: (d) => d.status !== "ok" },
+].filter(Boolean);
+let activeFilter = "all", query = "", sortKey = "cov_min", sortDir = -1, selected = null;
+
+document.getElementById("filters").innerHTML =
+  FILTERS.map((f) => `<button class="fbtn" type="button" data-f="${f.k}" aria-pressed="${f.k === activeFilter}">
+    ${esc(f.t)}<span class="n">${S.filter(f.match).length}</span></button>`).join("") +
+  `<input type="search" id="q" placeholder="Filter by sample, ${FACET_LABEL ? FACET_LABEL.toLowerCase() + ", " : ""}virus, clade or status" aria-label="Filter samples">`;
+document.getElementById("thead-row").innerHTML = COLS.map((c) =>
+  `<th data-k="${c.k}" class="${c.num ? "num" : ""}" scope="col">${esc(c.t)}<span class="arrow">▲</span></th>`).join("");
+
+function visibleRows() {
+  const f = FILTERS.find((x) => x.k === activeFilter);
+  const q = query.trim().toLowerCase();
+  const rows = S.filter((d) => f.match(d) &&
+    (!q || [d.id, d.facet, d.viralqc && d.viralqc.virus, d.viralqc && d.viralqc.clade,
+            d.viralqc && d.viralqc.lineage, d.status, statusMeta(d.status).text]
+      .some((v) => v && String(v).toLowerCase().includes(q))));
+  const col = COLS.find((c) => c.k === sortKey) || COLS[0];
+  return rows.sort((a, b) => {
+    let x = col.get(a), y = col.get(b);
+    if (x === null || x === undefined || x === "") x = col.num ? -Infinity : "￿";
+    if (y === null || y === undefined || y === "") y = col.num ? -Infinity : "￿";
+    if (x < y) return -sortDir;
+    if (x > y) return sortDir;
+    return a.key < b.key ? -1 : 1;
+  });
+}
+function renderTable() {
+  const rows = visibleRows();
+  document.getElementById("tbody").innerHTML = rows.map((d) =>
+    `<tr data-id="${esc(d.key)}" aria-selected="${d.key === selected}" tabindex="0">` +
+    COLS.map((c) => c.cell(d)).join("") + `</tr>`).join("");
+  document.querySelectorAll("#thead-row th").forEach((th) => {
+    if (th.dataset.k === sortKey) { th.setAttribute("aria-sort", sortDir === 1 ? "ascending" : "descending");
+      th.querySelector(".arrow").textContent = sortDir === 1 ? "▲" : "▼"; }
+    else { th.removeAttribute("aria-sort"); th.querySelector(".arrow").textContent = "▲"; }
+  });
+  document.getElementById("table-caption").textContent =
+    `${rows.length} of ${S.length} ${FK === "segment" ? "sample–segment rows" : "samples"}. Click a row for its detail.`;
+}
+document.getElementById("table-foot").innerHTML =
+  `<b>Cov ≥${P.min_depth}×</b> is the share of reference positions at or above the masking depth;
+   positions below it are <code>N</code> in the consensus. A row enters the filtered multi-FASTA at
+   ≥${T}%.` + (HAS_VQC ? ` <b>Grade</b> is viralQC's A–D genome quality.` : "") +
+  (IS_ILLUMINA ? ` <b>QC-passed</b> counts reads surviving fastp.` : "");
+
+document.getElementById("filters").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-f]"); if (!b) return;
+  activeFilter = b.dataset.f;
+  document.querySelectorAll("#filters [data-f]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.f === activeFilter));
+  renderTable();
+});
+document.getElementById("q").addEventListener("input", (e) => { query = e.target.value; renderTable(); });
+document.getElementById("thead-row").addEventListener("click", (e) => {
+  const th = e.target.closest("th"); if (!th) return;
+  const k = th.dataset.k;
+  if (k === sortKey) sortDir = -sortDir;
+  else { sortKey = k; sortDir = COLS.find((c) => c.k === k).num ? -1 : 1; }
+  renderTable();
+});
+document.getElementById("tbody").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-id]"); if (tr) selectSample(tr.dataset.id);
+});
+document.getElementById("tbody").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const tr = e.target.closest("tr[data-id]"); if (tr) { e.preventDefault(); selectSample(tr.dataset.id); }
+});
+
+/* ---------- sample detail ---------- */
+function selectSample(id, scroll = true) {
+  selected = id;
+  document.querySelectorAll("#tbody tr[data-id]").forEach((tr) =>
+    tr.setAttribute("aria-selected", tr.dataset.id === id));
+  renderDetail();
+  if (scroll) document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function qcPill(status) {
+  const s = (status || "").toLowerCase();
+  const cls = s === "good" || s === "pass" ? "good" : s === "mediocre" || s === "warn" ? "warning"
+            : s === "bad" || s === "fail" ? "critical" : "neutral";
+  return `<span class="pill ${cls}"><i class="dot"></i>${esc(status || "—")}</span>`;
+}
+function statBlock(items) {
+  return `<div class="statstrip">` + items.map((i) =>
+    `<div class="s"><div class="k">${i.k}</div><div class="v">${i.v}</div>${i.n ? `<div class="n">${i.n}</div>` : ""}</div>`).join("") + `</div>`;
+}
+function statusCallout(d) {
+  const g = d.gate || {};
+  switch (d.status) {
+    case "ok": return "";
+    case "no_mapped_reads":
+      return `<p class="callout">Assembly was not attempted: <b>${fmt(g.mapped_reads ?? d.mapped_reads)}</b> reads mapped to
+        the reference${g.minimum_mapped_reads != null ? `, below the ${fmt(g.minimum_mapped_reads)}-read floor` : ""}.
+        This gate alone does not establish absence of the target or explain the low mapped-read count.</p>`;
+    case "empty_consensus":
+      return `<p class="callout flag">The consensus for this row contains no called bases; every position fell below
+        ${P.min_depth}× or the alignment produced nothing to call.</p>`;
+    case "viralqc_failed": case "viralqc_partial": case "viralqc_skipped": case "viralqc_missing":
+      return `<p class="callout">viralQC did not grade this genome (<b>${esc(statusMeta(d.status).text)}</b>).
+        Coverage and depth below are unaffected; clade, lineage and grade are unavailable.</p>`;
+    case "missing_stats":
+      return `<p class="callout flag">Assembly statistics are missing for this row; the figures shown come only from
+        the artefacts that were present.</p>`;
+    default:
+      return `<p class="callout">Status <b>${esc(d.status)}</b>.</p>`;
+  }
+}
+
+function renderDetail() {
+  const host = document.getElementById("detail");
+  dropDetached();
+  const rows = visibleRows();
+  const d = S.find((x) => x.key === selected);
+  if (!d) { host.innerHTML = `<p class="note">Select a sample from the table above.</p>`; return; }
+  const idx = rows.findIndex((r) => r.key === d.key);
+  const vq = d.viralqc;
+  const cov = DATA.coverage[d.key];
+  const ext = DATA.run.extents[d.facet || "*"] || null;
+  const grade = gradeOf(d);
+  const color = facetColor(d.facet);
+
+  let html = `<div class="detail-head">
+      <h3>${esc(d.id)}</h3>
+      ${pill(d.status)}
+      ${facetChip(d.facet)}
+      ${grade ? gradePill(grade, vq.score !== null ? ` · ${fmt1(vq.score)}/24` : "") : ""}
+      <div class="detail-nav">
+        <button type="button" id="prev" ${idx <= 0 ? "disabled" : ""}>← Previous</button>
+        <button type="button" id="next" ${idx < 0 || idx >= rows.length - 1 ? "disabled" : ""}>Next →</button>
+      </div>
+    </div>`;
+
+  const items = [{ k: "Reads", v: fmt(d.total_reads) }];
+  if (IS_ILLUMINA) items.push({ k: "QC-passed", v: fmt(d.qc_passed_reads),
+    n: d.total_reads ? `${pctOf(d.qc_passed_reads, d.total_reads)} of reads` : "" });
+  items.push({ k: "Mapped", v: fmt(d.mapped_reads), n: `${pct(d.pct_mapped)} of reads` });
+  items.push({ k: "Depth", v: fmt1(d.median_depth) + "<small>× median</small>",
+    n: `mean ${fmt1(d.mean_depth)}×, zeros included` });
+  items.push({ k: `Covered at ≥${P.min_depth}×`, v: pct(d.cov_min), n: `10×: ${pct(d.cov10)} · 100×: ${pct(d.cov100)}` });
+  if (d.consensus) items.push({ k: "Consensus", v: fmt(d.consensus.length) + "<small> bp</small>",
+    n: `${fmt(d.consensus.n)} N (${pct(d.consensus.n_pct)})` });
+  if (d.variants) items.push({ k: "Variant records", v: fmt(d.variants.records), n: "lines in the final VCF" });
+  if (d.isnv_count !== null) items.push({ k: "iSNVs", v: fmt(d.isnv_count),
+    n: P.af_threshold !== null ? `AF ≥ ${P.af_threshold}` : "" });
+  if (d.clair3_model) items.push({ k: "Clair3 model", v: `<small>${esc(d.clair3_model)}</small>` });
+  html += statBlock(items);
+
+  html += statusCallout(d);
+
+  const leftCol = IS_ILLUMINA
+    ? `<div><h3 class="sub-h3">Read QC (fastp)</h3>
+        <p class="note">Paired reads before and after adapter and quality trimming; the mapped and
+          depth figures above are computed from the reads that passed.</p>
+        ${d.fastp ? statBlock([
+          { k: "Reads in", v: fmt(d.fastp.total_reads_before) },
+          { k: "Reads out", v: fmt(d.fastp.total_reads_after),
+            n: `${pctOf(d.fastp.total_reads_after, d.fastp.total_reads_before)} kept` },
+          { k: "Q30 rate", v: d.fastp.q30_after === null || d.fastp.q30_after === undefined ? "—" : pct(100 * d.fastp.q30_after),
+            n: d.fastp.q30_before === null || d.fastp.q30_before === undefined ? "" : `before: ${pct(100 * d.fastp.q30_before)}` },
+          { k: "Duplication", v: d.fastp.duplication === null || d.fastp.duplication === undefined ? "—" : pct(100 * d.fastp.duplication) },
+          { k: "Mean length", v: `${fmt(d.fastp.read1_mean_length)}<small> / ${fmt(d.fastp.read2_mean_length)} bp</small>`, n: "R1 / R2 after trimming" },
+          { k: "Low quality", v: fmt(d.fastp.low_quality), n: "reads removed" },
+          { k: "Too short", v: fmt(d.fastp.too_short), n: "reads removed" },
+          { k: "Adapter trimmed", v: fmt(d.fastp.adapter_trimmed), n: "reads" },
+        ]) : `<p class="note">No fastp report for this sample.</p>`}</div>`
+    : `<div><h3 class="sub-h3">Variant calling</h3>
+        <p class="note">Clair3 calls on reads passing the length and mapping-quality floors; the consensus
+          applies variants at or above the allele-frequency threshold and masks positions below ${P.min_depth}×.</p>
+        ${statBlock([
+          { k: "Clair3 model", v: `<small>${esc(d.clair3_model || P.clair3_model || "—")}</small>` },
+          { k: "MAPQ floor", v: fmt(P.minimum_map_quality) },
+          { k: "AF threshold", v: P.af_threshold === null ? "—" : String(P.af_threshold) },
+          { k: "Min read length", v: P.minimum_length === null ? "—" : fmt(P.minimum_length) + "<small> bp</small>" },
+          { k: "Variant records", v: d.variants ? fmt(d.variants.records) : "—" },
+        ])}</div>`;
+
+  const rightCol = cov
+    ? `<div><h3 class="sub-h3">Depth along the genome</h3>
+        <p class="note">Mean depth in ${fmt(cov.bin_bp)} bp windows from <code>table_cov_basewise.txt</code>.
+          Grey bands are ranges below ${P.min_depth}× and masked to <code>N</code>${
+          cov.contigs && cov.contigs.length > 1 ? `; dashed lines separate the ${cov.contigs.length} reference contigs` : ""}${
+          ext ? `; the pale bands at each end lie outside the primer extent (${fmt(ext.outside_bp)} bp) and describe scheme geometry, not a measured coverage limit` : ""}.</p>
+        <div id="covtrace"></div></div>`
+    : `<div><h3 class="sub-h3">Depth along the genome</h3>
+        <p class="note">No per-position depth table for this row.</p></div>`;
+
+  html += `<div class="grid-2">${leftCol}${rightCol}</div>`;
+
+  if (DATA.amplicons[d.key]) {
+    html += `<div style="margin-top:18px"><h3 class="sub-h3">Amplicon coverage</h3>
+      <p class="note">Mean depth over each amplicon of <code>${esc(P.primer_scheme || "the primer scheme")}</code>,
+        from the same per-position table. A mean above ${P.min_depth}× does not guarantee every position
+        in the amplicon met the masking threshold; use the trace for that.</p>
+      <div id="sampleamp"></div>
+      <div class="legend">
+        <span class="chip"><i class="sw" style="background:${color}"></i>at or above ${P.min_depth}×</span>
+        <span class="chip"><i class="sw" style="background:var(--accent)"></i>mean below ${P.min_depth}×</span>
+      </div></div>`;
+  }
+
+  if (vq) {
+    const checks = Object.entries(vq.checks || {}).filter(([, v]) => v);
+    html += `<div style="margin-top:18px"><h3 class="sub-h3">viralQC</h3>
+      <p class="note">Virus <b>${esc(vq.virus || "—")}</b>${vq.species ? ` (${esc(vq.species)})` : ""} ·
+        clade <b>${esc(vq.clade || "—")}</b> · lineage <b>${esc(vq.lineage || "—")}</b>.</p>
+      <div class="legend" style="margin-top:8px">
+        <span class="chip">Grade ${gradePill(grade, vq.score !== null ? ` · ${fmt1(vq.score)}/24` : "")}</span>
+        <span class="chip">Overall ${qcPill(vq.overall)}</span>
+        ${checks.map(([k, v]) => `<span class="chip">${esc(k.replace(/([A-Z])/g, " $1").toLowerCase())} ${qcPill(v)}</span>`).join("")}
+      </div>
+      <p class="note" style="margin-top:8px">Alignment coverage ${vq.coverage !== null ? (100 * vq.coverage).toFixed(1) + "%" : "—"} ·
+        ${fmt(vq.substitutions)} substitutions · ${fmt(vq.deletions)} deletions · ${fmt(vq.missing)} missing sites ·
+        dataset <b>${esc(vq.dataset || "—")}</b>${vq.dataset_version ? ` <b>${esc(vq.dataset_version)}</b>` : ""}.${
+        vq.input_status ? ` Input sequence status: <b>${esc(vq.input_status)}</b>.` : ""}</p>
+      <p class="note" style="margin-top:8px">Grades and QC statuses are reported from the selected viralQC
+        dataset. Inspect the individual checks alongside coverage and missing sites; coverage alone does
+        not replace the other quality checks.</p></div>`;
+  }
+
+  host.innerHTML = html;
+
+  const prev = document.getElementById("prev"), next = document.getElementById("next");
+  if (prev) prev.onclick = () => selectSample(rows[idx - 1].key, false);
+  if (next) next.onclick = () => selectSample(rows[idx + 1].key, false);
+
+  /* depth trace */
+  if (cov) {
+    mount(document.getElementById("covtrace"), (hostEl, W) => {
+      const padL = 34, padR = 8, padT = 8, plotH = 150, axisH = 30;
+      const s = svgRoot(hostEl, W, plotH + axisH + padT);
+      s.setAttribute("aria-label", `Depth along the genome for ${d.key}`);
+      const L = cov.genome_length, innerW = W - padL - padR;
+      const x = (p) => padL + (p / L) * innerW;
+      const maxD = Math.max(10, ...cov.bins);
+      const ly = (v) => Math.log10(v + 1) / Math.log10(maxD + 1);
+      const y = (v) => padT + plotH - ly(v) * plotH;
+      const contigs = cov.contigs || [];
+
+      if (ext) {
+        el("rect", { x: x(0), y: padT, width: Math.max(1, x(ext.start) - x(0)), height: plotH, fill: "var(--surface-sunk)" }, s);
+        el("rect", { x: x(ext.end), y: padT, width: Math.max(1, x(L) - x(ext.end)), height: plotH, fill: "var(--surface-sunk)" }, s);
+      }
+      (cov.mask || []).forEach(([a, b]) => {
+        el("rect", { x: x(a - 1), y: padT, width: Math.max(1, x(b) - x(a - 1)), height: plotH, fill: "var(--grid)" }, s);
+      });
+      [1, 10, 100, 1000, 10000].filter((v) => v <= maxD).forEach((v) => {
+        el("line", { class: "grid-line", x1: padL, x2: W - padR, y1: y(v), y2: y(v) }, s);
+        text(s, padL - 6, y(v) + 3.5, compact(v), "tick", { "text-anchor": "end" });
+      });
+      let path = "";
+      cov.bins.forEach((v, i) => { path += (i ? "L" : "M") + x(i * cov.bin_bp).toFixed(1) + " " + y(v).toFixed(1); });
+      el("path", { d: path + `L${x((cov.bins.length - 1) * cov.bin_bp).toFixed(1)} ${padT + plotH}L${padL} ${padT + plotH}Z`,
+                   fill: color, "fill-opacity": 0.10 }, s);
+      el("path", { d: path, fill: "none", stroke: color, "stroke-width": 2,
+                   "stroke-linejoin": "round", "stroke-linecap": "round" }, s);
+      if (contigs.length > 1) {
+        contigs.forEach((c, i) => {
+          if (i) el("line", { class: "contig-line", x1: x(c.offset), x2: x(c.offset), y1: padT, y2: padT + plotH }, s);
+          const label = short(c.name, Math.max(4, Math.floor((x(c.offset + c.length) - x(c.offset)) / 6.5)));
+          text(s, x(c.offset + c.length / 2), padT + 11, label, "tick", { "text-anchor": "middle" });
+        });
+      }
+      const ry = y(P.min_depth);
+      el("line", { class: "rule", x1: padL, x2: W - padR, y1: ry, y2: ry }, s);
+      text(s, W - padR, ry - 5, `${P.min_depth}×`, "rule-lbl", { "text-anchor": "end" });
+      el("line", { class: "axis-line", x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH }, s);
+      const step = niceStep(L / 6);
+      for (let p = 0; p <= L; p += step)
+        text(s, x(p), padT + plotH + 15, compact(p), "tick", { "text-anchor": p ? "middle" : "start" });
+      text(s, padL, padT + plotH + 28, `Genome position (bp)${contigs.length === 1 ? ` · ${short(contigs[0].name, 40)}` : contigs.length > 1 ? ` · ${contigs.length} contigs, concatenated` : ""}`, "tick");
+
+      /* crosshair + tooltip across the trace */
+      const cross = el("line", { class: "axis-line", y1: padT, y2: padT + plotH, opacity: 0 }, s);
+      const dot = el("circle", { r: 4.5, fill: color, stroke: "var(--surface)", "stroke-width": 2, opacity: 0 }, s);
+      const hit = el("rect", { class: "hit", x: padL, y: padT, width: innerW, height: plotH }, s);
+      hit.addEventListener("mousemove", (e) => {
+        const box = s.getBoundingClientRect();
+        const px = (e.clientX - box.left) * (W / box.width);
+        const i = Math.max(0, Math.min(cov.bins.length - 1, Math.round(((px - padL) / innerW) * L / cov.bin_bp)));
+        const pos = i * cov.bin_bp;
+        cross.setAttribute("x1", x(pos)); cross.setAttribute("x2", x(pos)); cross.setAttribute("opacity", 1);
+        dot.setAttribute("cx", x(pos)); dot.setAttribute("cy", y(cov.bins[i])); dot.setAttribute("opacity", 1);
+        const masked = (cov.mask || []).some(([a, b]) => pos + 1 >= a && pos + 1 <= b);
+        const contig = contigs.length > 1 ? contigs.find((c) => pos >= c.offset && pos < c.offset + c.length) : null;
+        showTip(e, `Position ${fmt(pos + 1)}–${fmt(Math.min(L, pos + cov.bin_bp))}`,
+          [...(contig ? [["Contig", esc(contig.name)], ["Contig position", fmt(pos - contig.offset + 1)]] : []),
+           ["Mean depth", fmt1(cov.bins[i]) + "×"],
+           ["Consensus", masked ? "masked to N" : "called"],
+           ...(ext ? [["Primer extent", pos < ext.start || pos > ext.end ? "outside" : "inside"]] : [])]);
+      });
+      hit.addEventListener("mouseleave", () => { hideTip(); cross.setAttribute("opacity", 0); dot.setAttribute("opacity", 0); });
+    });
+  }
+
+  /* per-sample amplicon bars */
+  if (DATA.amplicons[d.key]) {
+    const depths = DATA.amplicons[d.key];
+    mount(document.getElementById("sampleamp"), (hostEl, W) => {
+      const padL = 34, padR = 8, padT = 8, plotH = 120, axisH = 26;
+      const s = svgRoot(hostEl, W, plotH + axisH + padT);
+      s.setAttribute("aria-label", `Mean depth per amplicon for ${d.key}`);
+      const innerW = W - padL - padR, band = innerW / depths.length;
+      const barW = Math.max(3, Math.min(24, band - 2));
+      const dMax = Math.max(...depths, P.min_depth) * 1.06;
+      const y = (v) => padT + plotH - (v / dMax) * plotH;
+      const step = niceStep(dMax / 4);
+      for (let v = 0; v <= dMax; v += step) {
+        el("line", { class: "grid-line", x1: padL, x2: W - padR, y1: y(v), y2: y(v) }, s);
+        text(s, padL - 6, y(v) + 3.5, compact(v), "tick", { "text-anchor": "end" });
+      }
+      depths.forEach((v, i) => {
+        const xx = padL + i * band + (band - barW) / 2;
+        const g = el("g", {}, s);
+        const low = v < P.min_depth;
+        el("rect", { x: xx, y: y(v), width: barW, height: Math.max(2, padT + plotH - y(v)), rx: 3,
+                     fill: low ? "var(--accent)" : color }, g);
+        /* a true zero would otherwise render as nothing, hiding which amplicon failed */
+        if (v < 1) el("rect", { x: xx, y: padT + plotH - 3, width: barW, height: 3, fill: "var(--accent)" }, g);
+        el("rect", { class: "hit", x: padL + i * band, y: padT, width: band, height: plotH }, g);
+        hoverable(g, `Amplicon ${i + 1}`, [["Mean depth", fmt1(v) + "×"],
+          ["Against threshold", low ? `below ${P.min_depth}×` : `at or above ${P.min_depth}×`]]);
+        if ((i + 1) % 5 === 0 || i === 0) text(s, padL + i * band + band / 2, padT + plotH + 14, i + 1, "tick", { "text-anchor": "middle" });
+      });
+      const ry = y(P.min_depth);
+      el("line", { class: "rule", x1: padL, x2: W - padR, y1: ry, y2: ry }, s);
+      el("line", { class: "axis-line", x1: padL, x2: W - padR, y1: padT + plotH, y2: padT + plotH }, s);
+      const below = depths.filter((v) => v < P.min_depth).length;
+      text(s, padL, padT + plotH + 26, `${below} of ${depths.length} amplicons below ${P.min_depth}×`, "tick");
+    });
+  }
+}
+
+/* ---------- provenance ---------- */
+const LONG = 26;
+const M = DATA.run.manifest;
+const VS = DATA.run.viralqc_status;
+const row = (k, v) => v === null || v === undefined || v === "" ? "" :
+  `<div class="row"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`;
+const vqcLine = VS ? [VS.status, VS.exit_code !== undefined ? `exit ${VS.exit_code}` : null,
+  VS.result_rows !== undefined && VS.input_records !== undefined ? `${VS.result_rows}/${VS.input_records} records` : null]
+  .filter((v) => v !== null && v !== undefined).join(", ") : null;
+document.getElementById("prov").innerHTML =
+  DATA.run.versions.filter(([, v]) => v.length <= LONG)
+    .map(([k, v]) => row(k, v)).join("") +
+  [["platform", PLATFORM],
+   ["minimum depth", `${P.min_depth}×`],
+   ["consensus coverage threshold", `${T}% at ≥${P.min_depth}×`],
+   ["primer scheme", P.primer_scheme],
+   ["allele-frequency threshold", P.af_threshold],
+   ["minimum read length", P.minimum_length === null ? null : `${fmt(P.minimum_length)} bp`],
+   ["MAPQ floor", P.minimum_map_quality],
+   ["Clair3 model", IS_ILLUMINA ? null : P.clair3_model],
+   ["viralQC", vqcLine],
+   ["run created (UTC)", M ? M.created_utc : null],
+   ["run finished (UTC)", M ? M.finished_utc : null],
+   ["run status", M ? M.status : null],
+   ["config sha256", M && M.config_sha256 ? M.config_sha256.slice(0, 12) : null]].map(([k, v]) => row(k, v)).join("");
+
+const inputLines = M && M.inputs && M.inputs.length
+  ? "<br>Inputs:" + M.inputs.map((i) =>
+      `<br><code>${esc(i.sample)}</code> ${esc(i.path ? String(i.path).split("/").pop() : "—")} · sha256 ${esc(i.sha256 || "—")}${
+        i.size_bytes != null ? ` · ${compact(i.size_bytes)} B` : ""}`).join("")
+  : "";
+document.getElementById("fine").innerHTML =
+  `Read counts and coverage come from <code>summary.tsv</code>; the depth trace from each row's
+   <code>table_cov_basewise.txt</code>; variant counts are VCF records; the N mask is derived from
+   depth &lt; ${P.min_depth}×. Clade, lineage and grade are viralQC's. Source: <code>${esc(DATA.run.output_dir)}</code>.` +
+  DATA.run.versions.filter(([, v]) => v.length > LONG)
+    .map(([k, v]) => `<br><code>${esc(k)}</code>: ${esc(v)}`).join("") +
+  inputLines;
+
+/* ---------- theme toggle: OS preference by default, explicit on click ------ */
+const themeBtn = document.getElementById("theme");
+const isDark = () => css("--is-dark") === "1";
+function paintThemeBtn() { themeBtn.textContent = isDark() ? "Light theme" : "Dark theme"; }
+themeBtn.addEventListener("click", () => {
+  document.documentElement.dataset.theme = isDark() ? "light" : "dark";
+  paintThemeBtn();
+  /* colours are read into the SVG at render time, so redraw every chart */
+  redrawAll();
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintThemeBtn);
+paintThemeBtn();
+
+/* ---------- go ---------- */
+renderTable();
+selectSample((ranked[0] ?? S[0])?.key, false);
+</script>
+</body>
+</html>

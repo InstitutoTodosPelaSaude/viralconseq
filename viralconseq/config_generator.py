@@ -65,6 +65,7 @@ _KEY_SECTIONS: Dict[str, str] = {
     ConfigKeys.RUN_VIRALQC: "viralqc",
     ConfigKeys.VIRALQC_DB: "viralqc",
     ConfigKeys.VIRALQC_EXTRA_FLAGS: "viralqc",
+    ConfigKeys.RUN_REPORT: "report",
     ConfigKeys.VIRALCONSEQ_VERSION: "provenance",
     ConfigKeys.THREADS_TOTAL: "resources",
     ConfigKeys.MAX_MEMORY_MB: "resources",
@@ -118,6 +119,11 @@ class ConfigGenerator:
             "viralqc_extra_flags is config-only and must hold plain tool flags.",
         ),
         (
+            "report",
+            "The self-contained run report (report.html): run_report toggles it "
+            "(--report / --no-report).",
+        ),
+        (
             "provenance",
             "Written by viralconseq for the record; not read as a parameter.",
         ),
@@ -135,6 +141,7 @@ class ConfigGenerator:
     SECTION_ISNV = "isnv"
     SECTION_CLAIR3 = "clair3"
     SECTION_VIRALQC = "viralqc"
+    SECTION_REPORT = "report"
     SECTION_PROVENANCE = "provenance"
     SECTION_RESOURCES = "resources"
     # Historical alias: keys with no better home land in the first section.
@@ -380,6 +387,10 @@ class ConfigGenerator:
             self.SECTION_CONSENSUS,
         )
 
+    def add_report_settings(self, run_report: bool = True) -> None:
+        """Toggle the self-contained run report (``rules/report.smk``)."""
+        self._set(ConfigKeys.RUN_REPORT, bool(run_report), self.SECTION_REPORT)
+
     def add_provenance(self, viralconseq_version: str) -> None:
         """Record the viralconseq version that wrote this config.
 
@@ -518,6 +529,7 @@ class ConfigGenerator:
             # DAG; the placeholder DB files are listed in SKELETON_PLACEHOLDERS.
             gen.add_viralqc_settings(run_viralqc=True, viralqc_db=f"{root}/viralqc_db")
             gen.add_collect_settings()
+            gen.add_report_settings(run_report=True)
             gen.add_workflow_path(".")
             gen.add_provenance(__version__)
             rules = (

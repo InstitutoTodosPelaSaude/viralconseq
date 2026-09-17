@@ -226,6 +226,10 @@ class Test_Clair3ModelOptions(unittest.TestCase):
         args = self._invoke([], env={"VIRALCONSEQ_CLAIR3_MODELS": "/from/env"})
         self.assertEqual(args["clair3_model_dir"], "/from/env")
 
+    def test_report_toggle(self):
+        self.assertIs(self._invoke([])["run_report"], True)
+        self.assertIs(self._invoke(["--no-report"])["run_report"], False)
+
     def test_consensus_coverage_threshold(self):
         self.assertEqual(self._invoke([])["consensus_coverage_threshold"], 70.0)
         self.assertEqual(

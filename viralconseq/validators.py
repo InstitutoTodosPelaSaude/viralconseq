@@ -302,7 +302,7 @@ def validate_config_dict(config: Any) -> None:
         ):
             fail("clair3_model_dir must be a directory path")
 
-    for key in ("run_isnv", "run_viralqc"):
+    for key in ("run_isnv", "run_viralqc", "run_report"):
         if key in config and not isinstance(config[key], bool):
             fail(f"{key} must be true or false, got {config[key]!r}")
 

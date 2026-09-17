@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 
 import pytest
@@ -80,6 +81,12 @@ def test_snakemake_dryrun(config_filename):
     assert (
         result.returncode == 0
     ), f"Snakemake dry-run failed for {config_filename}\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+
+    # The report is planned exactly when run_report is on.
+    planned = re.search(r"^rule report:", result.stdout, re.M) is not None
+    assert planned == (
+        "__no_report" not in config_filename
+    ), f"rule report {'planned' if planned else 'absent'} for {config_filename}\n{result.stdout}"
 
 
 def test_missing_required_key_is_reported_at_parse_time(tmp_path):

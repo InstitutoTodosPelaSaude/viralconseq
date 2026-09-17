@@ -23,7 +23,7 @@ snakemake(workflow.smk, config)   viralconseq/scripts/consensus_<datatype>[_segm
    │  workdir = <output>/<run_name> (so .snakemake/ lives next to the results)
    │  include: rules/common.smk (constraints, run.log hooks, config guard)
    │  rule all (default target) → include: rules/*.smk
-   │  ... → organize_files → include: rules/provenance.smk
+   │  ... → include: rules/collect.smk → include: rules/report.smk → organize_files → include: rules/provenance.smk
    │      (versions_<env> → versions.tsv, run_config → config.yml,
    │       collect_benchmarks → benchmark.tsv, the terminal rule)
    ▼

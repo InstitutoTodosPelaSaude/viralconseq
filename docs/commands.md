@@ -157,6 +157,7 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--skip-input-validation` | off | Skip content-level integrity checks of the input files (FASTQ/FASTA/BED). Existence checks still run. |
 | `--conda-prefix` | `~/.cache/viralconseq/conda-envs` | Cache directory for per-rule conda envs. Picked up from `$VIRALCONSEQ_CONDA_PREFIX` if set. Pre-warm with `viralconseq setup`. |
 | `--run-viralqc` / `--no-run-viralqc` | on | Run viralQC on the final consensus sequences (virus and clade assignment plus genome-quality scoring via Nextclade + BLAST). |
+| `--report` / `--no-report` | on | Write `<run>/report.html`, a self-contained interactive page built from `summary.tsv`: run-level figures, a sortable and filterable sample table, per-sample depth traces with the masked regions, primer extents when a scheme was given, viralQC verdicts, tool versions. Opens offline in any browser. |
 | `--viralqc-db` | `~/.cache/viralconseq/viralqc-db` | Directory with the viralQC databases. Picked up from `$VIRALCONSEQ_VIRALQC_DB` if set. Populate once with `viralconseq setup`. Ignored with `--no-run-viralqc`. |
 
 ### Input integrity validation

@@ -1,21 +1,20 @@
-# Config for Segmented Illumina Consensus Dry-run
+# Config for Illumina Consensus Dry-run (report off)
 samples:
   SAMPLE1:
     - data/reads/SAMPLE1_R1.fastq.gz
     - data/reads/SAMPLE1_R2.fastq.gz
+  SAMPLE2:
+    - data/reads/SAMPLE2_R1.fastq.gz
+    - data/reads/SAMPLE2_R2.fastq.gz
 
 data: illumina
-output: test/dryrun_output/consensus_illumina_segmented/
+output: test/dryrun_output/consensus_illumina__no_report/
 threads: 4
-reference:
-  S1: data/references/segment1.fasta
-  S2: data/references/segment2.fasta
-  S3: data/references/segment3.fasta
-
-scheme: NA
+reference: data/references/reference.fasta  # Path to single FASTA reference
+scheme: NA                                  # NA or path to primers.bed
 minimum_depth: 20
 minimum_length: 50
-workflow_path: .
+workflow_path: .                             # Base path for internal scripts
 
 # Illumina-specific settings
 adapters: NA 
@@ -32,7 +31,7 @@ run_isnv: false
 
 # viralQC consensus QC
 run_viralqc: true
-run_report: true
+run_report: false
 viralqc_db: data/viralqc_db
 viralqc_extra_flags: ""
 run_viralqc_cpus: 2

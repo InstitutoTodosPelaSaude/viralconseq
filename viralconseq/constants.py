@@ -53,6 +53,7 @@ class ConfigKeys:
     CLAIR3_MODEL_DIR = "clair3_model_dir"
     MINIMUM_MAPPED_READS = "minimum_mapped_reads"
     CONSENSUS_COVERAGE_THRESHOLD = "consensus_coverage_threshold"
+    RUN_REPORT = "run_report"
     THREADS_TOTAL = "threads_total"
     MAX_MEMORY_MB = "max_memory_mb"
     MEMORY_DETECTED_MB = "memory_detected_mb"

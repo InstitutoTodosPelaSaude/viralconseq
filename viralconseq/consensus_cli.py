@@ -185,6 +185,15 @@ _COMMON_OPTIONS = [
         "databases downloaded by 'viralconseq setup' (see --viralqc-db).",
     ),
     click.option(
+        "--report/--no-report",
+        "run_report",
+        default=True,
+        show_default=True,
+        help="Write <run>/report.html, a self-contained interactive page built from "
+        "summary.tsv (run-level figures, sortable sample table, per-sample depth "
+        "traces and viralQC verdicts). Regenerate one later with 'viralconseq create-report'.",
+    ),
+    click.option(
         "--viralqc-db",
         default=ViralQCDatabase.default_dir,
         show_default="$VIRALCONSEQ_VIRALQC_DB or ~/.cache/viralconseq/viralqc-db",

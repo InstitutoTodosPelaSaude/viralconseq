@@ -8,6 +8,7 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 ├── summary.tsv                       # START HERE: one row per sample, status + stats + viralQC
 ├── versions.tsv                      # tool versions probed at run time (component, version)
 ├── config.yml                        # copy of the resolved config this run used
+├── report.html                       # self-contained interactive report (unless --no-report)
 ├── consensus/                        # share-ready FASTAs (one-line sequences)
 │   ├── sample-{id}[.{segment}].fasta #   per sample, header sample-{id}[|contig][|segment]
 │   ├── consensus[.{segment}].fasta   #   every sample pooled, reference not included
@@ -99,6 +100,7 @@ deleted once the run is finished.
 |------|-------------|
 | `summary.tsv` | One row per sample (per sample and segment when segmented): status, read counts, depth, breadth of coverage, consensus length and N content, iSNV count, viralQC virus / clade / grade, Clair3 model. The place to start; columns below |
 | `assembly/assembly_stats_summary.csv` | Deprecated: the pre-0.2.0 table (fractions 0–1, mean depth) derived from the same rows; removed in 0.3.0 |
+| `report.html` | Interactive, self-contained report of the run (no external resources): headline figures, a sortable/filterable table of every `summary.tsv` row, a per-sample panel with the depth trace, masked regions, variant counts, read QC (Illumina) or Clair3 model and mapped-read gate (nanopore), and the viralQC verdict; footer with tool versions and run parameters. The page refuses to render numbers that disagree with `summary.tsv`. Rebuild it with `viralconseq create-report <run>` |
 | `consensus/consensus.fasta` | Every consensus pooled into one multi-FASTA (one-line sequences, no reference record); `consensus/consensus.cov<T>.fasta` keeps only the samples whose `coverage_min_depth` reaches `--consensus-coverage-threshold` (default 70 %), ready to share or submit. Segmented runs write one pair per segment |
 | `samples/sample-{id}/consensus.fasta` | Final consensus sequence |
 | `samples/sample-{id}/consensus.vcf.gz` | Variants relative to the reference |

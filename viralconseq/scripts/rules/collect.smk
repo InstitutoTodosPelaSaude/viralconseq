@@ -1,4 +1,5 @@
-# Collection step: the run-level summary.tsv and the flat consensus/ directory.
+# Collection step: the run-level summary.tsv and the flat consensus/ directory
+# (rules/report.smk builds report.html on top of them).
 #
 # Included by the four entry-point workflows after rules/viralqc.smk and before
 # organize_files. Expects: config (output, data, samples, minimum_depth,
@@ -29,6 +30,13 @@ def _per_sample(pattern):
     if SEGMENT_WILDCARD:
         return expand(pattern, sample=config["samples"], segment=SEGMENT_KEYS)
     return expand(pattern, sample=config["samples"])
+
+
+def _per_segment(pattern):
+    """Expand a run-level pattern over the segments (identity when unsegmented)."""
+    if SEGMENT_WILDCARD:
+        return expand(pattern, segment=SEGMENT_KEYS)
+    return pattern
 
 
 rule summary:

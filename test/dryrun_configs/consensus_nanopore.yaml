@@ -24,6 +24,7 @@ minimum_map_quality: 30
 
 # viralQC consensus QC
 run_viralqc: true
+run_report: true
 viralqc_db: data/viralqc_db
 viralqc_extra_flags: ""
 run_viralqc_cpus: 2

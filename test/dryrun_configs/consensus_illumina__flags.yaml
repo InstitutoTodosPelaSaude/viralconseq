@@ -32,6 +32,7 @@ run_isnv: false
 
 # viralQC consensus QC
 run_viralqc: true
+run_report: true
 viralqc_db: data/viralqc_db
 viralqc_extra_flags: "--blast-pident 75"
 minimap2_consensus_align_flags: "-a --sam-hit-only --secondary=no"

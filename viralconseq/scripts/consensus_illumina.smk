@@ -13,6 +13,7 @@ TERMINAL_INPUTS = [
     config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
     config['output'] + "summary.tsv",
     config['output'] + "consensus/consensus.cov" + f"{float(config['consensus_coverage_threshold']):g}" + ".fasta",
+    config['output'] + "report.html" if config.get("run_report", True) else [],
 ]
 
 rule all:
@@ -36,6 +37,7 @@ include: "rules/stats.smk"
 include: "rules/consensus_illumina_common.smk"
 include: "rules/viralqc.smk"
 include: "rules/collect.smk"
+include: "rules/report.smk"
 
 rule summarize_isnvs:
     conda:

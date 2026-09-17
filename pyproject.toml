@@ -67,7 +67,7 @@ include = ["viralconseq*"]
 exclude = ["test*", "docs*"]
 
 [tool.setuptools.package-data]
-"viralconseq.scripts" = ["*.smk", "**/*.smk", "envs/*.yaml"]
+"viralconseq.scripts" = ["*.smk", "**/*.smk", "envs/*.yaml", "templates/*.html", "python/*.py"]
 
 [tool.black]
 line-length = 100

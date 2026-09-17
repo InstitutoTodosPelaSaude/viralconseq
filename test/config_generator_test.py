@@ -82,6 +82,7 @@ class Test_Save(unittest.TestCase):
         gen.add_consensus_settings("/ref.fa", "NA", 20)
         gen.add_consensus_nanopore_settings(50, 0.51, 10000, "model", 20, 10, 30)
         gen.add_viralqc_settings(run_viralqc=True, viralqc_db="/db")
+        gen.add_report_settings(run_report=False)
         gen.add_resource_settings({"map_reads_cpus": 4}, ["map_reads", "run_viralqc"])
         return gen
 
@@ -109,6 +110,7 @@ class Test_Save(unittest.TestCase):
                 "# --- read_qc ---",
                 "# --- clair3 ---",
                 "# --- viralqc ---",
+                "# --- report ---",
                 "# --- resources ---",
             ],
         )

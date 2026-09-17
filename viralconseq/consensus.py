@@ -184,6 +184,7 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
     generator.add_collect_settings(
         consensus_coverage_threshold=float(args.get("consensus_coverage_threshold", 70.0))
     )
+    generator.add_report_settings(run_report=bool(args.get("run_report", True)))
 
     # Self-check the contract before writing: the same check ``viralconseq
     # rerun`` and the Snakefile apply to a saved YAML.
