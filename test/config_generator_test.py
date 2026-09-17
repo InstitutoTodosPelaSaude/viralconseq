@@ -135,6 +135,34 @@ class Test_Save(unittest.TestCase):
         leftovers = [f for f in os.listdir(os.path.dirname(gen.config_path)) if f != "config.yml"]
         self.assertEqual(leftovers, [])
 
+    def test_from_dict_places_keys_in_sections_and_backup_keeps_previous(self):
+        path = os.path.join(self.tmp, "config.yml")
+        with open(path, "w") as fh:
+            fh.write("data: nanopore\n")
+        gen = ConfigGenerator.from_dict(
+            path,
+            {
+                "samples": {},
+                "data": "nanopore",
+                "clair3_model": "m",
+                "run_viralqc": True,
+                "map_reads_cpus": 4,
+                "max_memory_mb": 0,
+                "viralconseq_version": "1",
+                "odd_key": 1,
+            },
+        )
+        self.assertEqual(gen.section_for("clair3_model"), "clair3")
+        self.assertEqual(gen.section_for("map_reads_cpus"), "resources")
+        self.assertEqual(gen.section_for("max_memory_mb"), "resources")
+        self.assertEqual(gen.section_for("viralconseq_version"), "provenance")
+        self.assertEqual(gen.section_for("odd_key"), "run")
+        gen.save(backup=True)
+        with open(path + ".bak") as fh:
+            self.assertEqual(fh.read(), "data: nanopore\n")
+        with open(path) as fh:
+            self.assertEqual(yaml.safe_load(fh)["clair3_model"], "m")
+
     def test_write_failure_raises_configuration_error_and_cleans_up(self):
         gen = ConfigGenerator(os.path.join(self.tmp, "config.yml"))
         gen.add_threads(1)

@@ -331,6 +331,38 @@ viralconseq consensus illumina \
 
 ---
 
+## `viralconseq rerun`
+
+Run a workflow again from the config YAML a previous `viralconseq consensus`
+wrote, without retyping the command:
+
+```bash
+viralconseq rerun <output>/config.yml                       # resume / finish an interrupted run
+viralconseq rerun <output>/config.yml --dry-run             # show what would run
+viralconseq rerun <output>/config.yml --unlock              # release a stale Snakemake lock
+viralconseq rerun <output>/config.yml --set minimum_depth=30 --set af_threshold=0.6
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `CONFIG_FILE` | The YAML written by `--config-file` (or its copy `<run>/config.yml`). |
+| `--dry-run` | Plan only (`snakemake -n`). |
+| `--unlock` | Release the lock left by a run that was killed, then exit. |
+| `--keep-going` | Keep running independent jobs after one fails. |
+| `--set KEY=VALUE` | Change a config key (repeatable). The value is parsed as YAML (`30` is an integer, `true` a boolean, `'x'` a string). Only keys already in the file may be set. The file is rewritten, with the previous copy kept as `CONFIG_FILE.bak`, so the config on disk always matches the run. |
+| `--conda-prefix` | Directory of the cached per-rule conda envs (`$VIRALCONSEQ_CONDA_PREFIX` or `~/.cache/viralconseq/conda-envs`). |
+
+The config is validated before Snakemake starts (required keys, types and
+bounds, flag strings, memory budget against the per-rule figures); an invalid
+file or override fails with `[configuration_error] ...` and nothing runs. The
+workflow (Illumina or nanopore, single or segmented reference) is chosen from
+the `data` and `reference` keys. `run_manifest.json` in the run directory, when
+present, gets its `status` updated.
+
+---
+
 ## Configuration file overrides
 
 A few tool-level parameters are tunable only through the YAML config file produced by `--config-file` (they are not exposed as CLI flags because they rarely need to change). The defaults preserve the historical behaviour, so most users can ignore this section.
@@ -348,9 +380,11 @@ Example: edit the YAML config to
 minimap2_consensus_align_flags: "-a --sam-hit-only --secondary=no"
 ```
 
-then run Snakemake directly against the edited config. Point `--directory` at the run
-directory (the `output` key of the YAML) so Snakemake's `.snakemake/` state lands where
-`viralconseq consensus` would have put it:
+then run it with `viralconseq rerun example.yml` (or `viralconseq rerun example.yml --set
+minimap2_consensus_align_flags="-a --sam-hit-only --secondary=no"` to skip the manual edit).
+Driving Snakemake directly still works; point `--directory` at the run directory (the
+`output` key of the YAML) so Snakemake's `.snakemake/` state lands where `viralconseq
+consensus` would have put it:
 
 ```bash
 snakemake -s "$(python -c 'import viralconseq, os; print(os.path.dirname(viralconseq.__file__))')/scripts/consensus_illumina.smk" \

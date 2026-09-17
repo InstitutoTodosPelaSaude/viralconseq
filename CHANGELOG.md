@@ -33,6 +33,15 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   summary of cores and budget is printed at start. The config records
   `threads_total`, `max_memory_mb` and `memory_detected_mb`.
 
+- `viralconseq rerun CONFIG.yml`: run a workflow again from a saved config,
+  to resume an interrupted run, `--dry-run` a change, `--unlock` a stale lock,
+  `--keep-going`, or `--set KEY=VALUE` (parsed as YAML, written back with the
+  previous file kept as `.bak`). The config is validated first with the new
+  `validators.validate_config_dict` (required keys, types and bounds, flag
+  strings, memory budget), which the generated config is also checked against
+  before it is written and which the workflows apply at parse time to
+  hand-edited YAMLs.
+
 ### Changed
 
 - Per-rule threads follow `--<rule>-cpus` > `--threads`: a `--<rule>-cpus`

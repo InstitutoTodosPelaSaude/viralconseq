@@ -96,14 +96,25 @@ def run_dir_for(args: Dict[str, Any]) -> Optional[str]:
     return os.path.abspath(os.path.join(output, run_name))
 
 
-def run_workflow(workflow_path: str, args: Dict[str, Any]) -> bool:
+def run_workflow(
+    workflow_path: str,
+    args: Dict[str, Any],
+    *,
+    dryrun: bool = False,
+    unlock: bool = False,
+    keepgoing: bool = False,
+) -> bool:
     """Run a Snakemake workflow with the kwargs every workflow shares.
 
     Args:
         workflow_path: Absolute path to the ``.smk`` file to execute.
         args: Pipeline argument dict. Must contain ``config_file`` and
             ``threads_total``; ``output`` and ``run_name`` select the run
-            directory used as Snakemake's working directory.
+            directory used as Snakemake's working directory; ``max_memory_mb``
+            (when positive) becomes the ``mem_mb`` resource budget.
+        dryrun: Plan only (Snakemake ``-n``).
+        unlock: Release a stale lock left by an interrupted run and return.
+        keepgoing: Keep running independent jobs after one fails.
 
     Raises:
         ValidationError: If ``workflow_path`` does not exist.
@@ -120,7 +131,7 @@ def run_workflow(workflow_path: str, args: Dict[str, Any]) -> bool:
         # which is now the run directory rather than the caller's cwd.
         conda_prefix = os.path.abspath(os.path.expanduser(str(conda_prefix)))
 
-    kwargs: Dict[str, Any] = {}
+    kwargs: Dict[str, Any] = {"dryrun": dryrun, "unlock": unlock, "keepgoing": keepgoing}
     budget = int(args.get("max_memory_mb") or 0)
     if budget > 0:
         # Makes every rule's mem_mb declaration bind: memory-declaring jobs run
@@ -143,7 +154,7 @@ def run_workflow(workflow_path: str, args: Dict[str, Any]) -> bool:
         targets=["all"],
     )
 
-    if run_dir is not None:
+    if run_dir is not None and not (dryrun or unlock):
         copied = copy_snakemake_log(run_dir)
         if copied:
             logger.info(f"Snakemake log copied to {copied}")

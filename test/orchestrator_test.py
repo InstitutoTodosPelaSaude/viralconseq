@@ -90,6 +90,12 @@ class Test_RunWorkflowRunsInsideTheRunDirectory(unittest.TestCase):
         self.assertIsNone(captured.get("workdir"))
         self.assertTrue(captured.get("force_incomplete"))
 
+    def test_mode_kwargs_forwarded(self):
+        captured = self._run_with_args({})
+        self.assertEqual(
+            (captured["dryrun"], captured["unlock"], captured["keepgoing"]), (False, False, False)
+        )
+
     def test_memory_budget_forwarded_as_resources(self):
         captured = self._run_with_args({"max_memory_mb": 4096})
         self.assertEqual(captured.get("resources"), {"mem_mb": 4096})

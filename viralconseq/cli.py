@@ -6,6 +6,7 @@ from viralconseq import __program__, __version__
 from viralconseq.consensus_cli import consensus
 from viralconseq.create_samplesheet import create_samplesheet
 from viralconseq.logging_config import configure_logging
+from viralconseq.rerun_cli import rerun
 from viralconseq.setup_cli import setup
 
 
@@ -30,6 +31,7 @@ def cli(log_level: str, json_logs: bool) -> None:
     \b
     Subcommands:
     * consensus           reference-guided consensus assembly (illumina/nanopore)
+    * rerun               run again from a saved config (resume, --dry-run, --unlock, --set)
     * setup               pre-build per-rule conda envs into a shared cache
     * create-samplesheet  generate a sample sheet from a sequencing directory
 
@@ -39,6 +41,7 @@ def cli(log_level: str, json_logs: bool) -> None:
 
 
 cli.add_command(consensus)
+cli.add_command(rerun)
 cli.add_command(setup)
 cli.add_command(create_samplesheet)
 

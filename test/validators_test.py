@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from viralconseq.constants import ViralQCDatabase
 from viralconseq.exceptions import (
+    ConfigurationError,
     SampleSheetError,
     ValidationError,
     ViralQCDatabaseNotFoundError,
@@ -22,6 +23,7 @@ from viralconseq.validators import (
     missing_viralqc_database_files,
     resolve_resource_budget,
     sanitize_identifier,
+    validate_config_dict,
     validate_flag_strings,
     validate_numeric_parameters,
     validate_sample_sheet,
@@ -159,6 +161,95 @@ class Test_AbsolutiseSamplePaths(unittest.TestCase):
             finally:
                 os.chdir(old)
         self.assertEqual(samples["s1"], [os.path.join(os.path.realpath(tmp), "s.fastq.gz")])
+
+
+def _good_config(data="nanopore", **overrides):
+    config = {
+        "samples": {"sample-a": ["/r/a.fastq.gz"]},
+        "data": data,
+        "output": "/out/run/",
+        "threads": 2,
+        "reference": "/ref.fa",
+        "scheme": "NA",
+        "minimum_depth": 20,
+        "minimum_length": 50,
+        "af_threshold": 0.51,
+        "run_viralqc": True,
+        "viralqc_db": "/db",
+        "run_viralqc_ram": 1,
+        "viralqc_extra_flags": "",
+        "minimap2_consensus_align_flags": "-a --sam-hit-only",
+    }
+    if data == "nanopore":
+        config.update(
+            chunk_size=10000,
+            clair3_model="r941_prom_hac_g360+g422",
+            variant_quality=20,
+            variant_depth=10,
+            minimum_map_quality=30,
+            infer_consensus_sequence_ram=2,
+        )
+    else:
+        config["samples"] = {"sample-a": ["/r/a_R1.fastq.gz", "/r/a_R2.fastq.gz"]}
+        config.update(
+            adapters="NA",
+            trim_head=0,
+            trim_tail=0,
+            cut_front_mean_quality=10,
+            cut_tail_mean_quality=10,
+            cut_right_window_size=4,
+            cut_right_mean_quality=15,
+            af_isnv_threshold=0.0,
+            run_isnv=False,
+        )
+    config.update(overrides)
+    return config
+
+
+class Test_ValidateConfigDict(unittest.TestCase):
+    def test_generated_shapes_pass(self):
+        validate_config_dict(_good_config("nanopore"))
+        validate_config_dict(_good_config("illumina"))
+        validate_config_dict(_good_config("illumina", reference={"S": "/S.fa", "L": "/L.fa"}))
+        # legacy space-joined sample form and no viralQC
+        validate_config_dict(
+            _good_config("illumina", samples={"s": "/a_R1.fq /a_R2.fq"}, run_viralqc=False)
+        )
+
+    def test_rejections(self):
+        cases = {
+            "not a mapping": ["x"],
+            "bad data": _good_config(data="pacbio"),
+            "missing key": {k: v for k, v in _good_config().items() if k != "minimum_depth"},
+            "missing ram of memory rule": {
+                k: v for k, v in _good_config().items() if k != "infer_consensus_sequence_ram"
+            },
+            "wrong file count": _good_config(samples={"s": ["/a.fq", "/b.fq"]}),
+            "empty samples": _good_config(samples={}),
+            "bool as number": _good_config(minimum_depth=True),
+            "float where int": _good_config(chunk_size=1.5),
+            "af above one": _good_config(af_threshold=1.5),
+            "zero threads": _good_config(threads=0),
+            "cpus below one": _good_config(map_reads_cpus=0),
+            "run flag not bool": _good_config(run_viralqc="yes"),
+            "bad flag string": _good_config(viralqc_extra_flags="--x; rm -rf /"),
+            "budget below rule": _good_config(max_memory_mb=1024),
+            "empty model": _good_config(clair3_model=""),
+            "segment without path": _good_config(reference={"S": ""}),
+        }
+        for label, config in cases.items():
+            with self.subTest(case=label):
+                with self.assertRaises(ConfigurationError):
+                    validate_config_dict(config)
+
+    def test_budget_at_or_above_largest_rule_accepted(self):
+        validate_config_dict(_good_config(max_memory_mb=2048))
+        validate_config_dict(_good_config(max_memory_mb=0))
+
+    def test_message_names_the_key(self):
+        with self.assertRaises(ConfigurationError) as ctx:
+            validate_config_dict(_good_config(variant_depth=-1))
+        self.assertIn("variant_depth", str(ctx.exception))
 
 
 class Test_ResolveResourceBudget(unittest.TestCase):

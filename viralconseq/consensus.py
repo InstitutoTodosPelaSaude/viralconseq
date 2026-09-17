@@ -18,6 +18,7 @@ from viralconseq.validators import (
     resolve_path_args,
     resolve_resource_budget,
     sanitize_identifier,
+    validate_config_dict,
     validate_consensus_input_integrity,
     validate_consensus_requirements,
     validate_flag_strings,
@@ -173,18 +174,28 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
         generator.add_resource_settings(args, ResourceDefaults.CONSENSUS_NANOPORE_RULES)
 
     # Save config file
+    # Self-check the contract before writing: the same check ``viralconseq
+    # rerun`` and the Snakefile apply to a saved YAML.
+    validate_config_dict(generator.config)
     generator.save()
 
     logger.info(f"Configuration file generated: {args['config_file']}")
 
 
+def workflow_path_for(data_type: str, reference: Any) -> str:
+    """Absolute path of the workflow file for a data type and reference shape.
+
+    Segmentation is selected by the reference being a mapping (segment ->
+    FASTA) rather than a single path.
+    """
+    thisdir = os.path.abspath(os.path.dirname(__file__))
+    segmented_suffix = "_segmented" if isinstance(reference, dict) else ""
+    return os.path.join(thisdir, "scripts", f"consensus_{data_type}{segmented_suffix}.smk")
+
+
 def run_snakemake_workflow(args: Dict[str, Any]) -> bool:
     """Run the Snakemake workflow for the consensus pipeline."""
-    thisdir = os.path.abspath(os.path.dirname(__file__))
-    segmented_suffix = "_segmented" if isinstance(args.get("reference"), dict) else ""
-    workflow_path = os.path.join(
-        thisdir, "scripts", f"consensus_{args['data_type']}{segmented_suffix}.smk"
-    )
+    workflow_path = workflow_path_for(args["data_type"], args.get("reference"))
     return _orchestrator.run_workflow(workflow_path, args)
 
 

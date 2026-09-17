@@ -68,6 +68,26 @@ if _missing:
         + " - regenerate it with 'viralconseq consensus ... --create-config-only'"
     )
 
+# The full contract check (types, bounds, flag strings, memory budget) lives in
+# viralconseq.validators.validate_config_dict; the workflows run in the CLI
+# environment where the package is installed, so it is applied here too, for
+# hand-edited YAMLs driven with `snakemake -s`. A bare checkout without the
+# package keeps the key-presence guard above and skips the rest.
+try:
+    from viralconseq.validators import validate_config_dict as _validate_config_dict
+except ImportError:  # pragma: no cover - only without `pip install -e .`
+    import sys as _sys
+
+    print(
+        "viralconseq: package not importable; skipping the full config check",
+        file=_sys.stderr,
+    )
+else:
+    try:
+        _validate_config_dict(config)
+    except Exception as _exc:
+        raise WorkflowError(str(_exc)) from _exc
+
 # viralqc_extra_flags and minimap2_consensus_align_flags are interpolated
 # unquoted into shell commands. Refuse anything that is not a plain list of
 # tokens (same rule as validators.validate_flag_strings, for hand-edited YAMLs).

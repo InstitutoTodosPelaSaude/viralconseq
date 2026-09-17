@@ -104,6 +104,12 @@ catch them earlier if you need the structured payload.
 validation time when viralQC is enabled but its database directory is missing or
 incomplete; the message names the directory and the `viralconseq setup` command.
 
+`ConfigurationError` (code `configuration_error`) is raised by
+`validators.validate_config_dict` when a config mapping (the one about to be
+written, a saved YAML given to `viralconseq rerun`, or one hand-edited and run
+with `snakemake -s`) misses a required key or holds a value the rules cannot use;
+the message names the key.
+
 `InputIntegrityError` (code `input_integrity_error`) additionally carries an
 `issues` list in its `to_dict()`; each issue has `path`, `kind`
 (`fastq`/`fasta`/`bed`), `code`, `severity`, `message`, and an optional

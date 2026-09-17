@@ -40,6 +40,7 @@ per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
 | `consensus_cli.py` | Click options for `consensus illumina` / `consensus nanopore` → plain `args` dict. |
 | `consensus.py` | Owns `validate_args`, `generate_config_file`, `run_snakemake_workflow`; calls the orchestrator. |
 | `create_samplesheet.py` | `create-samplesheet` subcommand. |
+| `rerun_cli.py` | `rerun` subcommand: replays a saved config (`--dry-run`, `--unlock`, `--keep-going`, `--set KEY=VALUE` written back with a `.bak`). |
 | `setup_cli.py` | `setup` subcommand: pre-builds per-rule conda envs into a shared cache and downloads the viralQC databases via `scripts/viralqc_setup.smk`. |
 | `_orchestrator.py` | Shared `run_pipeline` skeleton (resolve → validate → config → manifest → run) with structured error handling. |
 | `validators.py` | File existence, sample-sheet parsing, reference/primer checks, the viralQC database check (`validate_viralqc_database`), input sanitization, and content-level input-integrity orchestration (`validate_consensus_input_integrity`). |

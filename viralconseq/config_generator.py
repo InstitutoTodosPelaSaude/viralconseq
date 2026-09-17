@@ -2,6 +2,7 @@
 
 import contextlib
 import os
+import shutil
 import tempfile
 import textwrap
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -16,6 +17,43 @@ from viralconseq.exceptions import ConfigurationError
 # to the placeholder directory. Derived from the database contract so the two
 # cannot drift apart.
 _VIRALQC_DB_PLACEHOLDERS = [f"viralqc_db/{name}" for name in ViralQCDatabase.REQUIRED_FILES]
+
+
+# Section of each known key, for configs loaded back from disk (``from_dict``).
+_KEY_SECTIONS: Dict[str, str] = {
+    ConfigKeys.SAMPLES: "run",
+    ConfigKeys.DATA: "run",
+    ConfigKeys.OUTPUT: "run",
+    ConfigKeys.THREADS: "run",
+    "workflow_path": "run",
+    ConfigKeys.REFERENCE: "consensus",
+    ConfigKeys.SCHEME: "consensus",
+    ConfigKeys.MINIMUM_DEPTH: "consensus",
+    ConfigKeys.MINIMAP2_CONSENSUS_ALIGN_FLAGS: "consensus",
+    ConfigKeys.AF_THRESHOLD: "consensus",
+    ConfigKeys.ADAPTERS: "read_qc",
+    ConfigKeys.MINIMUM_LENGTH: "read_qc",
+    ConfigKeys.TRIM_HEAD: "read_qc",
+    ConfigKeys.TRIM_TAIL: "read_qc",
+    ConfigKeys.CUT_FRONT_MEAN_QUALITY: "read_qc",
+    ConfigKeys.CUT_TAIL_MEAN_QUALITY: "read_qc",
+    ConfigKeys.CUT_RIGHT_WINDOW_SIZE: "read_qc",
+    ConfigKeys.CUT_RIGHT_MEAN_QUALITY: "read_qc",
+    ConfigKeys.AF_ISNV_THRESHOLD: "isnv",
+    ConfigKeys.RUN_ISNV: "isnv",
+    ConfigKeys.CHUNK_SIZE: "clair3",
+    ConfigKeys.CLAIR3_MODEL: "clair3",
+    ConfigKeys.VARIANT_QUALITY: "clair3",
+    ConfigKeys.VARIANT_DEPTH: "clair3",
+    ConfigKeys.MINIMUM_MAP_QUALITY: "clair3",
+    ConfigKeys.RUN_VIRALQC: "viralqc",
+    ConfigKeys.VIRALQC_DB: "viralqc",
+    ConfigKeys.VIRALQC_EXTRA_FLAGS: "viralqc",
+    ConfigKeys.VIRALCONSEQ_VERSION: "provenance",
+    ConfigKeys.THREADS_TOTAL: "resources",
+    ConfigKeys.MAX_MEMORY_MB: "resources",
+    ConfigKeys.MEMORY_DETECTED_MB: "resources",
+}
 
 
 class ConfigGenerator:
@@ -91,6 +129,22 @@ class ConfigGenerator:
         self.config: Dict[str, Any] = {}
         # Track which section each key belongs to
         self._sections: Dict[str, str] = {}
+
+    @classmethod
+    def section_for(cls, key: str) -> str:
+        """The section a config key belongs to (for configs loaded from disk)."""
+        if key.endswith("_cpus") or key.endswith("_ram"):
+            return cls.SECTION_RESOURCES
+        return _KEY_SECTIONS.get(key, cls.SECTION_RUN)
+
+    @classmethod
+    def from_dict(cls, config_path: str, config: Dict[str, Any]) -> "ConfigGenerator":
+        """A generator holding an existing config (e.g. one loaded from YAML),
+        with every key placed in its section, ready to ``save()``."""
+        generator = cls(config_path)
+        for key, value in config.items():
+            generator._set(key, value, cls.section_for(key))
+        return generator
 
     def _set(self, key: str, value: Any, section: str) -> None:
         """Set a config key and tag it to a section.
@@ -449,7 +503,7 @@ class ConfigGenerator:
         },
     }
 
-    def save(self) -> None:
+    def save(self, backup: bool = False) -> None:
         """Write the YAML atomically, one commented section at a time.
 
         Keys are grouped by the section tags assigned in ``_set()`` and written
@@ -457,12 +511,23 @@ class ConfigGenerator:
         kept within a section. The file is written to a temporary sibling and
         renamed into place, so a crash mid-write never leaves a half config.
 
+        Args:
+            backup: Keep the existing file as ``<path>.bak`` before replacing it
+                (``viralconseq rerun --set`` uses this so an edit is reversible).
+
         Raises:
             ConfigurationError: If the file or its directory cannot be written.
         """
         config_dir = os.path.dirname(self.config_path)
         if config_dir:  # Only create directory if path contains a directory component
             os.makedirs(config_dir, exist_ok=True)
+        if backup and os.path.isfile(self.config_path):
+            try:
+                shutil.copy2(self.config_path, self.config_path + ".bak")
+            except OSError as e:
+                raise ConfigurationError(
+                    f"Failed to back up {self.config_path} to {self.config_path}.bak: {e}"
+                ) from e
 
         grouped: Dict[str, Dict[str, Any]] = {name: {} for name, _ in self.SECTIONS}
         for key, value in self.config.items():

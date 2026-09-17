@@ -18,6 +18,7 @@ from viralconseq.constants import (
 )
 from viralconseq.exceptions import (
     AdaptersNotFoundError,
+    ConfigurationError,
     InputIntegrityError,
     PrimerSchemeNotFoundError,
     ReferenceNotFoundError,
@@ -152,6 +153,166 @@ def validate_flag_strings(args: Dict[str, Any]) -> None:
                 f"{key} contains a shell metacharacter (one of ; & | < > ` $ \\ or a newline): "
                 f"{value!r}. Pass plain tool flags only."
             )
+
+
+# Keys every generated config carries, by data type. Mirrored by
+# ``_REQUIRED_KEYS`` in rules/common.smk (the Snakefile fallback when this
+# package is not importable) and by test/rule_inventory_test.py.
+CONFIG_REQUIRED_COMMON = (
+    "samples",
+    "data",
+    "output",
+    "threads",
+    "reference",
+    "scheme",
+    "minimum_depth",
+    "minimum_length",
+    "af_threshold",
+)
+CONFIG_REQUIRED_ILLUMINA = (
+    "adapters",
+    "trim_head",
+    "trim_tail",
+    "cut_front_mean_quality",
+    "cut_tail_mean_quality",
+    "cut_right_window_size",
+    "cut_right_mean_quality",
+    "af_isnv_threshold",
+)
+CONFIG_REQUIRED_NANOPORE = (
+    "chunk_size",
+    "clair3_model",
+    "variant_quality",
+    "variant_depth",
+    "minimum_map_quality",
+)
+# key -> (lower bound, upper bound, integer required)
+_CONFIG_NUMERIC = {
+    "threads": (1, None, True),
+    "threads_total": (1, None, True),
+    "minimum_depth": (1, None, True),
+    "minimum_length": (0, None, True),
+    "af_threshold": (0.0, 1.0, False),
+    "af_isnv_threshold": (0.0, 1.0, False),
+    "trim_head": (0, None, True),
+    "trim_tail": (0, None, True),
+    "cut_front_mean_quality": (0, None, True),
+    "cut_tail_mean_quality": (0, None, True),
+    "cut_right_window_size": (1, None, True),
+    "cut_right_mean_quality": (0, None, True),
+    "chunk_size": (1, None, True),
+    "variant_quality": (0, None, True),
+    "variant_depth": (0, None, True),
+    "minimum_map_quality": (0, None, True),
+    "max_memory_mb": (0, None, True),
+    "memory_detected_mb": (0, None, True),
+}
+
+
+def validate_config_dict(config: Any) -> None:
+    """Check a Snakemake config mapping the way the rules will read it.
+
+    Used on the dict ``ConfigGenerator`` is about to write, by ``viralconseq
+    rerun`` on a saved (possibly hand-edited) YAML, and at Snakefile parse time
+    through ``rules/common.smk``. Standard library only; no coercion: a value
+    with the wrong type is an error, not something to repair.
+
+    Raises:
+        ConfigurationError: Naming the first offending key.
+    """
+
+    def fail(message: str) -> None:
+        raise ConfigurationError(f"invalid config: {message}")
+
+    if not isinstance(config, dict):
+        fail("expected a mapping at the top level")
+    data = config.get("data")
+    if data not in (DataType.ILLUMINA, DataType.NANOPORE):
+        fail(f"data must be 'illumina' or 'nanopore', got {data!r}")
+
+    required = list(CONFIG_REQUIRED_COMMON)
+    required += CONFIG_REQUIRED_ILLUMINA if data == DataType.ILLUMINA else CONFIG_REQUIRED_NANOPORE
+    if data == DataType.NANOPORE:
+        required.append("infer_consensus_sequence_ram")
+    if config.get("run_viralqc", True):
+        required.extend(["viralqc_db", "run_viralqc_ram"])
+    missing = [key for key in required if key not in config]
+    if missing:
+        fail(
+            "missing required key(s): "
+            + ", ".join(missing)
+            + " - regenerate the file with 'viralconseq consensus ... --create-config-only'"
+        )
+
+    samples = config["samples"]
+    if not isinstance(samples, dict) or not samples:
+        fail("samples must be a non-empty mapping of sample id -> FASTQ path(s)")
+    expected_files = 2 if data == DataType.ILLUMINA else 1
+    for sample, paths in samples.items():
+        if not isinstance(sample, str) or not sample.strip():
+            fail(f"sample id {sample!r} is not a non-empty string")
+        if isinstance(paths, str):
+            paths = paths.split()
+        if not isinstance(paths, list) or len(paths) != expected_files:
+            fail(
+                f"sample {sample!r} must list exactly {expected_files} FASTQ path(s), got {paths!r}"
+            )
+        if not all(isinstance(p, str) and p.strip() for p in paths):
+            fail(f"sample {sample!r} has an empty FASTQ path")
+
+    reference = config["reference"]
+    if isinstance(reference, dict):
+        if not reference or not all(isinstance(v, str) and v.strip() for v in reference.values()):
+            fail("reference must map every segment to a FASTA path")
+    elif not isinstance(reference, str) or not reference.strip():
+        fail("reference must be a FASTA path or a mapping of segment -> FASTA path")
+
+    for key in ("output", "scheme"):
+        if not isinstance(config[key], str) or not config[key].strip():
+            fail(f"{key} must be a non-empty string")
+    if data == DataType.ILLUMINA and not isinstance(config["adapters"], str):
+        fail("adapters must be a path or 'NA'")
+    if data == DataType.NANOPORE:
+        model = config["clair3_model"]
+        if not isinstance(model, str) or not model.strip():
+            fail("clair3_model must be a non-empty string")
+
+    for key in ("run_isnv", "run_viralqc"):
+        if key in config and not isinstance(config[key], bool):
+            fail(f"{key} must be true or false, got {config[key]!r}")
+
+    def check_number(key: str, lo: Any, hi: Any, integer: bool) -> None:
+        value = config[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            fail(f"{key} must be a number, got {value!r}")
+        if integer and not isinstance(value, int):
+            fail(f"{key} must be an integer, got {value!r}")
+        if lo is not None and value < lo:
+            fail(f"{key} must be >= {lo}, got {value}")
+        if hi is not None and value > hi:
+            fail(f"{key} must be <= {hi}, got {value}")
+
+    for key, (lo, hi, integer) in _CONFIG_NUMERIC.items():
+        if key in config:
+            check_number(key, lo, hi, integer)
+    for key in config:
+        if isinstance(key, str) and (key.endswith("_cpus") or key.endswith("_ram")):
+            check_number(key, 1, None, True)
+
+    try:
+        validate_flag_strings(config)
+    except ValidationError as exc:
+        fail(str(exc))
+
+    budget = config.get("max_memory_mb", 0)
+    if isinstance(budget, int) and budget > 0:
+        for rule in ResourceDefaults.MEMORY_RULES:
+            ram_key = f"{rule}_ram"
+            if ram_key in config and budget < int(config[ram_key]) * 1024:
+                fail(
+                    f"max_memory_mb ({budget}) is below {ram_key} ({config[ram_key]} GB); "
+                    "raise the budget or set max_memory_mb: 0"
+                )
 
 
 def resolve_resource_budget(args: Dict[str, Any], rule_list: List[str]) -> str:
