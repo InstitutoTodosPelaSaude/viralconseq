@@ -97,6 +97,8 @@ The unittest suite under `test/` covers Python-layer behaviour (CLI parsing, val
 
 When changing rule wiring, run `make test-dryrun` — it catches missing inputs, broken `expand` patterns, and circular dependencies that the Python suite cannot see.
 
+`test/rule_inventory_test.py` is a text-level check over the four entry workflows and their includes: every rule must declare `log:` and `benchmark:`, every `shell:` body must `set -euo pipefail` and redirect into `{log}`, a rule may read only its own `<rule>_cpus`/`<rule>_ram` key, and `ResourceDefaults.CONSENSUS_*_RULES` must name exactly the rules that read one. Add a new rule with those directives from the start or the suite fails.
+
 ## Editing notes
 
 - Don't rename `validate_args`, `generate_config_file`, or `run_snakemake_workflow` in `viralconseq/consensus.py` — multiple tests patch those exact module-level names.
