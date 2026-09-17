@@ -23,6 +23,15 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   facet by segment; unsegmented runs with several viruses facet by virus. The
   page self-checks against `summary.tsv` before it is written. Toggle with
   `--report/--no-report` (config key `run_report`, section `report`).
+- `setup.sh`: one-command source install (finds conda/mamba/micromamba even
+  off `PATH`, creates or updates the env from `environment.yml`, `pip install
+  -e ".[dev]"`, then `viralconseq setup --pipelines all` with pass-through
+  options; idempotent). CI gains a `wheel-smoke` job that installs the built
+  wheel outside the checkout, drives the CLI and asserts every workflow file,
+  env YAML, template and helper script ships.
+- `docs/workflow.md`: a reference of every rule (env, command, each flag and
+  why, threads and memory, measured peak RSS), plus a CLAUDE.md section on the
+  shell conventions and traps in rule bodies.
 - `create-samplesheet --prefix RUN`: prepend a run code to every sample ID
   (`RUN_barcode05`). Junk entries next to the reads (`.DS_Store`, `._*`,
   `__MACOSX/`, `*Zone.Identifier`, `*.temp`, `*.tmp`, `*.part`) are now

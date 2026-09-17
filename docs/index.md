@@ -12,7 +12,9 @@ viralconseq runs on *nix systems and processes entire sequencing runs in minimal
 - **Intra-host variant calling** (Illumina, optional) with LoFreq
 - **Consensus QC** — every consensus sequence is assigned a virus and clade and scored A–D by [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC) (Nextclade + BLAST); opt out with `--no-run-viralqc`
 - **Content-level input validation** — truncated FASTQs, protein FASTAs or mismatched primer schemes are rejected before the run starts
-- **Reproducibility** — every run writes a `run_manifest.json` with input checksums and the tool version; per-rule conda environments are pinned
+- **One place to look** — `summary.tsv` with a status per sample, a share-ready `consensus/` directory and a self-contained interactive `report.html`
+- **Nanopore models resolved for you** — `--clair3-model auto` reads the basecalling model from the reads; models are cached by `viralconseq setup`; barcodes without mapped reads degrade to an all-N consensus instead of failing the run
+- **Reproducibility** — every run writes `versions.tsv`, a copy of its config, `benchmark.tsv` and a `run_manifest.json` with input checksums; `viralconseq rerun <run>/config.yml` replays it; per-rule conda environments are pinned
 
 ## Documentation contents
 
@@ -24,6 +26,7 @@ tutorial/index
 usage
 commands
 architecture
+workflow
 embedding
 output
 notes
