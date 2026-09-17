@@ -114,7 +114,7 @@ rule organize_files:
             sample=config["samples"], segment=SEGMENTS.keys()
         ),
         consensus_files = expand(
-            rules.infer_consensus_sequence.output.consensus,
+            rules.rename_sequences.output.consensus_renamed,
             sample=config["samples"], segment=SEGMENTS.keys()
         ),
         raw_mapped_reads = expand(
@@ -171,7 +171,7 @@ rule organize_files:
         for _file in {input.consensus_files}; do
             outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
             segment=$(echo \"$rel\" | cut -d'/' -f1);
-            sample=$(basename $_file .consensus.fasta);
+            sample=$(basename $_file .consensus.renamed.fasta);
             ln -sf $_file {params.outdir}samples/$sample/$segment/consensus.fasta;
         done
         for _file in {input.raw_mapped_reads}; do

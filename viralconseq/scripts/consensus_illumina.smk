@@ -84,7 +84,7 @@ rule organize_files:
         vcf_files = expand(rules.generate_vcf_consensus.output.vcf, sample=config["samples"]),
         isn_vcf_files = expand(rules.detect_isnv.output.vcf, sample=config["samples"]) if config.get("run_isnv", False) else [],
         stats_summary = expand(rules.calculate_assembly_statistics.output.stats_summary, sample=config["samples"]),
-        consensus_files = expand(rules.infer_consensus_sequence.output.consensus, sample=config["samples"]),
+        consensus_files = expand(rules.rename_sequences.output.consensus_renamed, sample=config["samples"]),
         raw_mapped_reads = expand(rules.map_reads.output.bam, sample=config["samples"]),
         trimmed_mapped_reads = expand(rules.trim_primer_sequences.output.bam, sample=config["samples"]),
         viralqc_files = expand(rules.split_viralqc_results.output.tsv, sample=config["samples"]) if config.get("run_viralqc", True) else [],
@@ -120,7 +120,7 @@ rule organize_files:
             ln -sf $_file {params.outdir}samples/$sample/stats_summary.csv;
         done
         for _file in {input.consensus_files}; do
-            sample=$(basename $_file .consensus.fasta);
+            sample=$(basename $_file .consensus.renamed.fasta);
             ln -sf $_file {params.outdir}samples/$sample/consensus.fasta;
         done
         for _file in {input.raw_mapped_reads}; do

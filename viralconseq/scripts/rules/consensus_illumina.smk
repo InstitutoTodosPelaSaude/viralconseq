@@ -81,6 +81,14 @@ rule generate_vcf_consensus:
     shell:
         """
         set -euo pipefail
+        # Everything GSAlign prints lands in {log}; fd 3 keeps the console for a
+        # one-line notice so a fallback to the mock VCF is never silent.
+        exec 3>&2
+        exec > {log} 2>&1
+        notify() {{
+            echo "WARNING: $*"
+            echo "viralconseq: {wildcards.sample}: WARNING: $* (see {log})" >&3
+        }}
         out_prefix=$(echo {output.vcf} | sed 's/.vcf.gz//')
 
         write_mock_vcf() {{
@@ -109,19 +117,21 @@ rule generate_vcf_consensus:
                 -o $out_prefix \
                 -fmt 1 \
                 -sen || gsalign_rc=$?
+            echo "GSAlign exit status: $gsalign_rc"
+            ls -l "$out_prefix".* || true
             rm -f $out_prefix.maf
             if [ "$gsalign_rc" -ne 0 ]; then
-                echo "Warning: GSAlign exited with status $gsalign_rc for {wildcards.sample}; falling back to a mock VCF." >&2
+                notify "GSAlign exited with status $gsalign_rc; falling back to a mock VCF"
             fi
             if [ -s "$out_prefix.vcf" ]; then
                 bgzip -f $out_prefix.vcf
                 tabix -p vcf {output.vcf} || touch {output.vcf_index}
             else
-                echo "Warning: GSAlign produced no VCF for {wildcards.sample}. Creating a mock VCF." >&2
+                notify "GSAlign produced no VCF; creating a mock VCF"
                 write_mock_vcf
             fi
         else
-            echo "Warning: Consensus sequence for {wildcards.sample} is empty. Creating a mock VCF." >&2
+            notify "consensus sequence has no A/C/G/T bases; creating a mock VCF"
             write_mock_vcf
         fi
         """

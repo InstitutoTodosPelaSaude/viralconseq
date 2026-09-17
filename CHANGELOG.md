@@ -9,6 +9,17 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ## [Unreleased]
 
+### Fixed
+
+- Illumina runs linked `samples/<sample>/consensus.fasta` to the consensus whose
+  header still carried the reference name (`>MN908947.3`); it now points at the
+  renamed FASTA (`>sample-<id>`), as the nanopore workflow always did.
+- `generate_vcf_consensus` (GSAlign) declared a log but never wrote to it, so a
+  fallback to the header-only mock VCF left an empty log and only a stderr
+  warning. GSAlign's output, exit status and the fallback reason now land in
+  `assembly/logs/gsaalign/<sample>.log`; a one-line `WARNING` still reaches the
+  console.
+
 ### Added
 
 - **Consensus QC with viralQC, on by default.** Every run now ends with one
