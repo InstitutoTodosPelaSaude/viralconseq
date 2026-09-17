@@ -19,6 +19,13 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   warning. GSAlign's output, exit status and the fallback reason now land in
   `assembly/logs/gsaalign/<sample>.log`; a one-line `WARNING` still reaches the
   console.
+- Illumina consensus VCFs were always the header-only mock file, even for
+  consensuses with real substitutions. The "does the consensus contain any
+  A/C/G/T" test was a `grep -v | grep -q` pipeline under `set -o pipefail`: the
+  early exit of `grep -q` killed the upstream `grep` with SIGPIPE, the pipeline
+  returned 141 and every sample took the mock branch. The test is now a single
+  `awk` invocation, and GSAlign runs (and its VCF is kept) for every consensus
+  with called bases.
 
 ### Added
 

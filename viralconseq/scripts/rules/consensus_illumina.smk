@@ -102,7 +102,10 @@ rule generate_vcf_consensus:
         # content, so an all-N / near-empty consensus (a zero-coverage sample
         # against a divergent reference) must NOT be sent to GSAlign -- it would
         # produce no VCF and fail the whole run under `set -euo pipefail`.
-        if grep -v "^>" {input.consensus} | grep -qi "[ACGT]"; then
+        # awk, not `grep -v | grep -q`: under pipefail the early exit of `grep -q`
+        # kills the upstream grep with SIGPIPE (status 141) and the test fails
+        # on every non-empty consensus, which routed every sample to the mock.
+        if awk '!/^>/ && /[ACGTacgt]/ {{found=1; exit}} END {{exit !found}}' {input.consensus}; then
             # Clear any stale VCF from a previous run so the emptiness check below
             # reflects only this GSAlign invocation (the raw .vcf is not a tracked
             # Snakemake output, so it is not cleaned automatically).
