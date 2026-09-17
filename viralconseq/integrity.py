@@ -136,6 +136,34 @@ def open_maybe_gzip(path: str):
     return open(path, "rt", encoding="utf-8-sig")
 
 
+def sample_fastq_headers(path: str, n: int = 20) -> List[str]:
+    """Return the first ``n`` FASTQ header lines (without the leading ``@``).
+
+    Used to read the basecall model tag Dorado/MinKNOW write into every read
+    header. Tolerates blank lines like :func:`validate_fastq`; on a read error
+    (corrupt gzip, truncated file) returns what was read so far, so the caller
+    decides how to report an empty result.
+    """
+    headers: List[str] = []
+    try:
+        with open_maybe_gzip(path) as handle:
+            record: List[str] = []
+            for raw in handle:
+                line = _strip_eol(raw)
+                if not record and not line.strip():
+                    continue
+                record.append(line)
+                if len(record) == 4:
+                    if record[0].startswith("@"):
+                        headers.append(record[0][1:])
+                    record = []
+                    if len(headers) >= n:
+                        break
+    except _READ_ERRORS:
+        pass
+    return headers
+
+
 def header_token(header: str) -> str:
     """Return the contig id: first whitespace-delimited token of a FASTA header."""
     parts = header.lstrip(">").strip().split()

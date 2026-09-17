@@ -1,6 +1,7 @@
 """Constants used throughout the viralconseq pipeline."""
 
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -49,6 +50,7 @@ class ConfigKeys:
     VIRALQC_DB = "viralqc_db"
     VIRALQC_EXTRA_FLAGS = "viralqc_extra_flags"
     VIRALCONSEQ_VERSION = "viralconseq_version"
+    CLAIR3_MODEL_DIR = "clair3_model_dir"
     THREADS_TOTAL = "threads_total"
     MAX_MEMORY_MB = "max_memory_mb"
     MEMORY_DETECTED_MB = "memory_detected_mb"
@@ -90,6 +92,87 @@ class ViralQCDatabase:
         return os.environ.get(cls.ENV_VAR, "") or str(
             Path.home() / ".cache" / "viralconseq" / "viralqc-db"
         )
+
+
+class Clair3Models:
+    """Where Clair3 models live and how a basecall tag maps to one.
+
+    Clair3 2.x models are two PyTorch checkpoints, ``pileup.pt`` and
+    ``full_alignment.pt``, in ``<model dir>/<model name>/``. viralconseq keeps
+    them in its own cache directory (never in the conda env's ``bin/models``,
+    whose contents depend on the package build) and ``viralconseq setup
+    --clair3-models`` downloads them from the Clair3 authors' server, with the
+    ARTIC mirror as a fallback.
+
+    ``MANIFEST`` is the model list of artic 1.11.2 (``artic/utils.py``
+    ``CLAIR3_MANIFEST``), in the same order: ``clair3_models.model_for_basecall_id``
+    reproduces artic's ``choose_model`` selection, whose last tie-break is
+    "first manifest entry whose name contains the basecaller version".
+    """
+
+    ENV_VAR = "VIRALCONSEQ_CLAIR3_MODELS"
+    CHECKPOINTS = ("pileup.pt", "full_alignment.pt")
+    PRIMARY_BASE = "https://www.bio8.cs.hku.hk/clair3"
+    BACKUP_BASE = "https://artic-example-datasets.s3.climb.ac.uk/clair3-models"
+    MANIFEST_SOURCE = "artic 1.11.2 (artic/utils.py CLAIR3_MANIFEST)"
+    #: Names are directory names on disk and path components in URLs.
+    NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+\-]*$")
+    #: Move-table models need Clair3's --enable_dwell_time and mv:B tags in the
+    #: BAM, which primer-clipped amplicon BAMs do not carry.
+    DWELL_TIME_SUFFIX = "_with_mv"
+    #: model name -> server sub-directory (manifest order preserved).
+    MANIFEST: Dict[str, str] = {
+        "r1041_e82_260bps_fast_g632": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_fast_g615": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_fast_g632": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_sup_g615": "clair3_models_rerio_pytorch",
+        "r1041_e82_260bps_hac_g632": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_hac_g615": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_sup_v400": "clair3_models_rerio_pytorch",
+        "r1041_e82_260bps_hac_v400": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_hac_g632": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_sup_v410": "clair3_models_rerio_pytorch",
+        "r1041_e82_260bps_hac_v410": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_hac_v400": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_sup_v420": "clair3_models_rerio_pytorch",
+        "r1041_e82_260bps_sup_g632": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_hac_v410": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_sup_v430": "clair3_models_rerio_pytorch",
+        "r1041_e82_260bps_sup_v400": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_hac_v420": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_sup_v500": "clair3_models_rerio_pytorch",
+        "r1041_e82_260bps_sup_v410": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_hac_v430": "clair3_models_rerio_pytorch",
+        "r104_e81_hac_g5015": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_hac_v500": "clair3_models_rerio_pytorch",
+        "r104_e81_sup_g5015": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_hac_v520": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_sup_v520": "clair3_models_rerio_pytorch",
+        "r1041_e82_400bps_hac_v600": "clair3_models_rerio_pytorch",
+        "r941_prom_sup_g5014": "clair3_models_pytorch",
+        "r941_prom_hac_g360+g422": "clair3_models_pytorch",
+    }
+    #: What `viralconseq setup` fetches when no --clair3-models is given: the
+    #: common R10.4.1 hac/sup pair and the R9.4.1 hac model (~100 MB total).
+    DEFAULT_SETUP_MODELS = (
+        "r1041_e82_400bps_sup_v500",
+        "r1041_e82_400bps_hac_v500",
+        "r941_prom_hac_g360+g422",
+    )
+    #: The sentinel --clair3-model value that asks for detection from the reads.
+    AUTO = "auto"
+
+    @classmethod
+    def default_dir(cls) -> str:
+        """``$VIRALCONSEQ_CLAIR3_MODELS`` or ``~/.cache/viralconseq/clair3-models``."""
+        return os.environ.get(cls.ENV_VAR, "") or str(
+            Path.home() / ".cache" / "viralconseq" / "clair3-models"
+        )
+
+    @classmethod
+    def urls_for(cls, name: str) -> Tuple[str, str]:
+        """(primary, backup) base URLs of a manifest model's checkpoint files."""
+        return (f"{cls.PRIMARY_BASE}/{cls.MANIFEST[name]}/{name}", f"{cls.BACKUP_BASE}/{name}")
 
 
 class SampleSheetPattern:

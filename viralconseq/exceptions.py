@@ -102,6 +102,40 @@ class AdaptersNotFoundError(ViralConseqError):
     code = "adapters_not_found"
 
 
+class Clair3ModelError(ViralConseqError):
+    """Base for Clair3 model resolution problems (nanopore runs)."""
+
+    code = "clair3_model_error"
+
+
+class Clair3ModelUnresolvedError(Clair3ModelError):
+    """No Clair3 model could be chosen from the reads' basecall tags.
+
+    Raised when the reads carry no ``basecall_model_version_id``/``RG:Z`` tag
+    (Guppy-era or re-headered reads), when the tag matches no manifest model,
+    or when only Guppy-era models match a Dorado tag. The message says which
+    ``--clair3-model NAME`` to pass instead.
+    """
+
+    code = "clair3_model_unresolved"
+
+
+class Clair3ModelMixedError(Clair3ModelError):
+    """The reads of one sample resolve to different Clair3 models."""
+
+    code = "clair3_model_mixed_within_sample"
+
+
+class Clair3ModelNotFoundError(Clair3ModelError):
+    """The chosen model is not in the model directory (or is incomplete).
+
+    Raised at validation time, before any work starts; the message names the
+    directory and the ``viralconseq setup --clair3-models`` command.
+    """
+
+    code = "clair3_model_not_found"
+
+
 class ViralQCDatabaseNotFoundError(ViralConseqError):
     """Raised when viralQC is enabled but its database directory is missing or
     incomplete. The message names the directory and the ``viralconseq setup``
