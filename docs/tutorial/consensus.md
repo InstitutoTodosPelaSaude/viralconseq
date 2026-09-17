@@ -75,7 +75,7 @@ What each flag does:
 Add `--create-config-only` to write the YAML config and stop. The file is organised in commented sections, so you can inspect or edit it before running `snakemake --configfile <config> -s "$(python -c 'import viralconseq, os; print(os.path.dirname(viralconseq.__file__))')/scripts/consensus_illumina.smk" --directory <output>/<run_name> --use-conda --conda-prefix ~/.cache/viralconseq/conda-envs -j 4` yourself.
 ```
 
-Snakemake prints a job table as each rule runs (`perform_qc`, `map_reads`, `trim_primer_sequences`, `infer_consensus_sequence`, `calculate_assembly_statistics`, `generate_multiqc_report`, `align_consensus_to_reference_genome`, …); the tools' own output goes to per-rule logs under `logs/` and `assembly/logs/`, so the console stays readable and nothing is lost. On a typical laptop the bundled SARS-CoV-2 samples finish in a few minutes; consult `results/consensus_illumina/sarscov2/benchmark.tsv` after the run for per-rule timing.
+Snakemake prints a job table as each rule runs (`perform_qc`, `map_reads`, `trim_primer_sequences`, `infer_consensus_sequence`, `calculate_assembly_statistics`, `generate_multiqc_report`, `align_consensus_to_reference_genome`, …); the tools' own output goes to per-rule logs under `logs/<rule>/`, so the console stays readable and nothing is lost. On a typical laptop the bundled SARS-CoV-2 samples finish in a few minutes; consult `results/consensus_illumina/sarscov2/benchmark.tsv` after the run for per-rule timing.
 
 ### Tour the outputs
 
@@ -98,6 +98,8 @@ qc/reports/multiqc_report.html           # combined fastp/QC report
 qc/viralqc/outputs/results.tsv           # viralQC: virus, clade, genome-quality grade per consensus
 samples/<sample>/viralqc.tsv             # that sample's rows of the viralQC table
 benchmark.tsv                            # wall time + memory per rule per sample
+versions.tsv                             # every tool's version, probed in its own env
+config.yml                               # the configuration this run used
 logs/run.log, logs/snakemake.log         # start/end lines and the Snakemake transcript
 ```
 
@@ -123,7 +125,9 @@ awk '$3 < 20' results/consensus_illumina/sarscov2/assembly/coverage_stats/sample
 
 **`assembly/consensus/final_consensus/samples_alignment.fasta`** — all per-sample consensuses plus the reference, aligned (built by `minimap2` followed by `gofasta sam toMultiAlign`). Drop this straight into a tree-builder such as IQ-TREE for a quick phylogeny.
 
-**`benchmark.tsv`** — every Snakemake task's runtime, memory, and CPU (`sample` is `sample-<id>`, or `All` for run-level tasks). Useful when you scale up to a real run.
+**`benchmark.tsv`** — every rule execution's runtime, memory, and CPU (`sample` is `sample-<id>`, or `All` for run-level rules; `rule` names the Snakemake rule). Useful when you scale up to a real run.
+
+**`versions.tsv`** — the exact version of every tool that touched your data, read from inside its conda environment when it ran. Paste it into a methods section, or diff it against another run's when results differ.
 
 **`logs/`** — `run.log` records when the run started and how it ended; `snakemake.log` is the transcript Snakemake printed; the per-rule sub-directories hold each tool's output. When a rule fails, its log is the first thing to read.
 

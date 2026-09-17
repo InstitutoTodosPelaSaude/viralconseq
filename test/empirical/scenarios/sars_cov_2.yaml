@@ -55,6 +55,10 @@ pipelines:
       - qc/viralqc/outputs/results.tsv
       - qc/viralqc/viralqc_status.txt
       - samples/sample-itps-0001/viralqc.tsv
+      - versions.tsv
+      - config.yml
+      - logs/run.log
+      - logs/snakemake.log
       - benchmark.tsv
 
   - id: consensus_nanopore
@@ -75,4 +79,8 @@ pipelines:
       - qc/viralqc/outputs/results.tsv
       - qc/viralqc/viralqc_status.txt
       - samples/sample-barcode05/viralqc.tsv
+      - versions.tsv
+      - config.yml
+      - logs/run.log
+      - logs/snakemake.log
       - benchmark.tsv

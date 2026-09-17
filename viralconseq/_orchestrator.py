@@ -159,9 +159,14 @@ def run_pipeline(
                 extra: Dict[str, Any] = {}
                 run_dir = run_dir_for(args)
                 if run_dir is not None:
-                    log_copy = os.path.join(run_dir, SNAKEMAKE_LOG_COPY)
-                    if os.path.isfile(log_copy):
-                        extra["snakemake_log"] = log_copy
+                    for key, rel in (
+                        ("snakemake_log", SNAKEMAKE_LOG_COPY),
+                        ("versions_tsv", "versions.tsv"),
+                        ("config_copy", "config.yml"),
+                    ):
+                        candidate = os.path.join(run_dir, rel)
+                        if os.path.isfile(candidate):
+                            extra[key] = candidate
                 record_run_completion(
                     manifest_path, status="success" if successful else "failed", extra=extra
                 )

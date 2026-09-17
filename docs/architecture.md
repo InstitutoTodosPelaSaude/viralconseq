@@ -23,6 +23,9 @@ snakemake(workflow.smk, config)   viralconseq/scripts/consensus_<datatype>[_segm
    │  workdir = <output>/<run_name> (so .snakemake/ lives next to the results)
    │  include: rules/common.smk (constraints, run.log hooks, config guard)
    │  rule all (default target) → include: rules/*.smk
+   │  ... → organize_files → include: rules/provenance.smk
+   │      (versions_<env> → versions.tsv, run_config → config.yml,
+   │       collect_benchmarks → benchmark.tsv, the terminal rule)
    ▼
 per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
    │  incl. envs/viralqc.yaml (viralQC + nextclade + BLAST) for the final QC step,
@@ -48,7 +51,7 @@ per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
 | `logging_config.py` | Central logging (run id, text/JSON). |
 | `provenance.py` | `run_manifest.json` (version, config, input checksums, outcome) and the copy of the Snakemake transcript to `logs/snakemake.log`. |
 | `scripts/*.smk`, `scripts/rules/*.smk` | The actual workflows. `rules/common.smk` is included first by every entry file (exact-sample wildcard constraints, required-key and flag-string guards, `run.log` hooks); `rules/viralqc.smk` is the consensus-QC stage; `scripts/viralqc_setup.smk` is the database download driven by `setup`. |
-| `scripts/python/*.py` | Helpers run via Snakemake's `script:` directive. |
+| `scripts/python/*.py` | Helpers. `calculate_assembly_stats.py` and `rename_sequences.py` run via Snakemake's `script:` directive (injected `snakemake` global); `tool_versions.py` and `collect_benchmarks.py` are stdlib argparse scripts run via `shell:` inside a per-rule env, so their tests drive `main(argv)` exactly as the workflow does. |
 
 ## The config is the contract
 

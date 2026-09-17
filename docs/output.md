@@ -5,10 +5,13 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 ```
 {output}/{run_name}/
 ├── run_manifest.json                 # version, config path, input checksums, outcome
+├── versions.tsv                      # tool versions probed at run time (component, version)
+├── config.yml                        # copy of the resolved config this run used
 ├── logs/
 │   ├── run.log                       # start/end lines written by the workflow itself
 │   ├── snakemake.log                 # copy of the newest Snakemake transcript
-│   ├── fastp/, consensus_<data>/...  # per-rule logs and *.benchmark.txt (see below)
+│   └── <rule>/[<segment>/]<target>.{log,benchmark.txt}   # one directory per rule
+├── other/versions/                   # per-environment fragments behind versions.tsv
 ├── .snakemake/                       # Snakemake's own state (locks, metadata, transcripts)
 ├── assembly/
 │   ├── assembly_stats_summary.csv    # per-sample QC metrics
@@ -66,13 +69,13 @@ reports), `assembly/consensus/final_consensus/` (per-sample consensus FASTAs and
 before symlinking, `aln.consensus.sam`, the indel-masked alignment),
 `assembly/clair3/{sample}/` (nanopore variant calls), `assembly/isnvs/` (LoFreq VCFs
 with `--run-isnv`), `qc/data/` and `qc/reports/` (fastp-trimmed reads and per-sample
-fastp reports, illumina), and `logs/` / `assembly/logs/` (per-rule logs and
+fastp reports, illumina), and `logs/<rule>/` (per-rule logs and
 `*.benchmark.txt`). Every rule writes its tool output into its own log, so a
-failure is diagnosed from `logs/**/<rule>/<sample>.log` (or
-`assembly/logs/<tool>/<sample>.log` for the per-sample alignment and consensus
-steps); nothing is only on the console. Snakemake runs with the run directory as
-its working directory, so `.snakemake/` is here too and can be deleted once the
-run is finished.
+failure is diagnosed from `logs/<rule>/<sample>.log` (per-sample rules) or
+`logs/<rule>/<rule>.log` (run-level rules), with a `<segment>/` level in between
+for segmented runs; nothing is only on the console. Snakemake runs with the run
+directory as its working directory, so `.snakemake/` is here too and can be
+deleted once the run is finished.
 
 ## Key files
 
@@ -87,10 +90,26 @@ run is finished.
 | `assembly/consensus/final_consensus/samples_alignment.fasta` | All consensus sequences aligned to the reference (MSA-ready) |
 | `qc/viralqc/outputs/results.tsv` | viralQC table: virus, clade and genome-quality score per consensus sequence (see below) |
 | `samples/sample-{id}/viralqc.tsv` | The rows of `results.tsv` belonging to one sample |
-| `run_manifest.json` | Provenance: version, timestamp, config path and hash, input SHA-256 checksums, outcome, path of the copied Snakemake log |
+| `run_manifest.json` | Provenance: version, timestamp, config path and hash, input SHA-256 checksums, outcome, paths of `logs/snakemake.log`, `versions.tsv` and `config.yml` |
+| `versions.tsv` | `component<TAB>version`: viralconseq, Snakemake, every tool probed inside its conda environment at run time (minimap2, samtools, bedtools, GSAlign, gofasta, fastp, MultiQC, LoFreq, bcftools, Clair3, Python, pandas, viralQC, Nextclade, BLAST as applicable) and, when viralQC ran, the database directory and dataset download date |
+| `config.yml` | The resolved configuration this run used (a copy of the file `--config-file` pointed at) |
 | `logs/run.log` | One line per run start and end, written by the workflow (survives a `.snakemake/` clean-up) |
 | `logs/snakemake.log` | Copy of the newest Snakemake transcript for this run directory |
-| `benchmark.tsv` | Runtime and resource usage per task (`sample` is `sample-<id>`, or `All` for run-level tasks) |
+| `benchmark.tsv` | Runtime and resource usage per rule execution (see below) |
+
+## Benchmark columns
+
+`benchmark.tsv` has one row per rule execution, per-sample rows first (in sample
+sheet order) and run-level rows (`sample` = `All`) last:
+
+| Column | Meaning |
+|---|---|
+| `sample` | `sample-<id>`, or `All` for run-level rules |
+| `segment` | Segmented runs only: the segment, or `-` for run-level rules |
+| `rule` | The Snakemake rule name (`map_reads`, `run_viralqc`, …) |
+| `target` | What the rule ran on: the sample id, or the rule name for run-level rules |
+| `threads` | The CPUs the rule was given (`--<rule>-cpus`); empty for rules without a resource option |
+| `s`, `h:m:s`, `max_rss`, `max_vms`, `max_uss`, `max_pss`, `io_in`, `io_out`, `mean_load`, `cpu_time` | Snakemake's own measurements (seconds, memory in MB, I/O in MB) |
 
 ## Assembly statistics columns
 
@@ -134,4 +153,4 @@ the `vqc` exit code, the number of input records and result rows, and the log
 path. If viralQC fails (a tool error, not a bad QC verdict) the run still
 completes and `results.tsv` is a placeholder with one row per sequence whose
 `inputSequenceStatus` reads `viralQC failed (exit N)`; check
-`logs/consensus_<data>/run_viralqc/run_viralqc.log`.
+`logs/run_viralqc/run_viralqc.log`.

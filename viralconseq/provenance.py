@@ -6,10 +6,10 @@ input files produced it. This module writes a ``run_manifest.json`` into the run
 output directory capturing the viralconseq version, a timestamp, the resolved
 config path, and a checksum/size for every input FASTQ.
 
-Tool and database versions are best captured at rule-execution time (inside the
-per-rule conda envs) and are intentionally out of scope here; this manifest
-covers the orchestration-level provenance that the Python layer can record
-reliably.
+Tool and database versions are captured at rule-execution time, inside the
+per-rule conda envs, by ``rules/provenance.smk`` into ``<run>/versions.tsv``;
+the manifest records that file's path once the run has finished. This module
+covers the orchestration-level provenance the Python layer can record reliably.
 """
 
 from __future__ import annotations
