@@ -29,6 +29,7 @@ rule detect_isnv:
     shell:
         """
         set -euo pipefail
+        exec > {log} 2>&1
         lofreq indelqual \
             -f {input.reference} \
             -o {output.bam} \
@@ -63,7 +64,11 @@ rule infer_consensus_sequence:
     log:
         config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/samtools/consensus/{sample}.log"
     shell:
-        "samtools consensus -a -d {params.minimum_depth} -m simple -q -c {params.af_threshold} --show-ins yes {input.bam} -o {output.consensus}"
+        """
+        set -euo pipefail
+        exec > {log} 2>&1
+        samtools consensus -a -d {params.minimum_depth} -m simple -q -c {params.af_threshold} --show-ins yes {input.bam} -o {output.consensus}
+        """
 
 rule generate_vcf_consensus:
     conda:

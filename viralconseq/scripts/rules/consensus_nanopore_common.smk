@@ -23,6 +23,10 @@ rule calculate_assembly_statistics:
         stats_summary = temp(config['output'] + "assembly/" + SEGMENT_WILDCARD + "coverage_stats/{sample}.stats_summary.csv")
     params:
         minimum_depth = config["minimum_depth"]
+    log:
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/calculate_assembly_statistics/{sample}.log"
+    benchmark:
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/calculate_assembly_statistics/{sample}.benchmark.txt"
     script:
         "../python/calculate_assembly_stats.py"
 
@@ -50,7 +54,9 @@ rule align_consensus_to_reference_genome:
         reference = REFERENCE,
         minimap2_flags = config.get("minimap2_consensus_align_flags", "-a --sam-hit-only --secondary=no --score-N=0")
     log:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/align_consensus_to_reference_genome.log"
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/align_consensus_to_reference_genome/align_consensus_to_reference_genome.log"
+    benchmark:
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/align_consensus_to_reference_genome/align_consensus_to_reference_genome.benchmark.txt"
     shell:
         """
         set -euo pipefail

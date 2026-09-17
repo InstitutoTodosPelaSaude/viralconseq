@@ -68,6 +68,8 @@ rule prepare_viralqc_input:
         segmented = "1" if SEGMENT_WILDCARD else ""
     log:
         VIRALQC_LOG_PREFIX + "prepare_viralqc_input/prepare_viralqc_input.log"
+    benchmark:
+        VIRALQC_LOG_PREFIX + "prepare_viralqc_input/prepare_viralqc_input.benchmark.txt"
     shell:
         """
         set -euo pipefail
@@ -212,9 +214,14 @@ rule split_viralqc_results:
         results = rules.run_viralqc.output.results
     output:
         tsv = VIRALQC_DIR + "per_sample/{sample}.viralqc.tsv"
+    log:
+        VIRALQC_LOG_PREFIX + "split_viralqc_results/{sample}.log"
+    benchmark:
+        VIRALQC_LOG_PREFIX + "split_viralqc_results/{sample}.benchmark.txt"
     shell:
         """
         set -euo pipefail
+        exec 2> {log}
         awk -F'\\t' -v s="{wildcards.sample}" \
             'NR==1 || $1==s || index($1, s "|")==1' \
             {input.results} > {output.tsv}

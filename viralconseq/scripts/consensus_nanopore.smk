@@ -20,9 +20,14 @@ rule sanitize_reference:
     output: 
         fasta = config["output"] + "reference/reference.sanitized.fasta",
         fai = config["output"] + "reference/reference.sanitized.fasta.fai"
+    log:
+        config["output"] + "logs/consensus_nanopore/sanitize_reference/reference.log"
+    benchmark:
+        config["output"] + "logs/consensus_nanopore/sanitize_reference/reference.benchmark.txt"
     shell:
         """
         set -euo pipefail
+        exec > {log} 2>&1
         mkdir -p $(dirname {output.fasta})
         sed '/^>/s/[\\/|,~ ]/_/g' {input} > {output.fasta}
         samtools faidx {output.fasta}
@@ -60,9 +65,14 @@ rule unify_assembly_statistics_reports:
         reports = expand(rules.calculate_assembly_statistics.output.stats_summary, sample=config["samples"])
     output:
         unified_stats_summary = config['output'] + "assembly/assembly_stats_summary.csv"
+    log:
+        config['output'] + "logs/consensus_nanopore/unify_assembly_statistics_reports/unify_assembly_statistics_reports.log"
+    benchmark:
+        config['output'] + "logs/consensus_nanopore/unify_assembly_statistics_reports/unify_assembly_statistics_reports.benchmark.txt"
     shell:
         """
         set -euo pipefail
+        exec > {log} 2>&1
         echo \"sample_name,number_of_reads,number_of_trim_paired_reads,number_of_mapped_reads,average_depth,percentage_above_10x,percentage_above_100x,percentage_above_1000x,horizontal_coverage\" > {output.unified_stats_summary} ;
         cat {input.reports} >> {output.unified_stats_summary}
         """
@@ -83,10 +93,16 @@ rule organize_files:
         config['output'] + "benchmark.tsv"
     params:
         outdir = config['output'],
-        samples = " ".join(config["samples"].keys())
+        samples = " ".join(config["samples"].keys()),
+        own_benchmark = config['output'] + "logs/consensus_nanopore/organize_files/organize_files.benchmark.txt"
+    log:
+        config['output'] + "logs/consensus_nanopore/organize_files/organize_files.log"
+    benchmark:
+        config['output'] + "logs/consensus_nanopore/organize_files/organize_files.benchmark.txt"
     shell:
         """
         set -euo pipefail
+        exec > {log} 2>&1
         mkdir -p {params.outdir}samples/
         for sample in {params.samples}; do
             mkdir -p {params.outdir}samples/$sample;
@@ -126,7 +142,10 @@ rule organize_files:
             ln -sf $_file {params.outdir}samples/$sample/viralqc.tsv;
         done
 
-        # Benchmark aggregation
+        # Benchmark aggregation. Drop this rule's own benchmark from a previous
+        # run first: Snakemake clears log: but not benchmark: before a job, so a
+        # rerun would otherwise ingest a stale row for organize_files itself.
+        rm -f {params.own_benchmark}
         echo -e "sample\\ttask\\tseconds\\th:m:s\\tmax_rss\\tmax_vms\\tmax_uss\\tmax_pss\\tio_in\\tio_out\\tmean_load\\tcpu_time" > {output}
         find {params.outdir} -name "*.benchmark.txt" | while read -r file; do
             task=$(basename $(dirname $file))
@@ -142,8 +161,6 @@ rule organize_files:
 
             if [[ "$matched" == "false" ]]; then
                 sample="All"
-            else
-                sample=$(echo $sample | sed 's/sample-//')
             fi
 
             tail -n +2 $file | awk -v sample=$sample -v task=$task '{{print sample"\\t"task"\\t"$0}}' >> {output}

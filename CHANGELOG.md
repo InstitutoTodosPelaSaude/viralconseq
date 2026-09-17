@@ -9,6 +9,24 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ## [Unreleased]
 
+### Changed
+
+- Every rule now declares `log:` and `benchmark:` and redirects its shell
+  output into the log (`sanitize_reference`, nanopore `trim_primer_sequences`,
+  `calculate_coverage_basewise`, `rename_sequences`, nanopore
+  `calculate_assembly_statistics`, `split_viralqc_results`, `organize_files`
+  and the nanopore `unify_assembly_statistics_reports` had no log or benchmark;
+  `perform_qc`, Illumina `trim_primer_sequences`, `detect_isnv`, Illumina
+  `infer_consensus_sequence`, `generate_multiqc_report` and `summarize_isnvs`
+  declared a log and never wrote to it). The nanopore `trim_primer_sequences`
+  rule now also honours `--trim-primer-sequences-cpus/-ram`. Tool output that
+  used to scroll past on the console is in `logs/` and `assembly/logs/`.
+- `benchmark.tsv` keeps the `sample-<id>` prefix in its `sample` column, like
+  every other output; it was the one table that stripped it. `organize_files`
+  also drops its own stale benchmark row before aggregating on a rerun.
+- The rule modules copied from ViralUnity v1.5.0 are no longer kept
+  byte-identical; divergences are listed here as they happen.
+
 ### Fixed
 
 - Illumina runs linked `samples/<sample>/consensus.fasta` to the consensus whose

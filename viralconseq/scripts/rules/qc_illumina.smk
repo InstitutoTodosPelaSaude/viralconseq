@@ -37,6 +37,7 @@ rule perform_qc:
     shell:
         """
         set -euo pipefail
+        exec > {log} 2>&1
         fastp \
             -i {input[0]} \
             -I {input[1]} \

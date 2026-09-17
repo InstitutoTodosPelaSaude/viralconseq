@@ -58,6 +58,8 @@ rule generate_multiqc_report:
         _TOP_LOG + "generate_multiqc_report/generate_multiqc_report.benchmark.txt"
     shell:
         """
+        set -euo pipefail
+        exec > {log} 2>&1
         multiqc -f --cl-config "extra_fn_clean_exts: ['_R1']" -o {params.temp}/qc/reports/ {params.temp}/qc/reports/
         """
 

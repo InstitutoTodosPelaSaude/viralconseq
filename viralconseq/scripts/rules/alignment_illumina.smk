@@ -56,6 +56,7 @@ rule trim_primer_sequences:
     shell:
         """
         set -euo pipefail
+        exec > {log} 2>&1
         if [ "{params.bed}" = "NA" ]; then
             cp {input.bam} {output.bam};
             cp {input.bam_index} {output.bam_index};

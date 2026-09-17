@@ -46,9 +46,17 @@ rule trim_primer_sequences:
         bed = config.get("scheme", "NA"),
         minimum_length = config.get("minimum_length", 200),
         path = config['output'] + "assembly/" + SEGMENT_WILDCARD + "mapped_reads/raw/"
+    log:
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/samtools/ampliconclip/{sample}.log"
+    benchmark:
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/samtools/ampliconclip/{sample}.benchmark.txt"
+    threads: config.get("trim_primer_sequences_cpus", 2)
+    resources:
+        mem_mb = config.get("trim_primer_sequences_ram", 4) * 1024
     shell:
         """
         set -euo pipefail
+        exec > {log} 2>&1
         if [ "{params.bed}" = "NA" ]; then
             cp {input.bam} {output.bam};
             cp {input.bam_index} {output.bam_index};

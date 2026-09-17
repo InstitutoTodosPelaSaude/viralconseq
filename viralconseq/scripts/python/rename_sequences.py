@@ -61,6 +61,12 @@ def rename_sequences(input_path: str, output: str) -> None:
 
 
 if __name__ == "__main__":
+    import sys
+
+    # Snakemake does not redirect a script:'s output; do it here so the rule log
+    # holds whatever this script prints.
+    if snakemake.log:
+        sys.stdout = sys.stderr = open(snakemake.log[0], "w")
     print("Running rename_sequences.py")
     rename_sequences(snakemake.input[0], snakemake.output[0])
     print("Finished rename_sequences.py")

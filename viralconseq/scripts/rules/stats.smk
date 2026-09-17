@@ -13,8 +13,15 @@ rule calculate_coverage_basewise:
         bam_index = rules.trim_primer_sequences.output.bam_index
     output:
         table_cov = config['output'] + "assembly/" + SEGMENT_WILDCARD + "coverage_stats/{sample}.table_cov_basewise.txt"
+    log:
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/bedtools/{sample}.log"
+    benchmark:
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/bedtools/{sample}.benchmark.txt"
     shell:
-        "bedtools genomecov -d -ibam {input.bam} > {output.table_cov}"
+        """
+        set -euo pipefail
+        bedtools genomecov -d -ibam {input.bam} > {output.table_cov} 2> {log}
+        """
 
 
 rule rename_sequences:
@@ -24,5 +31,9 @@ rule rename_sequences:
         consensus = rules.infer_consensus_sequence.output.consensus
     output:
         consensus_renamed = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.consensus.renamed.fasta"
+    log:
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/rename_sequences/{sample}.log"
+    benchmark:
+        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/rename_sequences/{sample}.benchmark.txt"
     script:
         "../python/rename_sequences.py"

@@ -148,6 +148,10 @@ def main(
 
 
 if __name__ == "__main__":
+    # Snakemake does not redirect a script:'s output; do it here so the rule log
+    # holds whatever this script prints.
+    if snakemake.log:
+        sys.stdout = sys.stderr = open(snakemake.log[0], "w")
     main(
         snakemake.input,
         snakemake.output[0],
