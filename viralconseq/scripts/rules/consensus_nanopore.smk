@@ -154,7 +154,7 @@ rule infer_consensus_sequence:
         tabix {output.vcf}
         
         samtools depth -J -a {input.bam} | \
-            awk '$3 <= int({params.minimum_depth}) {{print $1 "\t" $2-1 "\t" $2}}' > {output.low_cov_bed}
+            awk '$3 < int({params.minimum_depth}) {{print $1 "\t" $2-1 "\t" $2}}' > {output.low_cov_bed}
         
         bcftools consensus -f {input.reference} --mask {output.low_cov_bed} {output.vcf} > {output.consensus}
 

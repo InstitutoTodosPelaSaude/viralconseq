@@ -147,6 +147,10 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   readable message (a stale TensorFlow-era model directory is a bare exit 2)
   and records the model used in `assembly/clair3/<sample>/model.txt`, linked
   as `samples/<sample>/clair3_model.txt`.
+- Nanopore consensus masking is now `depth < --minimum-coverage` (was `<=`),
+  so a position at exactly the minimum depth is called, as `samtools
+  consensus -d` does on Illumina and as `coverage_min_depth` in `summary.tsv`
+  counts it. Consensus sequences from 0.1.x can differ at such positions.
 - Per-rule threads follow `--<rule>-cpus` > `--threads`: a `--<rule>-cpus`
   option now defaults to unset and the config carries `<rule>_cpus` only when
   you gave it; every rule otherwise uses the `--threads` baseline (rules used
