@@ -9,7 +9,9 @@ from unittest.mock import patch
 import yaml
 from click.testing import CliRunner
 
+from viralconseq.clair3_models import write_fake_checkpoint
 from viralconseq.config_generator import ConfigGenerator
+from viralconseq.constants import Clair3Models
 from viralconseq.setup_cli import (
     _ALL_PIPELINES,
     _PIPELINE_TO_WORKFLOW,
@@ -108,12 +110,125 @@ class Test_CollectEnvYamls(unittest.TestCase):
                 )
 
 
+def _fake_fetch_model(model_dir, name, urls, **_kwargs):
+    """Stand-in for fetch_clair3_model.fetch_model: writes valid fake checkpoints."""
+    for checkpoint in Clair3Models.CHECKPOINTS:
+        write_fake_checkpoint(os.path.join(model_dir, name, checkpoint))
+    return urls[0]
+
+
 class Test_SetupCli(unittest.TestCase):
     """``viralconseq setup`` honours its flags and forwards them to
     Snakemake correctly."""
 
     def setUp(self):
         self.runner = CliRunner()
+        # Never touch the network: the Clair3 model download is replaced by a
+        # fake that writes valid checkpoints into a per-test model directory.
+        self._model_tmp = tempfile.TemporaryDirectory()
+        self.model_dir = self._model_tmp.name
+        self._env = patch.dict(os.environ, {Clair3Models.ENV_VAR: self.model_dir})
+        self._env.start()
+        self._fetch = patch(
+            "viralconseq.setup_cli.fetch_clair3_model.fetch_model", side_effect=_fake_fetch_model
+        )
+        self.mock_fetch = self._fetch.start()
+
+    def tearDown(self):
+        self._fetch.stop()
+        self._env.stop()
+        self._model_tmp.cleanup()
+
+    def test_dry_run_lists_models(self):
+        result = self.runner.invoke(
+            setup, ["--dry-run", "--skip-viralqc-db"], catch_exceptions=False
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        for name in Clair3Models.DEFAULT_SETUP_MODELS:
+            self.assertIn(f"would download {name}", result.output)
+        self.assertIn(self.model_dir, result.output)
+
+    def test_dry_run_reports_present_model(self):
+        _fake_fetch_model(self.model_dir, "r941_prom_hac_g360+g422", ["x"])
+        result = self.runner.invoke(
+            setup, ["--dry-run", "--skip-viralqc-db", "--clair3-models", "r941_prom_hac_g360+g422"]
+        )
+        self.assertIn("already present", result.output)
+        self.assertEqual(self.mock_fetch.call_count, 0)
+
+    def test_all_expands_to_the_manifest_and_unknown_is_rejected(self):
+        result = self.runner.invoke(
+            setup, ["--dry-run", "--skip-viralqc-db", "--clair3-models", "all"]
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn(f"({len(Clair3Models.MANIFEST)} model(s))", result.output)
+        result = self.runner.invoke(setup, ["--dry-run", "--clair3-models", "not_a_model"])
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("unknown Clair3 model", result.output)
+
+    def test_models_are_fetched_after_envs(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("viralconseq.setup_cli.snakemake", return_value=True),
+        ):
+            result = self.runner.invoke(
+                setup,
+                [
+                    "--pipelines",
+                    "consensus-nanopore",
+                    "--conda-prefix",
+                    tmp,
+                    "--skip-viralqc-db",
+                    "--clair3-models",
+                    "r941_prom_hac_g360+g422,r1041_e82_400bps_hac_v500",
+                ],
+                catch_exceptions=False,
+            )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(self.mock_fetch.call_count, 2)
+        names = sorted(call.args[1] for call in self.mock_fetch.call_args_list)
+        self.assertEqual(names, ["r1041_e82_400bps_hac_v500", "r941_prom_hac_g360+g422"])
+        urls = self.mock_fetch.call_args_list[0].args[2]
+        self.assertEqual(len(urls), 2)
+        self.assertTrue(
+            all(os.path.isfile(os.path.join(self.model_dir, n, "pileup.pt")) for n in names)
+        )
+        self.assertIn("Clair3 models in place", result.output)
+
+    def test_present_model_not_refetched_and_failure_exits_nonzero(self):
+        _fake_fetch_model(self.model_dir, "r941_prom_hac_g360+g422", ["x"])
+        self.mock_fetch.side_effect = RuntimeError("no network")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("viralconseq.setup_cli.snakemake", return_value=True),
+        ):
+            result = self.runner.invoke(
+                setup,
+                [
+                    "--pipelines",
+                    "consensus-nanopore",
+                    "--conda-prefix",
+                    tmp,
+                    "--skip-viralqc-db",
+                    "--clair3-models",
+                    "r941_prom_hac_g360+g422",
+                    "--clair3-models",
+                    "r1041_e82_400bps_sup_v500",
+                ],
+                catch_exceptions=False,
+            )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(self.mock_fetch.call_count, 1)  # only the absent one
+        self.assertIn("r1041_e82_400bps_sup_v500", result.output)
+        self.assertIn("clair3-models", result.output)
+
+    def test_skip_clair3_models(self):
+        result = self.runner.invoke(
+            setup, ["--dry-run", "--skip-viralqc-db", "--skip-clair3-models"]
+        )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("skipped: --skip-clair3-models", result.output)
+        self.assertNotIn("would download r", result.output)
 
     def test_dry_run_lists_envs(self):
         result = self.runner.invoke(
@@ -193,7 +308,7 @@ class Test_SetupCli(unittest.TestCase):
             setup, ["--dry-run", "--skip-viralqc-db"], catch_exceptions=False
         )
         self.assertEqual(result.exit_code, 0, result.output)
-        self.assertNotIn("would download", result.output)
+        self.assertNotIn("[viralqc-db] would download", result.output)
         self.assertIn("skipped: --skip-viralqc-db", result.output)
 
     def test_viralqc_db_download_invoked_with_expected_kwargs(self):

@@ -22,8 +22,9 @@ import click
 from snakemake import snakemake
 
 from viralconseq.config_generator import ConfigGenerator
-from viralconseq.constants import ViralQCDatabase
-from viralconseq.validators import missing_viralqc_database_files
+from viralconseq.constants import Clair3Models, ViralQCDatabase
+from viralconseq.scripts.python import fetch_clair3_model
+from viralconseq.validators import missing_clair3_model_files, missing_viralqc_database_files
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,53 @@ def _default_conda_prefix() -> str:
     return os.environ.get("VIRALCONSEQ_CONDA_PREFIX", "") or str(
         Path.home() / ".cache" / "viralconseq" / "conda-envs"
     )
+
+
+def _expand_models(selected: Tuple[str, ...]) -> List[str]:
+    """Resolve ``--clair3-models`` values: ``all`` -> the manifest; names must be
+    manifest entries (their download URLs are known only for those)."""
+    names: List[str] = []
+    for entry in selected:
+        for name in entry.split(","):
+            name = name.strip()
+            if not name:
+                continue
+            if name == "all":
+                names.extend(n for n in Clair3Models.MANIFEST if n not in names)
+            elif name in Clair3Models.MANIFEST:
+                if name not in names:
+                    names.append(name)
+            else:
+                raise click.BadParameter(
+                    f"unknown Clair3 model {name!r}. Known models: "
+                    + ", ".join(Clair3Models.MANIFEST),
+                    param_hint="--clair3-models",
+                )
+    return names
+
+
+def _fetch_clair3_models(model_dir: Path, names: List[str]) -> List[str]:
+    """Fetch every model in ``names`` that is absent or incomplete. Returns the
+    names that could not be fetched."""
+    failures: List[str] = []
+    for name in names:
+        if not missing_clair3_model_files(str(model_dir), name):
+            click.echo(f"[clair3-models] {name}: already present")
+            continue
+        click.echo(f"[clair3-models] {name}: downloading ...")
+        try:
+            source = fetch_clair3_model.fetch_model(
+                str(model_dir),
+                name,
+                list(Clair3Models.urls_for(name)),
+                log=lambda message: logger.info(message),
+            )
+        except RuntimeError as exc:
+            failures.append(name)
+            click.echo(f"[clair3-models] {name}: FAILED - {exc}", err=True)
+            continue
+        click.echo(f"[clair3-models] {name}: OK (from {source})")
+    return failures
 
 
 _VIRALQC_SETUP_SMK = "viralqc_setup.smk"
@@ -186,10 +234,33 @@ def _expand_pipelines(selected: Tuple[str, ...]) -> List[str]:
     help="Only build conda envs; do not download the viralQC databases.",
 )
 @click.option(
+    "--clair3-models",
+    multiple=True,
+    default=Clair3Models.DEFAULT_SETUP_MODELS,
+    show_default=True,
+    metavar="NAME",
+    help="Clair3 models to download into --clair3-model-dir (repeatable, or comma-"
+    "separated; 'all' fetches every model of the manifest). Names are the Clair3 "
+    "model zoo names, e.g. r1041_e82_400bps_hac_v500. About 20 MB each.",
+)
+@click.option(
+    "--clair3-model-dir",
+    default=Clair3Models.default_dir,
+    show_default="$VIRALCONSEQ_CLAIR3_MODELS or ~/.cache/viralconseq/clair3-models",
+    help="Directory the models are downloaded into; 'viralconseq consensus nanopore' "
+    "reads the same location by default.",
+)
+@click.option(
+    "--skip-clair3-models",
+    is_flag=True,
+    default=False,
+    help="Do not download Clair3 models.",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     default=False,
-    help="Print the envs and databases that would be created and exit without "
+    help="Print the envs, databases and models that would be created and exit without "
     "running conda or downloading anything.",
 )
 def setup(
@@ -198,6 +269,9 @@ def setup(
     threads: int,
     viralqc_db: str,
     skip_viralqc_db: bool,
+    clair3_models: Tuple[str, ...],
+    clair3_model_dir: str,
+    skip_clair3_models: bool,
     dry_run: bool,
 ) -> None:
     """Pre-build per-rule conda envs into a shared cache.
@@ -211,18 +285,31 @@ def setup(
     Unless ``--skip-viralqc-db`` is given, it also downloads the viralQC
     databases (about 1 GB on disk, several GB transient, typically 15-60
     min) into ``--viralqc-db``; rerunning is a no-op once they exist.
+    Unless ``--skip-clair3-models`` is given, it downloads the Clair3 models
+    named by ``--clair3-models`` into ``--clair3-model-dir`` (about 20 MB
+    each); a model already present and complete is not fetched again.
     """
     # Absolute paths: the database download runs Snakemake with a scratch
     # ``workdir`` (it chdirs), so relative prefixes/paths would resolve there.
     prefix = Path(conda_prefix).expanduser().absolute()
     db_dir = Path(viralqc_db).expanduser().absolute()
+    model_dir = Path(clair3_model_dir).expanduser().absolute()
     selected = _expand_pipelines(pipelines)
+    models = [] if skip_clair3_models else _expand_models(clair3_models)
     scripts_dir = _scripts_dir()
 
     click.echo(f"Conda prefix: {prefix}")
     click.echo(f"Pipelines:    {', '.join(selected)}")
     click.echo(
         f"viralQC DB:   {db_dir}{'  (skipped: --skip-viralqc-db)' if skip_viralqc_db else ''}"
+    )
+    click.echo(
+        f"Clair3 models: {model_dir}"
+        + (
+            "  (skipped: --skip-clair3-models)"
+            if skip_clair3_models
+            else f"  ({len(models)} model(s))"
+        )
     )
 
     if dry_run:
@@ -243,6 +330,17 @@ def setup(
                     f"(missing: {', '.join(missing)}):"
                 )
                 click.echo(_VIRALQC_DB_BANNER)
+        if not skip_clair3_models:
+            click.echo("")
+            for name in models:
+                missing = missing_clair3_model_files(str(model_dir), name)
+                if missing:
+                    click.echo(
+                        f"[clair3-models] would download {name} into {model_dir} "
+                        f"(missing: {', '.join(missing)})"
+                    )
+                else:
+                    click.echo(f"[clair3-models] {name} already present at {model_dir}")
         return
 
     prefix.mkdir(parents=True, exist_ok=True)
@@ -307,10 +405,26 @@ def setup(
                         err=True,
                     )
 
+    if not skip_clair3_models:
+        click.echo("")
+        model_failures = _fetch_clair3_models(model_dir, models)
+        if model_failures:
+            failures.append("clair3-models")
+            click.echo(
+                "[clair3-models] FAILED for "
+                + ", ".join(model_failures)
+                + " - rerun 'viralconseq setup --skip-viralqc-db --clair3-models "
+                + " ".join(model_failures)
+                + f" --clair3-model-dir {model_dir}' (see the network errors above), or copy "
+                "the model directories in from another machine",
+                err=True,
+            )
+
     if failures:
         raise click.ClickException("Setup failed for: " + ", ".join(failures))
     click.echo(
         "\nAll envs ready"
-        + ("" if skip_viralqc_db else " and viralQC databases in place")
+        + ("" if skip_viralqc_db else ", viralQC databases in place")
+        + ("" if skip_clair3_models else ", Clair3 models in place")
         + ". Pipeline runs against this prefix will skip env creation."
     )

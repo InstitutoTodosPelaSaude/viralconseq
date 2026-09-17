@@ -49,6 +49,13 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   incomplete model fails with the `viralconseq setup --clair3-models NAME`
   command to run. New error codes `clair3_model_unresolved`,
   `clair3_model_mixed_within_sample`, `clair3_model_not_found`.
+- `viralconseq setup --clair3-models NAME...` (default: `r1041_e82_400bps_sup_v500`,
+  `r1041_e82_400bps_hac_v500`, `r941_prom_hac_g360+g422`; `all` for the whole
+  29-model manifest) downloads Clair3 models into `--clair3-model-dir` from the
+  Clair3 authors' server with the ARTIC mirror as fallback, validating each
+  checkpoint before publishing it; `--skip-clair3-models` opts out and
+  `--dry-run` lists what would be fetched. `scripts/python/fetch_clair3_model.py`
+  is the stdlib downloader and can be run on its own.
 - `viralconseq rerun CONFIG.yml`: run a workflow again from a saved config,
   to resume an interrupted run, `--dry-run` a change, `--unlock` a stale lock,
   `--keep-going`, or `--set KEY=VALUE` (parsed as YAML, written back with the

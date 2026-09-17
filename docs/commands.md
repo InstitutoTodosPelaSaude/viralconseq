@@ -17,7 +17,10 @@ viralconseq setup --pipelines all
 | `--threads` | `4` | Cores given to Snakemake while materializing envs and downloading databases. |
 | `--viralqc-db` | `$VIRALCONSEQ_VIRALQC_DB` or `~/.cache/viralconseq/viralqc-db` | Directory where the viralQC databases (Nextclade datasets + BLAST reference set) are downloaded. `viralconseq consensus` reads the same location by default. |
 | `--skip-viralqc-db` | off | Only build conda envs; do not download the viralQC databases. |
-| `--dry-run` | off | Print the envs and databases that would be created and exit without invoking conda or downloading anything. |
+| `--clair3-models` | `r1041_e82_400bps_sup_v500 r1041_e82_400bps_hac_v500 r941_prom_hac_g360+g422` | Clair3 models to download (repeatable or comma-separated; `all` fetches the whole manifest, 29 models). About 20 MB each, from the Clair3 authors' server with the ARTIC mirror as fallback; each model is validated before it is put in place, and a model already present is not fetched again. |
+| `--clair3-model-dir` | `$VIRALCONSEQ_CLAIR3_MODELS` or `~/.cache/viralconseq/clair3-models` | Directory the models go into; `viralconseq consensus nanopore` reads the same location by default. |
+| `--skip-clair3-models` | off | Do not download Clair3 models. |
+| `--dry-run` | off | Print the envs, databases and models that would be created and exit without invoking conda or downloading anything. |
 
 ### Examples
 
@@ -42,10 +45,16 @@ viralconseq setup --pipelines consensus-illumina --dry-run
 **Envs only (e.g. a node that must not download databases):**
 
 ```bash
-viralconseq setup --skip-viralqc-db
+viralconseq setup --skip-viralqc-db --skip-clair3-models
 ```
 
-Run the pipeline with `--no-run-viralqc` afterwards, or copy a populated `--viralqc-db` directory over from another machine.
+Run the pipeline with `--no-run-viralqc` afterwards, or copy a populated `--viralqc-db` directory over from another machine; copy the `--clair3-model-dir` directory the same way (or `cp -r $CONDA_PREFIX/bin/models/<name>` from a Clair3 2.x environment, which ships the same files).
+
+**Fetch one more Clair3 model** (the run told you which with a `clair3_model_not_found` error):
+
+```bash
+viralconseq setup --skip-viralqc-db --clair3-models r1041_e82_400bps_hac_v420
+```
 
 **Use a shared cache on a cluster:**
 

@@ -275,7 +275,7 @@ The full set is in the [Commands reference](../commands.md#viralconseq-consensus
 - **Primer scheme contig names must match the reference.** The BED file must use the same chromosome/contig names as the reference FASTA. viralconseq checks this before running and aborts with an `InputIntegrityError` if the primer BED chrom matches no reference contig (so `samtools ampliconclip` would clip nothing) — no more silently un-clipped runs.
 - **Inputs are content-validated before the run.** FASTQ, reference FASTA, and primer BED are streamed and checked (record structure, gzip integrity, nucleotide alphabet, chrom matching); a broken, truncated, or mismatched file stops the run up front rather than failing deep inside Snakemake. Pass `--skip-input-validation` to bypass.
 - **`--reference` and `--segmented-reference` are mutually exclusive.** Pass one or the other.
-- **`viralqc_database_not_found` at start-up.** viralQC is on by default and its databases live in `~/.cache/viralconseq/viralqc-db` (or `$VIRALCONSEQ_VIRALQC_DB`). Run `viralconseq setup` once (see [Setup §2](setup.md#2-build-per-rule-environments-and-download-the-viralqc-databases)) or pass `--no-run-viralqc`.
+- **`viralqc_database_not_found` at start-up.** viralQC is on by default and its databases live in `~/.cache/viralconseq/viralqc-db` (or `$VIRALCONSEQ_VIRALQC_DB`). Run `viralconseq setup` once (see [Setup §2](setup.md#2-build-per-rule-environments-download-the-viralqc-databases-and-the-clair3-models)) or pass `--no-run-viralqc`.
 
 ## Reference
 
