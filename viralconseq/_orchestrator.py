@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, Optional
 
 from snakemake import snakemake
 
+from viralconseq import __version__
 from viralconseq.config_generator import ConfigGenerator
 from viralconseq.exceptions import ValidationError, ViralConseqError
 from viralconseq.provenance import (
@@ -37,6 +38,7 @@ def start_config(args: Dict[str, Any], samples: Dict[str, list]) -> ConfigGenera
     generator.add_samples(samples, args["data_type"])
     generator.add_output(args["output"], args["run_name"])
     generator.add_threads(args["threads"])
+    generator.add_provenance(__version__)
     return generator
 
 

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import yaml
 
+from viralconseq import __version__
 from viralconseq.constants import ConfigKeys, DataType, ResourceDefaults, ViralQCDatabase
 from viralconseq.exceptions import ConfigurationError
 
@@ -275,6 +276,14 @@ class ConfigGenerator:
         self._set(ConfigKeys.VIRALQC_DB, viralqc_db, P)
         self._set(ConfigKeys.VIRALQC_EXTRA_FLAGS, viralqc_extra_flags, P)
 
+    def add_provenance(self, viralconseq_version: str) -> None:
+        """Record the viralconseq version that wrote this config.
+
+        The workflow copies it into ``versions.tsv``; nothing reads it as a
+        parameter, so a hand-written config may omit it.
+        """
+        self._set(ConfigKeys.VIRALCONSEQ_VERSION, viralconseq_version, self.SECTION_PROVENANCE)
+
     def add_workflow_path(self, workflow_path: str) -> None:
         """Add workflow path to configuration.
 
@@ -384,6 +393,7 @@ class ConfigGenerator:
             # DAG; the placeholder DB files are listed in SKELETON_PLACEHOLDERS.
             gen.add_viralqc_settings(run_viralqc=True, viralqc_db=f"{root}/viralqc_db")
             gen.add_workflow_path(".")
+            gen.add_provenance(__version__)
         else:
             raise ValueError(f"Unknown pipeline: {pipeline!r} (expected 'consensus')")
 

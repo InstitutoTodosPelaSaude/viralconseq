@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from viralconseq import __version__
 from viralconseq.consensus import (
     generate_config_file,
     main,
@@ -473,6 +474,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
             config_dict["workflow_path"].endswith(os.path.join("viralconseq", "scripts"))
         )
         self.assertEqual(config_dict["output"], "output_dir/run_name/")
+        self.assertEqual(config_dict["viralconseq_version"], __version__)
         self.assertEqual(config_dict["adapters"], "adapters.fasta")
         self.assertEqual(config_dict["minimum_length"], 50)
         self.assertEqual(config_dict["trim_head"], 0)

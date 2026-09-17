@@ -11,6 +11,7 @@ rule all:
             segment=SEGMENTS.keys()
         ),
         config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
+        config['output'] + "versions.tsv",
         config['output'] + "benchmark.tsv"
 
 rule sanitize_reference:
@@ -47,6 +48,7 @@ include: "rules/consensus_nanopore.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_nanopore_common.smk"
 include: "rules/viralqc.smk"
+include: "rules/provenance.smk"
 
 rule unify_assembly_statistics_reports:
     conda:

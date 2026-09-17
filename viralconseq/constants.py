@@ -47,6 +47,7 @@ class ConfigKeys:
     RUN_VIRALQC = "run_viralqc"
     VIRALQC_DB = "viralqc_db"
     VIRALQC_EXTRA_FLAGS = "viralqc_extra_flags"
+    VIRALCONSEQ_VERSION = "viralconseq_version"
 
 
 class ViralQCDatabase:

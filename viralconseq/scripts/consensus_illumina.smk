@@ -11,6 +11,7 @@ rule all:
         config['output'] + "assembly/consensus/final_consensus/samples_alignment.fasta",
         config['output'] + "isnvs/isnvs_summary.tsv" if config.get("run_isnv", False) else [],
         config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
+        config['output'] + "versions.tsv",
         config['output'] + "benchmark.tsv"
 
 def get_map_input_fastqs(wildcards):
@@ -25,6 +26,7 @@ include: "rules/consensus_illumina.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_illumina_common.smk"
 include: "rules/viralqc.smk"
+include: "rules/provenance.smk"
 
 rule unify_assembly_statistics_reports:
     conda:

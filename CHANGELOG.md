@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
+## [Unreleased]
+
+### Added
+
+- `<run>/versions.tsv`: the versions of every tool that ran, probed inside the
+  per-rule conda environments at run time (`component<TAB>version`), with the
+  viralconseq and Snakemake versions on top and, when viralQC ran, the database
+  directory and the date its Nextclade datasets were downloaded. Produced by
+  the new `scripts/rules/provenance.smk` (one `versions_<env>` rule per
+  environment plus `versions`) and `scripts/python/tool_versions.py`. The
+  config gains a `viralconseq_version` key (section `provenance`).
+
 ## [0.1.1] - 2026-09-17
 
 ### Changed

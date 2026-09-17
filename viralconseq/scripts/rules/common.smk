@@ -86,6 +86,25 @@ wildcard_constraints:
 
 
 RUN_LOG = config["output"] + "logs/run.log"
+LOGS = config["output"] + "logs/"
+# Helper scripts (stdlib, argparse) run via shell: live next to the workflows.
+PY = os.path.join(workflow.basedir, "python")
+
+
+def LOG(rule, target="{sample}", per_segment=True):
+    """Log path ``<output>/logs/<rule>/[<segment>/]<target>.log``.
+
+    ``per_segment`` inserts the segment wildcard in segmented workflows so a
+    per-sample rule that runs once per segment does not overwrite its own log.
+    Run-level rules pass ``target=<rule name>, per_segment=False``.
+    """
+    segment = globals().get("SEGMENT_WILDCARD", "") if per_segment else ""
+    return LOGS + rule + "/" + segment + target + ".log"
+
+
+def BENCH(rule, target="{sample}", per_segment=True):
+    """Benchmark path next to :func:`LOG`: ``<...>/<target>.benchmark.txt``."""
+    return LOG(rule, target=target, per_segment=per_segment)[: -len(".log")] + ".benchmark.txt"
 
 
 def append_run_log(message):

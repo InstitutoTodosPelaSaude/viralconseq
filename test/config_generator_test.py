@@ -107,6 +107,14 @@ class Test_Save(unittest.TestCase):
             nxt = lines[lines.index(header) + 1]
             self.assertTrue(nxt.startswith("# ") and not nxt.startswith("# ---"), nxt)
 
+    def test_add_provenance_lands_in_its_own_section(self):
+        gen = self._full_generator()
+        gen.add_provenance("1.2.3")
+        gen.save()
+        text = open(gen.config_path).read()
+        self.assertIn("# --- provenance ---", text)
+        self.assertEqual(yaml.safe_load(text)["viralconseq_version"], "1.2.3")
+
     def test_saved_yaml_roundtrips_and_leaves_no_tempfile(self):
         gen = self._full_generator()
         gen.save()

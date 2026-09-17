@@ -29,6 +29,7 @@ rule all:
     input:
         config['output'] + "assembly/consensus/final_consensus/samples_alignment.fasta",
         config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
+        config['output'] + "versions.tsv",
         config['output'] + "benchmark.tsv"
 
 def get_map_input_fastqs(wildcards):
@@ -42,6 +43,7 @@ include: "rules/consensus_nanopore.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_nanopore_common.smk"
 include: "rules/viralqc.smk"
+include: "rules/provenance.smk"
 
 # ``calculate_assembly_statistics`` and ``align_consensus_to_reference_genome``
 # are defined in the included ``consensus_nanopore_common.smk``. The
