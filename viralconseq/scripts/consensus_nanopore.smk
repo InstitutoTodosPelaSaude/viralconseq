@@ -1,16 +1,5 @@
-wildcard_constraints:
-    sample=r"[^/]+",
-    segment=r"[^/]+",
-    ref_key=r"[^/]+",
-
-
-onsuccess:
-    print("viralconseq: workflow completed successfully.")
-
-
-onerror:
-    print(f"viralconseq: workflow FAILED - see the Snakemake log: {log}")
-
+# Shared preamble first: exact-sample wildcard constraints and run.log hooks.
+include: "rules/common.smk"
 
 SEGMENT_WILDCARD = ""
 rule sanitize_reference:
@@ -36,6 +25,7 @@ rule sanitize_reference:
 REFERENCE = rules.sanitize_reference.output.fasta
 
 rule all:
+    default_target: True
     input:
         config['output'] + "assembly/consensus/final_consensus/samples_alignment.fasta",
         config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],

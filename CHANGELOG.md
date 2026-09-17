@@ -21,6 +21,11 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   with `IncompleteFilesException`.
 - `run_manifest.json` keys its `samples` block by `sample-<id>`, like every
   other output.
+- New shared preamble `scripts/rules/common.smk`, included first by all four
+  workflows: the `sample` wildcard now matches exactly the configured sample
+  ids (no ambiguity between ids that are prefixes of one another), `rule all`
+  is the default target (a bare `snakemake -s <workflow>` plans the whole
+  DAG), and `onstart`/`onsuccess`/`onerror` append to `<run>/logs/run.log`.
 - Every rule now declares `log:` and `benchmark:` and redirects its shell
   output into the log (`sanitize_reference`, nanopore `trim_primer_sequences`,
   `calculate_coverage_basewise`, `rename_sequences`, nanopore

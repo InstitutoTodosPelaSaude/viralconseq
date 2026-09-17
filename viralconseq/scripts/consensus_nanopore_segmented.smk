@@ -1,20 +1,10 @@
-wildcard_constraints:
-    sample=r"[^/]+",
-    segment=r"[^/]+",
-    ref_key=r"[^/]+",
-
-
-onsuccess:
-    print("viralconseq: workflow completed successfully.")
-
-
-onerror:
-    print(f"viralconseq: workflow FAILED - see the Snakemake log: {log}")
-
+# Shared preamble first: exact-sample wildcard constraints and run.log hooks.
+include: "rules/common.smk"
 
 SEGMENTS = config["reference"]  # dict: {"S": "/path/S.fa", "L": "/path/L.fa", ...}
 
 rule all:
+    default_target: True
     input:
         expand(
             config['output'] + "assembly/{segment}/consensus/final_consensus/samples_alignment.fasta",

@@ -97,6 +97,20 @@ class Test_RuleInventory(unittest.TestCase):
             },
         )
 
+    def test_entry_files_include_common_first_and_default_to_all(self):
+        for entry in ENTRY_FILES:
+            text = entry.read_text()
+            with self.subTest(workflow=entry.name):
+                first_include = INCLUDE_RE.search(text)
+                self.assertIsNotNone(first_include, "no include: found")
+                self.assertEqual(
+                    first_include.group(1),
+                    "rules/common.smk",
+                    "rules/common.smk must be the first include (global wildcard constraints)",
+                )
+                all_body = dict(rule_blocks(text))["all"]
+                self.assertIn("default_target: True", all_body)
+
     def test_every_rule_declares_log_and_benchmark(self):
         for (entry, name), (path, body) in self.rules.items():
             if name in LOG_EXEMPT:

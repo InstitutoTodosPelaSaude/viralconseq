@@ -58,11 +58,10 @@ def test_snakemake_dryrun(config_filename):
     if not os.path.exists(workflow_path):
         pytest.fail(f"Workflow file not found: {workflow_path} for config {config_filename}")
 
-    # Run Snakemake dry-run
-    # -n: dry-run, -p: print commands. Target ``all`` explicitly, as the
-    # orchestrator does: in consensus_nanopore.smk ``sanitize_reference`` is
-    # defined before ``rule all``, so without a target Snakemake would plan
-    # only that first rule and the dry-run would not exercise the DAG.
+    # Run Snakemake dry-run (-n) printing commands (-p). No explicit target:
+    # every entry workflow marks ``rule all`` with ``default_target: True``, so
+    # a bare ``snakemake -s <workflow>`` must plan the whole DAG even where
+    # another rule (nanopore ``sanitize_reference``) is defined before it.
     cmd = [
         "snakemake",
         "-s",
@@ -73,7 +72,6 @@ def test_snakemake_dryrun(config_filename):
         "-p",
         "--cores",
         "1",
-        "all",
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
