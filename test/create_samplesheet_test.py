@@ -189,6 +189,48 @@ class Test_SampleGroupingIntegrity(unittest.TestCase):
         self.assertTrue(all(os.path.basename(p).startswith("s1_") for p in samples["s1"]))
         self.assertTrue(all(os.path.basename(p).startswith("s10_") for p in samples["s10"]))
 
+    def test_prefix_is_prepended_on_both_levels(self):
+        self._touch("s1_R1.fastq.gz")
+        self._touch("s1_R2.fastq.gz")
+        level0 = find_samples_level_0(self.tmp, separator="_", pattern="R1", prefix="RUN1")
+        self.assertEqual(set(level0), {"RUN1_s1"})
+        self._touch("barcode05", "reads.fastq.gz")
+        level1 = find_samples_level_1(self.tmp, separator="-", prefix="RUN1")
+        self.assertEqual(set(level1), {"RUN1_barcode05"})
+
+    def test_unsafe_prefix_is_rejected_up_front(self):
+        with self.assertRaises(ValidationError):
+            validate_args(
+                {
+                    "input": self.tmp,
+                    "output": os.path.join(self.tmp, "o.csv"),
+                    "level": 1,
+                    "prefix": "bad prefix",
+                }
+            )
+
+    def test_junk_entries_are_ignored(self):
+        """Finder/Windows droppings next to the reads are neither samples nor files."""
+        self._touch("barcode05", "barcode05.fastq.gz")
+        self._touch("barcode05", "barcode05.fastq.gz:Zone.Identifier")
+        self._touch("barcode05", ".DS_Store")
+        self._touch("barcode05", "._barcode05.fastq.gz")
+        self._touch("barcode05", "upload.temp")
+        self._touch("__MACOSX", "barcode05.fastq.gz")
+        self._touch(".DS_Store")
+        samples = find_samples_level_1(self.tmp, separator="-")
+        self.assertEqual(set(samples), {"barcode05"})
+        self.assertEqual(
+            [os.path.basename(p) for p in samples["barcode05"]], ["barcode05.fastq.gz"]
+        )
+
+        self._touch("flat", "s1_R1.fastq.gz")
+        self._touch("flat", "s1_R2.fastq.gz")
+        self._touch("flat", "s1_R1.fastq.gz:Zone.Identifier")
+        self._touch("flat", "s1_R2.fastq.gz.part")
+        flat = find_samples_level_0(os.path.join(self.tmp, "flat"), separator="_", pattern="R1")
+        self.assertEqual(len(flat["s1"]), 2)
+
     def test_level1_duplicate_sample_names_rejected(self):
         """Two subdirectories that reduce to the same sample name must error."""
         self._touch("sampleA-1", "reads.fastq.gz")

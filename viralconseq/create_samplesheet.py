@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import click
 
-from viralconseq.constants import SampleSheetPattern, SampleSheetSeparator
+from viralconseq.constants import SampleSheetJunk, SampleSheetPattern, SampleSheetSeparator
 from viralconseq.exceptions import ValidationError, ViralConseqFileNotFoundError
 from viralconseq.validators import sanitize_identifier
 
@@ -54,14 +54,25 @@ logger = logging.getLogger(__name__)
     show_default=True,
     help="Directory level to search for sequencing data: 0 = files in --input, 1 = files in subdirectories.",
 )
-def create_samplesheet(input_dir, output, separator, pattern, level):
-    """Generate a sample-sheet CSV file from a sequencing run directory."""
+@click.option(
+    "--prefix",
+    default=None,
+    help="Prepend PREFIX_ to every sample ID (e.g. a run code, so barcode05 from two "
+    "runs stays distinct: RUN1_barcode05). Must be a plain identifier.",
+)
+def create_samplesheet(input_dir, output, separator, pattern, level, prefix):
+    """Generate a sample-sheet CSV file from a sequencing run directory.
+
+    Finder and Windows droppings next to the reads (.DS_Store, ._*, __MACOSX,
+    *Zone.Identifier, *.temp) are ignored rather than becoming samples.
+    """
     args = {
         "input": input_dir,
         "output": output,
         "separator": separator,
         "pattern": pattern,
         "level": int(level),
+        "prefix": prefix,
     }
     try:
         validate_args(args)
@@ -98,16 +109,20 @@ def validate_args(args: Dict[str, Any]) -> None:
     if os.path.isfile(output_file):
         raise ValidationError(f"Output file already exists: {output_file}")
 
+    if args.get("prefix"):
+        sanitize_identifier(args["prefix"], "prefix")
 
-def extract_sample_name(path: str, separator: str) -> str:
+
+def extract_sample_name(path: str, separator: str, prefix: Optional[str] = None) -> str:
     """Extract sample name from file or directory path.
 
     Args:
         path: File or directory path
         separator: Separator character used to split the name
+        prefix: Optional run code prepended as ``<prefix>_<name>``
 
     Returns:
-        Sample name (first part before separator)
+        Sample name (first part before separator, prefixed when asked)
 
     Raises:
         ValidationError: If the derived name is not a safe identifier (spaces,
@@ -115,7 +130,10 @@ def extract_sample_name(path: str, separator: str) -> str:
             the problem at its source instead of downstream in the pipeline.
     """
     basename = os.path.basename(path)
-    return sanitize_identifier(basename.split(separator)[0], "sample name")
+    name = basename.split(separator)[0]
+    if prefix:
+        name = f"{prefix}_{name}"
+    return sanitize_identifier(name, "sample name")
 
 
 def find_files_in_directory(directory: str, pattern: Optional[str] = None) -> List[str]:
@@ -134,7 +152,7 @@ def find_files_in_directory(directory: str, pattern: Optional[str] = None) -> Li
         search_pattern = os.path.join(directory, "*")
 
     files = glob.glob(search_pattern)
-    return [f for f in files if os.path.isfile(f)]
+    return [f for f in files if os.path.isfile(f) and not SampleSheetJunk.is_junk(f)]
 
 
 def validate_sample_files(file_paths: List[str], sample_name: str) -> None:
@@ -155,12 +173,15 @@ def validate_sample_files(file_paths: List[str], sample_name: str) -> None:
         )
 
 
-def find_samples_level_1(input_dir: str, separator: str) -> Dict[str, List[str]]:
+def find_samples_level_1(
+    input_dir: str, separator: str, prefix: Optional[str] = None
+) -> Dict[str, List[str]]:
     """Find samples in subdirectories (level 1).
 
     Args:
         input_dir: Base input directory
         separator: Separator character for sample names
+        prefix: Optional run code prepended to every sample name
 
     Returns:
         Dictionary mapping sample names to file paths
@@ -172,10 +193,10 @@ def find_samples_level_1(input_dir: str, separator: str) -> Dict[str, List[str]]
     directories = sorted(glob.glob(os.path.join(input_dir, "*")))
 
     for directory in directories:
-        if not os.path.isdir(directory):
+        if not os.path.isdir(directory) or SampleSheetJunk.is_junk(directory):
             continue
 
-        sample_name = extract_sample_name(directory, separator)
+        sample_name = extract_sample_name(directory, separator, prefix)
         if sample_name in samples:
             raise ValidationError(
                 f"Duplicate sample name '{sample_name}' derived from more than one "
@@ -192,13 +213,16 @@ def find_samples_level_1(input_dir: str, separator: str) -> Dict[str, List[str]]
     return samples
 
 
-def find_samples_level_0(input_dir: str, separator: str, pattern: str) -> Dict[str, List[str]]:
+def find_samples_level_0(
+    input_dir: str, separator: str, pattern: str, prefix: Optional[str] = None
+) -> Dict[str, List[str]]:
     """Find samples in the base directory (level 0).
 
     Args:
         input_dir: Base input directory
         separator: Separator character for sample names
         pattern: Pattern to match files (e.g., 'R1')
+        prefix: Optional run code prepended to every sample name
 
     Returns:
         Dictionary mapping sample names to file paths
@@ -212,12 +236,12 @@ def find_samples_level_0(input_dir: str, separator: str, pattern: str) -> Dict[s
     # Sample names that have an anchor (e.g. R1) file; these define the set of
     # samples to emit. Grouping is done by *exact* extracted name below rather
     # than a substring glob, so 's1' no longer captures 's10'/'s1b' files.
-    anchor_sample_names = {extract_sample_name(f, separator) for f in pattern_files}
+    anchor_sample_names = {extract_sample_name(f, separator, prefix) for f in pattern_files}
 
     all_files = sorted(find_files_in_directory(input_dir))
     grouped: Dict[str, List[str]] = {}
     for file_path in all_files:
-        sample_name = extract_sample_name(file_path, separator)
+        sample_name = extract_sample_name(file_path, separator, prefix)
         if sample_name in anchor_sample_names:
             grouped.setdefault(sample_name, []).append(file_path)
 
@@ -245,13 +269,14 @@ def generate_sample_sheet(args: Dict[str, Any]) -> None:
     separator = args["separator"]
     pattern = args["pattern"]
     output_file = args["output"]
+    prefix = args.get("prefix") or None
 
     logger.info("Searching for sample files")
 
     if level == 1:
-        samples = find_samples_level_1(input_dir, separator)
+        samples = find_samples_level_1(input_dir, separator, prefix)
     else:
-        samples = find_samples_level_0(input_dir, separator, pattern)
+        samples = find_samples_level_0(input_dir, separator, pattern, prefix)
 
     if not samples:
         raise ValidationError("No samples found in input directory")

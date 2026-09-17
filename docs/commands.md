@@ -84,6 +84,11 @@ viralconseq create-samplesheet --input /path/to/run/ --output samples.csv
 | `--level` | `1` | `0` = files in `--input`, `1` = files in subdirectories (one per sample). |
 | `--separator` | `-` | Character used to split the file/directory name and extract the sample ID (`-`, `_`, or `.`). |
 | `--pattern` | `R1` | Pattern identifying the first read file at level 0 (`R1` for Illumina, `barcode` for Nanopore). |
+| `--prefix` | — | Prepend `PREFIX_` to every sample ID (a run code, so `barcode05` from two runs stays distinct: `RUN1_barcode05`). Must be a plain identifier. |
+
+Finder and Windows droppings next to the reads (`.DS_Store`, `._*`, `__MACOSX/`,
+`*Zone.Identifier`, `*.temp`, `*.tmp`, `*.part`) are ignored: they neither
+become samples nor count as a sample's files.
 
 ### Output format
 

@@ -23,6 +23,11 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   facet by segment; unsegmented runs with several viruses facet by virus. The
   page self-checks against `summary.tsv` before it is written. Toggle with
   `--report/--no-report` (config key `run_report`, section `report`).
+- `create-samplesheet --prefix RUN`: prepend a run code to every sample ID
+  (`RUN_barcode05`). Junk entries next to the reads (`.DS_Store`, `._*`,
+  `__MACOSX/`, `*Zone.Identifier`, `*.temp`, `*.tmp`, `*.part`) are now
+  ignored instead of becoming samples or extra sample files
+  (`constants.SampleSheetJunk`).
 - `viralconseq create-report RUN_DIR [-o OUTPUT] [--label]`: rebuild the
   report for a finished run directory from `summary.tsv` and
   `<run>/config.yml` (`viralconseq/report.py`, `report_cli.py`), with the

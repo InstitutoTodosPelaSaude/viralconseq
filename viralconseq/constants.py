@@ -1,5 +1,6 @@
 """Constants used throughout the viralconseq pipeline."""
 
+import fnmatch
 import os
 import re
 from pathlib import Path
@@ -191,6 +192,24 @@ class SampleSheetSeparator:
     UNDERSCORE = "_"
     HYPHEN = "-"
     DOT = "."
+
+
+class SampleSheetJunk:
+    """Directory entries ``create-samplesheet`` ignores: OS and file-manager
+    droppings that land next to FASTQs (macOS Finder metadata, Windows
+    zone-identifier streams surfaced by WSL, editor temp files). A junk entry
+    never becomes a sample nor a sample's file; ``is_junk`` is the single
+    place that decides."""
+
+    NAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini", "__MACOSX"})
+    GLOBS = ("._*", "*.temp", "*.tmp", "*Zone.Identifier", "*.part", "*.crdownload")
+
+    @classmethod
+    def is_junk(cls, name: str) -> bool:
+        base = os.path.basename(name.rstrip("/"))
+        if base in cls.NAMES:
+            return True
+        return any(fnmatch.fnmatchcase(base, pattern) for pattern in cls.GLOBS)
 
 
 class ReportDefaults:
