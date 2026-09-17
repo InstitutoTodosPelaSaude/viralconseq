@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use viralconseq, please cite it using the metadata from this file. A scientific publication is in preparation."
 type: software
 title: "viralconseq: reference-guided consensus sequence inference for viral high-throughput sequencing data"
-version: 0.1.0
-date-released: 2026-09-11
+version: 0.1.1
+date-released: 2026-09-17
 license: MIT
 repository-code: "https://github.com/filiperomero2/viralconseq"
 url: "https://viralconseq.readthedocs.io/"
