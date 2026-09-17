@@ -43,6 +43,12 @@ class Test_ConfigGeneratorSkeleton(unittest.TestCase):
         for k in ("samples", "data", "output", "threads", "reference", "clair3_model"):
             self.assertIn(k, cfg, f"missing key: {k}")
         self.assertEqual(cfg["data"], "nanopore")
+        # The model checkpoints are rule inputs: the skeleton must declare
+        # placeholders for them or `setup` cannot walk the DAG.
+        self.assertTrue(cfg["clair3_model_dir"].endswith("clair3_models"))
+        placeholders = ConfigGenerator.SKELETON_PLACEHOLDERS["consensus"]["nanopore"]
+        self.assertIn(f"clair3_models/{cfg['clair3_model']}/pileup.pt", placeholders)
+        self.assertIn(f"clair3_models/{cfg['clair3_model']}/full_alignment.pt", placeholders)
 
     def test_viralqc_enabled_in_skeleton(self):
         """``run_viralqc`` must be on so ``viralconseq setup`` materializes

@@ -15,6 +15,7 @@ workflow_path: .
 af_threshold: 0.51
 chunk_size: 10000
 clair3_model: "r1041_e82_400bps_sup_v500"
+clair3_model_dir: data/clair3_models
 variant_quality: 20
 variant_depth: 10
 minimum_map_quality: 30

@@ -135,6 +135,14 @@ class Test_Save(unittest.TestCase):
         leftovers = [f for f in os.listdir(os.path.dirname(gen.config_path)) if f != "config.yml"]
         self.assertEqual(leftovers, [])
 
+    def test_per_sample_clair3_models_are_rekeyed_like_samples(self):
+        gen = ConfigGenerator(os.path.join(self.tmp, "c.yml"))
+        gen.add_consensus_nanopore_settings(
+            50, 0.51, 10000, {"a": "m1", "b": "m2"}, 20, 10, 30, clair3_model_dir="/models"
+        )
+        self.assertEqual(gen.config["clair3_model"], {"sample-a": "m1", "sample-b": "m2"})
+        self.assertEqual(gen.config["clair3_model_dir"], "/models")
+
     def test_from_dict_places_keys_in_sections_and_backup_keeps_previous(self):
         path = os.path.join(self.tmp, "config.yml")
         with open(path, "w") as fh:

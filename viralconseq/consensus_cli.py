@@ -7,7 +7,7 @@ from typing import Any, Optional, Tuple
 import click
 
 from viralconseq.consensus import main as consensus_main
-from viralconseq.constants import ResourceDefaults, ViralQCDatabase, detect_cores
+from viralconseq.constants import Clair3Models, ResourceDefaults, ViralQCDatabase, detect_cores
 
 
 def _default_conda_prefix() -> str:
@@ -410,9 +410,20 @@ def consensus_illumina(
 )
 @click.option(
     "--clair3-model",
-    default="r1041_e82_400bps_sup_v500",
+    default=Clair3Models.AUTO,
     show_default=True,
-    help="Clair3 model for variant calling.",
+    help="Clair3 model for variant calling. 'auto' reads the basecall model tag Dorado "
+    "writes into every read header (basecall_model_version_id= or RG:Z:) and picks the "
+    "matching model per sample; reads without a tag (Guppy-era, re-headered) need an "
+    "explicit name, e.g. r941_prom_hac_g360+g422 for R9.4.1 Guppy hac reads. The model "
+    "must exist in --clair3-model-dir (fetch with 'viralconseq setup --clair3-models NAME').",
+)
+@click.option(
+    "--clair3-model-dir",
+    default=Clair3Models.default_dir,
+    show_default="$VIRALCONSEQ_CLAIR3_MODELS or ~/.cache/viralconseq/clair3-models",
+    help="Directory holding one sub-directory per Clair3 model (pileup.pt + "
+    "full_alignment.pt). Populated by 'viralconseq setup --clair3-models'.",
 )
 @click.option(
     "--variant-quality",

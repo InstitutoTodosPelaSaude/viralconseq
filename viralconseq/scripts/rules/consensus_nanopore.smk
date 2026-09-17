@@ -1,15 +1,16 @@
 # Nanopore consensus rules: infer_consensus_sequence (clair3 + bcftools)
 # These rules expect the following variables to be defined in the entry-point workflow:
 # - REFERENCE: path to reference genome (str)
-# - config: standard Snakemake config dict (clair3_model; optional clair3_model_dir,
-#   else the models bundled in the Clair3 conda env)
-# - LOG / BENCH / cpus / ram_mb from rules/common.smk
+# - config: standard Snakemake config dict (clair3_model: a name or a
+#   {sample: name} mapping; clair3_model_dir)
+# - LOG / BENCH / cpus / ram_mb / clair3_model_for / clair3_model_files from
+#   rules/common.smk
 
 # Clair3 2.x: models are two PyTorch checkpoints (pileup.pt, full_alignment.pt)
-# in <model_dir>/<model>/. run_clair3.sh checks only that the directory exists
-# and a stale (TensorFlow-era) directory dies inside torch.load with a bare
-# exit 2, hence the exit-code decoding below.
-CLAIR3_MODEL_DIR = str(config.get("clair3_model_dir") or "") or "$CONDA_PREFIX/bin/models"
+# in <model_dir>/<model>/, declared as inputs below. run_clair3.sh checks only
+# that the directory exists and a stale (TensorFlow-era) directory dies inside
+# torch.load with a bare exit 2, hence the exit-code decoding.
+CLAIR3_MODEL_DIR = str(config["clair3_model_dir"])
 
 
 rule infer_consensus_sequence:
@@ -18,7 +19,8 @@ rule infer_consensus_sequence:
     input:
         bam = rules.trim_primer_sequences.output.bam,
         bam_index = rules.trim_primer_sequences.output.bam_index,
-        reference = REFERENCE
+        reference = REFERENCE,
+        model_files = clair3_model_files
     output:
         vcf_raw = config['output'] + "assembly/" + SEGMENT_WILDCARD + "clair3/{sample}/{sample}.raw.vcf.gz",
         vcf_raw_index = config['output'] + "assembly/" + SEGMENT_WILDCARD + "clair3/{sample}/{sample}.raw.vcf.gz.tbi",
@@ -34,7 +36,7 @@ rule infer_consensus_sequence:
         minimum_depth = config["minimum_depth"],
         af_threshold = config["af_threshold"],
         chunk_size = config["chunk_size"],
-        clair3_model = config["clair3_model"],
+        clair3_model = lambda wildcards: clair3_model_for(wildcards.sample),
         variant_quality = config["variant_quality"],
         minimum_map_quality = config["minimum_map_quality"],
         variant_depth = config["variant_depth"]

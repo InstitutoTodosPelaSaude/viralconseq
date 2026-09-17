@@ -28,3 +28,7 @@ touch data/viralqc_db/blast.fasta data/viralqc_db/blast.tsv data/viralqc_db/.nex
 
 echo "Placeholder files created successfully in data/."
 echo "You can now run 'snakemake -n' for any of the dry-run configs."
+
+# Clair3 model checkpoints declared as inputs by rules/consensus_nanopore.smk
+mkdir -p data/clair3_models/r1041_e82_400bps_sup_v500
+touch data/clair3_models/r1041_e82_400bps_sup_v500/pileup.pt data/clair3_models/r1041_e82_400bps_sup_v500/full_alignment.pt

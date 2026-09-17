@@ -187,7 +187,7 @@ viralconseq consensus nanopore \
     --output       results/consensus_nanopore/ \
     --run-name     sarscov2 \
     --reference    databases/refs/nCoV-2019.reference.fasta \
-    --clair3-model r1041_e82_400bps_sup_v500 \
+    --clair3-model r941_prom_hac_g360+g422 \
     --minimum-coverage 20 \
     --minimum-map-quality 30 \
     --threads 4 --threads-total 4
@@ -196,7 +196,7 @@ viralconseq consensus nanopore \
 The interesting differences from the Illumina invocation:
 
 - No `fastp` step — the workflow skips QC entirely for Nanopore. The variant caller is expected to absorb noisy bases.
-- `--clair3-model` picks the appropriate Clair3 model for your basecaller. The default `r1041_e82_400bps_sup_v500` matches recent (R10.4.1) SUP-basecalled reads; pick a different one if your data was basecalled differently. The list of model names is in the [Clair3 model zoo](https://github.com/HKU-BAL/Clair3#pre-trained-models).
+- `--clair3-model` names the Clair3 model matching your basecaller. Leave it at its default, `auto`, for recent data: the pipeline reads the basecall model tag Dorado writes into every read header and picks the model for you, per sample. The tutorial reads are 2022 Guppy R9.4.1 reads that carry no such tag, so `auto` would stop with a message asking for a model, and `r941_prom_hac_g360+g422` is the right one for them. Whatever the model, it must be present in `~/.cache/viralconseq/clair3-models` (or `--clair3-model-dir`); `viralconseq setup` fetches the common R10.4.1 hac/sup models and this R9 one by default, and `viralconseq setup --clair3-models NAME` fetches any other name from the [Clair3 model zoo](https://github.com/HKU-BAL/Clair3#pre-trained-models).
 - `--minimum-map-quality 30` filters reads with MAPQ below 30 before variant calling. Tighten this for very noisy runs.
 - The pipeline silently sanitizes the reference's FASTA headers (replacing `/`, `|`, `,`, `~`, and spaces with `_`) before use — clair3 turns the seq ID into a directory name, so the sanitization avoids cryptic filesystem errors. The sanitized copy lands at `results/consensus_nanopore/sarscov2/reference/reference.sanitized.fasta`.
 

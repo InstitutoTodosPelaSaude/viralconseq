@@ -67,7 +67,10 @@ pipelines:
     run_name: sarscov2
     extra_args:
       --reference:            references/nCoV-2019.reference.fasta
-      --clair3-model:         r1041_e82_400bps_sup_v500
+      # The fixtures are 2022 R9.4.1 Guppy reads without a basecall tag, so
+      # 'auto' cannot resolve them; this is the matching model. It must be in
+      # the model dir: viralconseq setup fetches it by default.
+      --clair3-model:         r941_prom_hac_g360+g422
       --minimum-coverage:     "20"
       --minimum-map-quality:  "30"
       --threads:              "4"

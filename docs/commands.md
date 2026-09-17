@@ -224,7 +224,8 @@ Note that the step needs outbound HTTPS even with the databases in place:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--chunk-size` | `10000` | Chunk size for clair3 processing. |
-| `--clair3-model` | `r1041_e82_400bps_sup_v500` | Clair3 model for variant calling. |
+| `--clair3-model` | `auto` | Clair3 model for variant calling. `auto` reads the basecall model tag Dorado/MinKNOW write into every read header (`basecall_model_version_id=` or `RG:Z:`) from the first reads of each sample and picks the matching model per sample, the way ARTIC's `choose_model` does (a run whose samples were basecalled with different models gets a per-sample mapping in the config). Reads without a tag (Guppy-era, re-headered, SRA dumps) fail before any work starts with a message naming this option; pass the model yourself, e.g. `r941_prom_hac_g360+g422` for R9.4.1 Guppy hac reads. Move-table (`*_with_mv`) models are refused. |
+| `--clair3-model-dir` | `~/.cache/viralconseq/clair3-models` | Directory with one sub-directory per model (`pileup.pt` + `full_alignment.pt`). Picked up from `$VIRALCONSEQ_CLAIR3_MODELS` if set. Every model the run needs must be present and complete or the run stops before any work with the exact `viralconseq setup --clair3-models NAME` command to fetch it. |
 | `--variant-quality` | `20` | Minimum variant quality (clair3). |
 | `--variant-depth` | `10` | Minimum alt allele depth (clair3). |
 | `--minimum-map-quality` | `30` | Minimum mapping quality (clair3). |

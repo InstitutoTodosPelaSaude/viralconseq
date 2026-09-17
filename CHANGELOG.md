@@ -33,6 +33,22 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   summary of cores and budget is printed at start. The config records
   `threads_total`, `max_memory_mb` and `memory_detected_mb`.
 
+- Automatic Clair3 model selection. `--clair3-model` now defaults to `auto`:
+  the basecall model tag Dorado/MinKNOW write into every read header
+  (`basecall_model_version_id=` or `RG:Z:`) is read from the first reads of
+  each sample and mapped to a Clair3 model the way ARTIC's `choose_model`
+  does (same manifest, same tie-breaks, same refusal to fall back to a
+  Guppy-era model for Dorado reads). Samples basecalled with different models
+  get a per-sample mapping in the config; a sample whose reads disagree is an
+  error. Reads without a tag (Guppy-era, re-headered) stop the run before any
+  work with the model to pass by hand.
+- `--clair3-model-dir` (default `~/.cache/viralconseq/clair3-models`, or
+  `$VIRALCONSEQ_CLAIR3_MODELS`): models live in viralconseq's own cache, not
+  in the conda env, and the chosen model's two checkpoints are validated
+  (zip-level) before the run starts and declared as rule inputs. A missing or
+  incomplete model fails with the `viralconseq setup --clair3-models NAME`
+  command to run. New error codes `clair3_model_unresolved`,
+  `clair3_model_mixed_within_sample`, `clair3_model_not_found`.
 - `viralconseq rerun CONFIG.yml`: run a workflow again from a saved config,
   to resume an interrupted run, `--dry-run` a change, `--unlock` a stale lock,
   `--keep-going`, or `--set KEY=VALUE` (parsed as YAML, written back with the
@@ -44,6 +60,11 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ### Changed
 
+- **Breaking for nanopore runs:** `--clair3-model` no longer defaults to
+  `r1041_e82_400bps_sup_v500`, and the model is read from `--clair3-model-dir`
+  instead of the conda environment. Runs on untagged reads (Guppy-era data)
+  must now pass `--clair3-model NAME`, and every model must be fetched once
+  with `viralconseq setup --clair3-models NAME`.
 - Nanopore variant calling uses Clair3 2.0.2 (was 1.2). Clair3 2.x ships
   PyTorch models (`pileup.pt` + `full_alignment.pt`); the `run_clair3.sh`
   invocation passes value flags before the bare boolean flags (2.x parses

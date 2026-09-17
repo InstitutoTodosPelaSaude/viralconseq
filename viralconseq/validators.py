@@ -6,10 +6,12 @@ import logging
 import os
 import re
 import shlex
+from collections import Counter
 from typing import Any, Dict, List, Optional, cast
 
-from viralconseq import integrity
+from viralconseq import clair3_models, integrity
 from viralconseq.constants import (
+    Clair3Models,
     DataType,
     ResourceDefaults,
     ViralQCDatabase,
@@ -18,6 +20,8 @@ from viralconseq.constants import (
 )
 from viralconseq.exceptions import (
     AdaptersNotFoundError,
+    Clair3ModelNotFoundError,
+    Clair3ModelUnresolvedError,
     ConfigurationError,
     InputIntegrityError,
     PrimerSchemeNotFoundError,
@@ -233,7 +237,7 @@ def validate_config_dict(config: Any) -> None:
     required = list(CONFIG_REQUIRED_COMMON)
     required += CONFIG_REQUIRED_ILLUMINA if data == DataType.ILLUMINA else CONFIG_REQUIRED_NANOPORE
     if data == DataType.NANOPORE:
-        required.append("infer_consensus_sequence_ram")
+        required.extend(["infer_consensus_sequence_ram", "clair3_model_dir"])
     if config.get("run_viralqc", True):
         required.extend(["viralqc_db", "run_viralqc_ram"])
     missing = [key for key in required if key not in config]
@@ -274,8 +278,19 @@ def validate_config_dict(config: Any) -> None:
         fail("adapters must be a path or 'NA'")
     if data == DataType.NANOPORE:
         model = config["clair3_model"]
-        if not isinstance(model, str) or not model.strip():
-            fail("clair3_model must be a non-empty string")
+        names = list(model.values()) if isinstance(model, dict) else [model]
+        if isinstance(model, dict) and set(model) - set(samples):
+            fail("clair3_model names samples that are not in samples")
+        for name in names:
+            if not isinstance(name, str) or not Clair3Models.NAME_RE.match(name):
+                fail(f"clair3_model {name!r} is not a valid model name")
+            if name.endswith(Clair3Models.DWELL_TIME_SUFFIX):
+                fail(f"clair3_model {name!r} is a move-table model viralconseq cannot run")
+        if (
+            not isinstance(config["clair3_model_dir"], str)
+            or not config["clair3_model_dir"].strip()
+        ):
+            fail("clair3_model_dir must be a directory path")
 
     for key in ("run_isnv", "run_viralqc"):
         if key in config and not isinstance(config[key], bool):
@@ -753,6 +768,82 @@ def viralqc_setup_hint(db_dir: str) -> str:
     return f"viralconseq setup --viralqc-db {db_dir}"
 
 
+def missing_clair3_model_files(model_dir: str, name: str) -> List[str]:
+    """Checkpoints missing or invalid for ``<model_dir>/<name>``; ``[]`` when usable."""
+    return clair3_models.missing_checkpoints(model_dir, name)
+
+
+def clair3_setup_hint(model_dir: str, name: str) -> str:
+    """The command that fetches ``name`` into ``model_dir``; single source for messages."""
+    return f"viralconseq setup --clair3-models {name} --clair3-model-dir {model_dir}"
+
+
+def validate_clair3_model(args: Dict[str, Any], samples: Dict[str, List[str]]) -> None:
+    """Resolve and check the Clair3 model(s) of a nanopore run, before any work.
+
+    ``args["clair3_model"]`` is ``"auto"`` (default), a model name, or a mapping
+    ``{sample id: name or "auto"}`` (embedding API). ``auto`` reads the basecall
+    tag of each sample's reads; a sample whose FASTQ holds no reads takes the
+    run's majority model (Clair3 never runs for it anyway). Every resolved
+    model must be a valid name, not a move-table (``_with_mv``) model, and
+    present and complete in ``args["clair3_model_dir"]``.
+
+    On success ``args["clair3_model"]`` is a single name when all samples
+    agree, else ``{sample id: name}``; ``args["clair3_model_dir"]`` is set.
+
+    Raises:
+        Clair3ModelUnresolvedError, Clair3ModelMixedError,
+        Clair3ModelNotFoundError, ValidationError.
+    """
+    if args.get("data_type") != DataType.NANOPORE:
+        return
+    model_dir = args.get("clair3_model_dir") or Clair3Models.default_dir()
+    requested = args.get("clair3_model") or Clair3Models.AUTO
+    if isinstance(requested, dict):
+        unknown = sorted(set(requested) - set(samples))
+        if unknown:
+            raise ValidationError(
+                f"clair3_model names samples not in the sample sheet: {', '.join(unknown)}"
+            )
+    per_sample = clair3_models.models_by_sample(samples, requested)
+    resolved = [name for name in per_sample.values() if name]
+    if not resolved:
+        raise Clair3ModelUnresolvedError(
+            "no sample yielded a Clair3 model (every FASTQ is empty?); " f"{clair3_models.HINT}."
+        )
+    majority = Counter(resolved).most_common(1)[0][0]
+    final = {sample: (name or majority) for sample, name in per_sample.items()}
+    for name in sorted(set(final.values())):
+        if not Clair3Models.NAME_RE.match(name):
+            raise ValidationError(f"invalid Clair3 model name {name!r}")
+        if name.endswith(Clair3Models.DWELL_TIME_SUFFIX):
+            raise Clair3ModelUnresolvedError(
+                f"{name} is a move-table model that needs Clair3's --enable_dwell_time and mv:B "
+                f"tags in the BAM, which viralconseq does not provide; use "
+                f"{name[: -len(Clair3Models.DWELL_TIME_SUFFIX)]}."
+            )
+        missing = missing_clair3_model_files(model_dir, name)
+        if missing:
+            if name in Clair3Models.MANIFEST:
+                fix = f"Fetch it with:\n    {clair3_setup_hint(model_dir, name)}"
+            else:
+                fix = (
+                    f"{name} is not in the model manifest ({Clair3Models.MANIFEST_SOURCE}); "
+                    f"place its pileup.pt and full_alignment.pt under {model_dir}/{name}/ yourself."
+                )
+            raise Clair3ModelNotFoundError(
+                f"Clair3 model {name} not found or incomplete at {model_dir}/{name} "
+                f"(missing: {', '.join(missing)}).\n{fix}"
+            )
+    names = set(final.values())
+    args["clair3_model"] = final if len(names) > 1 else names.pop()
+    args["clair3_model_dir"] = model_dir
+    if isinstance(args["clair3_model"], dict):
+        logger.info("Clair3 models: %s", ", ".join(f"{s}={m}" for s, m in final.items()))
+    else:
+        logger.info("Clair3 model: %s (%s)", args["clair3_model"], model_dir)
+
+
 def validate_viralqc_database(args: Dict[str, Any]) -> None:
     """Fail fast when viralQC is enabled but its databases are not on disk.
 
@@ -806,6 +897,7 @@ CONSENSUS_PATH_ARG_KEYS = (
     "primer_scheme",
     "adapters",
     "viralqc_db",
+    "clair3_model_dir",
 )
 
 

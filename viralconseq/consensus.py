@@ -11,13 +11,14 @@ import os
 from typing import Any, Dict
 
 from viralconseq import _orchestrator
-from viralconseq.constants import DataType, ResourceDefaults
+from viralconseq.constants import Clair3Models, DataType, ResourceDefaults
 from viralconseq.validators import (
     CONSENSUS_PATH_ARG_KEYS,
     get_samples_from_args,
     resolve_path_args,
     resolve_resource_budget,
     sanitize_identifier,
+    validate_clair3_model,
     validate_config_dict,
     validate_consensus_input_integrity,
     validate_consensus_requirements,
@@ -99,6 +100,10 @@ def validate_args(args: Dict[str, Any]) -> Dict[str, list]:
     # in tests alongside validate_consensus_requirements.
     validate_consensus_input_integrity(args, samples)
 
+    # Nanopore: choose (or check) the Clair3 model per sample and make sure it
+    # is on disk. Last, so the reads have already been validated.
+    validate_clair3_model(args, samples)
+
     logger.info("All arguments validated successfully")
     return samples
 
@@ -138,7 +143,8 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
             minimum_read_length=args.get("minimum_read_length", 50),
             af_threshold=args.get("af_threshold", 0.51),
             chunk_size=args.get("chunk_size", 10000),
-            clair3_model=args.get("clair3_model", "r1041_e82_400bps_sup_v500"),
+            clair3_model=args.get("clair3_model", Clair3Models.AUTO),
+            clair3_model_dir=args.get("clair3_model_dir") or Clair3Models.default_dir(),
             variant_quality=args.get("variant_quality", 20),
             variant_depth=args.get("variant_depth", 10),
             minimum_map_quality=args.get("minimum_map_quality", 30),

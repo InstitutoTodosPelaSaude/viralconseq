@@ -27,6 +27,7 @@ def _config(**overrides):
         "af_threshold": 0.51,
         "chunk_size": 10000,
         "clair3_model": "r941_prom_hac_g360+g422",
+        "clair3_model_dir": "/models",
         "variant_quality": 20,
         "variant_depth": 10,
         "minimum_map_quality": 30,

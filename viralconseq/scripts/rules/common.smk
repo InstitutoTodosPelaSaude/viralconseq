@@ -50,6 +50,7 @@ else:
     _REQUIRED_KEYS += [
         "chunk_size",
         "clair3_model",
+        "clair3_model_dir",
         "variant_quality",
         "variant_depth",
         "minimum_map_quality",
@@ -135,6 +136,20 @@ THREADED_RULES = (
     if config.get("data") == "illumina"
     else ["map_reads", "trim_primer_sequences", "infer_consensus_sequence", "run_viralqc"]
 )
+
+
+def clair3_model_for(sample):
+    """The Clair3 model of one sample: config["clair3_model"] is a name or a
+    {sample: name} mapping (samples basecalled with different models)."""
+    value = config.get("clair3_model")
+    return value[sample] if isinstance(value, dict) else value
+
+
+def clair3_model_files(wildcards):
+    """The two checkpoint files of a sample's model, declared as rule inputs so
+    a missing model is a MissingInputException at DAG time, not a Clair3 crash."""
+    directory = os.path.join(str(config["clair3_model_dir"]), str(clair3_model_for(wildcards.sample)))
+    return [os.path.join(directory, "pileup.pt"), os.path.join(directory, "full_alignment.pt")]
 
 
 def cpus(rule):

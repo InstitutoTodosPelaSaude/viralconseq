@@ -202,6 +202,40 @@ class Test_ValidateArgs(unittest.TestCase):
             validate_args(self.args)
 
 
+class Test_ValidateArgsClair3Model(unittest.TestCase):
+    """``validate_clair3_model`` runs last in ``validate_args`` (after the
+    reads are validated) and is a no-op for Illumina."""
+
+    def _args(self, data_type):
+        return {
+            "data_type": data_type,
+            "run_name": "r",
+            "reference": "ref.fasta",
+            "primer_scheme": None,
+            "threads": 1,
+            "threads_total": 1,
+            "run_viralqc": False,
+        }
+
+    def test_called_with_samples_for_nanopore(self):
+        with (
+            patch("viralconseq.consensus.get_samples_from_args", return_value={"s": ["a.fq"]}),
+            patch("viralconseq.consensus.validate_consensus_requirements"),
+            patch("viralconseq.consensus.validate_consensus_input_integrity"),
+            patch("viralconseq.consensus.validate_clair3_model") as mock_model,
+        ):
+            args = self._args("nanopore")
+            validate_args(args)
+        mock_model.assert_called_once_with(args, {"s": ["a.fq"]})
+
+    def test_noop_for_illumina(self):
+        from viralconseq.validators import validate_clair3_model
+
+        args = self._args("illumina")
+        validate_clair3_model(args, {"s": ["a.fq", "b.fq"]})
+        self.assertNotIn("clair3_model_dir", args)
+
+
 class Test_ValidateArgsViralQC(unittest.TestCase):
     """The viralQC database check runs inside ``validate_args`` for every run
     with ``run_viralqc`` on, is not gated by ``--skip-input-validation``, and
@@ -233,31 +267,32 @@ class Test_ValidateArgsViralQC(unittest.TestCase):
             patch("viralconseq.consensus.get_samples_from_args", return_value={"s": ["a"]}),
             patch("viralconseq.consensus.validate_consensus_requirements"),
             patch("viralconseq.consensus.validate_consensus_input_integrity"),
+            patch("viralconseq.consensus.validate_clair3_model"),
         )
 
     def test_validate_args_calls_viralqc_db_check(self):
-        p1, p2, p3 = self._patches()
-        with p1, p2, p3, patch("viralconseq.consensus.validate_viralqc_database") as mock_db:
+        p1, p2, p3, p4 = self._patches()
+        with p1, p2, p3, p4, patch("viralconseq.consensus.validate_viralqc_database") as mock_db:
             validate_args(self.args)
         mock_db.assert_called_once_with(self.args)
 
     def test_validate_args_viralqc_db_missing_raises(self):
-        p1, p2, p3 = self._patches()
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patches()
+        with p1, p2, p3, p4:
             with self.assertRaises(ViralQCDatabaseNotFoundError):
                 validate_args(self.args)
 
     def test_validate_args_viralqc_check_not_gated_by_skip_input_validation(self):
         self.args["skip_input_validation"] = True
-        p1, p2, p3 = self._patches()
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patches()
+        with p1, p2, p3, p4:
             with self.assertRaises(ViralQCDatabaseNotFoundError):
                 validate_args(self.args)
 
     def test_validate_args_no_run_viralqc_skips_db_check(self):
         self.args["run_viralqc"] = False
-        p1, p2, p3 = self._patches()
-        with p1, p2, p3:
+        p1, p2, p3, p4 = self._patches()
+        with p1, p2, p3, p4:
             samples = validate_args(self.args)
         self.assertEqual(samples, {"s": ["a"]})
 
@@ -539,6 +574,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
         self.assertIn("af_threshold", config_dict)
         self.assertIn("chunk_size", config_dict)
         self.assertIn("clair3_model", config_dict)
+        self.assertIn("clair3_model_dir", config_dict)
         self.assertEqual(config_dict["variant_quality"], 20)
         self.assertEqual(config_dict["variant_depth"], 10)
         self.assertEqual(config_dict["minimum_map_quality"], 30)

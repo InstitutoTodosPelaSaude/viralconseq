@@ -9,8 +9,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from viralconseq.constants import ViralQCDatabase
+from viralconseq.constants import Clair3Models, ViralQCDatabase
 from viralconseq.exceptions import (
+    Clair3ModelNotFoundError,
+    Clair3ModelUnresolvedError,
     ConfigurationError,
     SampleSheetError,
     ValidationError,
@@ -23,6 +25,7 @@ from viralconseq.validators import (
     missing_viralqc_database_files,
     resolve_resource_budget,
     sanitize_identifier,
+    validate_clair3_model,
     validate_config_dict,
     validate_flag_strings,
     validate_numeric_parameters,
@@ -184,6 +187,7 @@ def _good_config(data="nanopore", **overrides):
         config.update(
             chunk_size=10000,
             clair3_model="r941_prom_hac_g360+g422",
+            clair3_model_dir="/models",
             variant_quality=20,
             variant_depth=10,
             minimum_map_quality=30,
@@ -235,12 +239,22 @@ class Test_ValidateConfigDict(unittest.TestCase):
             "bad flag string": _good_config(viralqc_extra_flags="--x; rm -rf /"),
             "budget below rule": _good_config(max_memory_mb=1024),
             "empty model": _good_config(clair3_model=""),
+            "move-table model": _good_config(clair3_model="r1041_e82_400bps_hac_v520_with_mv"),
+            "model dict names unknown sample": _good_config(
+                clair3_model={"sample-zzz": "r941_prom_hac_g360+g422"}
+            ),
+            "missing model dir": {
+                k: v for k, v in _good_config().items() if k != "clair3_model_dir"
+            },
             "segment without path": _good_config(reference={"S": ""}),
         }
         for label, config in cases.items():
             with self.subTest(case=label):
                 with self.assertRaises(ConfigurationError):
                     validate_config_dict(config)
+
+    def test_per_sample_model_mapping_accepted(self):
+        validate_config_dict(_good_config(clair3_model={"sample-a": "r941_prom_hac_g360+g422"}))
 
     def test_budget_at_or_above_largest_rule_accepted(self):
         validate_config_dict(_good_config(max_memory_mb=2048))
@@ -250,6 +264,134 @@ class Test_ValidateConfigDict(unittest.TestCase):
         with self.assertRaises(ConfigurationError) as ctx:
             validate_config_dict(_good_config(variant_depth=-1))
         self.assertIn("variant_depth", str(ctx.exception))
+
+
+def _make_model_dir(root, *names):
+    """A model directory holding valid (fake) checkpoints for ``names``."""
+    from viralconseq.clair3_models import write_fake_checkpoint
+
+    for name in names:
+        for checkpoint in Clair3Models.CHECKPOINTS:
+            write_fake_checkpoint(os.path.join(root, name, checkpoint))
+    return root
+
+
+def _tagged_fastq(path, model_id, n=3):
+    import gzip
+
+    with gzip.open(path, "wt") as fh:
+        for i in range(n):
+            fh.write(f"@r{i} basecall_model_version_id={model_id}\nACGT\n+\nIIII\n")
+    return path
+
+
+class Test_ValidateClair3Model(unittest.TestCase):
+    HAC = "dna_r10.4.1_e8.2_400bps_hac@v5.0.0"
+    SUP = "dna_r10.4.1_e8.2_400bps_sup@v5.0.0"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.models = _make_model_dir(
+            os.path.join(self.tmp, "models"),
+            "r1041_e82_400bps_hac_v500",
+            "r1041_e82_400bps_sup_v500",
+        )
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _args(self, **overrides):
+        args = {"data_type": "nanopore", "clair3_model": "auto", "clair3_model_dir": self.models}
+        args.update(overrides)
+        return args
+
+    def test_auto_resolves_one_model_for_all_samples(self):
+        samples = {
+            "a": [_tagged_fastq(os.path.join(self.tmp, "a.fq.gz"), self.HAC)],
+            "b": [_tagged_fastq(os.path.join(self.tmp, "b.fq.gz"), self.HAC)],
+        }
+        args = self._args()
+        validate_clair3_model(args, samples)
+        self.assertEqual(args["clair3_model"], "r1041_e82_400bps_hac_v500")
+        self.assertEqual(args["clair3_model_dir"], self.models)
+
+    def test_auto_with_mixed_samples_gives_a_mapping_and_empty_gets_majority(self):
+        import gzip
+
+        empty = os.path.join(self.tmp, "e.fq.gz")
+        with gzip.open(empty, "wt"):
+            pass
+        samples = {
+            "a": [_tagged_fastq(os.path.join(self.tmp, "a.fq.gz"), self.HAC)],
+            "b": [_tagged_fastq(os.path.join(self.tmp, "b.fq.gz"), self.SUP)],
+            "c": [_tagged_fastq(os.path.join(self.tmp, "c.fq.gz"), self.HAC)],
+            "e": [empty],
+        }
+        args = self._args()
+        validate_clair3_model(args, samples)
+        self.assertEqual(
+            args["clair3_model"],
+            {
+                "a": "r1041_e82_400bps_hac_v500",
+                "b": "r1041_e82_400bps_sup_v500",
+                "c": "r1041_e82_400bps_hac_v500",
+                "e": "r1041_e82_400bps_hac_v500",
+            },
+        )
+
+    def test_explicit_model_skips_the_reads(self):
+        samples = {"a": [os.path.join(self.tmp, "absent.fq.gz")]}
+        args = self._args(clair3_model="r1041_e82_400bps_sup_v500")
+        validate_clair3_model(args, samples)
+        self.assertEqual(args["clair3_model"], "r1041_e82_400bps_sup_v500")
+
+    def test_missing_model_names_the_setup_command(self):
+        samples = {"a": [_tagged_fastq(os.path.join(self.tmp, "a.fq.gz"), self.HAC)]}
+        args = self._args(clair3_model="r941_prom_hac_g360+g422")
+        with self.assertRaises(Clair3ModelNotFoundError) as ctx:
+            validate_clair3_model(args, samples)
+        self.assertIn(
+            f"viralconseq setup --clair3-models r941_prom_hac_g360+g422 --clair3-model-dir {self.models}",
+            str(ctx.exception),
+        )
+
+    def test_incomplete_model_is_reported(self):
+        os.remove(os.path.join(self.models, "r1041_e82_400bps_sup_v500", "full_alignment.pt"))
+        args = self._args(clair3_model="r1041_e82_400bps_sup_v500")
+        with self.assertRaises(Clair3ModelNotFoundError) as ctx:
+            validate_clair3_model(args, {"a": ["x.fq.gz"]})
+        self.assertIn("full_alignment.pt", str(ctx.exception))
+
+    def test_unknown_name_gets_manual_placement_hint(self):
+        args = self._args(clair3_model="my_custom_model")
+        with self.assertRaises(Clair3ModelNotFoundError) as ctx:
+            validate_clair3_model(args, {"a": ["x.fq.gz"]})
+        self.assertIn("not in the model manifest", str(ctx.exception))
+
+    def test_move_table_model_refused(self):
+        args = self._args(clair3_model="r1041_e82_400bps_hac_v520_with_mv")
+        with self.assertRaises(Clair3ModelUnresolvedError):
+            validate_clair3_model(args, {"a": ["x.fq.gz"]})
+
+    def test_untagged_reads_fail_with_hint(self):
+        import gzip
+
+        path = os.path.join(self.tmp, "u.fq.gz")
+        with gzip.open(path, "wt") as fh:
+            fh.write("@r1 runid=abc ch=1\nACGT\n+\nIIII\n")
+        with self.assertRaises(Clair3ModelUnresolvedError) as ctx:
+            validate_clair3_model(self._args(), {"a": [path]})
+        self.assertIn("--clair3-model", str(ctx.exception))
+
+    def test_mapping_with_unknown_sample_rejected(self):
+        with self.assertRaises(ValidationError):
+            validate_clair3_model(self._args(clair3_model={"zzz": "x"}), {"a": ["x.fq.gz"]})
+
+    def test_illumina_is_a_noop(self):
+        args = {"data_type": "illumina"}
+        validate_clair3_model(args, {"a": ["x", "y"]})
+        self.assertEqual(args, {"data_type": "illumina"})
 
 
 class Test_ResolveResourceBudget(unittest.TestCase):

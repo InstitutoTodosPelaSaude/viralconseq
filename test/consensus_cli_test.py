@@ -197,6 +197,56 @@ class Test_ThreadOptionsRequireAtLeastOne(unittest.TestCase):
                 self.assertIn("is not in the range", result.output)
 
 
+class Test_Clair3ModelOptions(unittest.TestCase):
+    def _invoke(self, extra, env=None):
+        args = [
+            "nanopore",
+            "--sample-sheet",
+            "sample_sheet.csv",
+            "--config-file",
+            "config_file.yaml",
+            "--output",
+            "output_dir",
+            "--reference",
+            "reference.fasta",
+        ] + extra
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0) as mock_main:
+            result = CliRunner().invoke(consensus, args, env=env, catch_exceptions=False)
+        self.assertEqual(result.exit_code, 0, result.output)
+        return mock_main.call_args[0][0]
+
+    def test_explicit_model_and_dir_thread_into_args(self):
+        args = self._invoke(
+            ["--clair3-model", "r941_prom_hac_g360+g422", "--clair3-model-dir", "/m"]
+        )
+        self.assertEqual(args["clair3_model"], "r941_prom_hac_g360+g422")
+        self.assertEqual(args["clair3_model_dir"], "/m")
+
+    def test_model_dir_env_var(self):
+        args = self._invoke([], env={"VIRALCONSEQ_CLAIR3_MODELS": "/from/env"})
+        self.assertEqual(args["clair3_model_dir"], "/from/env")
+
+    def test_illumina_has_no_clair3_options(self):
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0):
+            result = CliRunner().invoke(
+                consensus,
+                [
+                    "illumina",
+                    "--sample-sheet",
+                    "s.csv",
+                    "--config-file",
+                    "c.yml",
+                    "--output",
+                    "o",
+                    "--reference",
+                    "r.fa",
+                    "--clair3-model-dir",
+                    "/m",
+                ],
+            )
+        self.assertEqual(result.exit_code, 2)
+
+
 class Test_ResourceOptions(unittest.TestCase):
     """Per-rule ``--<rule>-cpus`` / ``--<rule>-ram`` options are routed through
     ``**kwargs`` into the args dict under their snake_case key."""
@@ -299,7 +349,12 @@ class Test_ConsensusNanoporeCommand(unittest.TestCase):
         self.assertEqual(args["data_type"], "nanopore")
         self.assertEqual(args["af_threshold"], 0.51)
         self.assertEqual(args["chunk_size"], 10000)
-        self.assertEqual(args["clair3_model"], "r1041_e82_400bps_sup_v500")
+        self.assertEqual(args["clair3_model"], "auto")
+        self.assertTrue(
+            args["clair3_model_dir"].endswith(
+                os.path.join(".cache", "viralconseq", "clair3-models")
+            )
+        )
         self.assertEqual(args["variant_quality"], 20)
         self.assertEqual(args["variant_depth"], 10)
         self.assertEqual(args["minimum_map_quality"], 30)

@@ -110,6 +110,15 @@ written, a saved YAML given to `viralconseq rerun`, or one hand-edited and run
 with `snakemake -s`) misses a required key or holds a value the rules cannot use;
 the message names the key.
 
+Nanopore runs resolve their Clair3 model before any work starts and can raise
+`Clair3ModelUnresolvedError` (`clair3_model_unresolved`: the reads carry no
+basecall tag or it matches no model; pass `clair3_model` explicitly),
+`Clair3ModelMixedError` (`clair3_model_mixed_within_sample`: one sample's reads
+were basecalled with different models) or `Clair3ModelNotFoundError`
+(`clair3_model_not_found`: the model is not in `clair3_model_dir`; the message
+holds the `viralconseq setup --clair3-models` command). After validation
+`args["clair3_model"]` is a single name or a `{sample id: name}` mapping.
+
 `InputIntegrityError` (code `input_integrity_error`) additionally carries an
 `issues` list in its `to_dict()`; each issue has `path`, `kind`
 (`fastq`/`fasta`/`bed`), `code`, `severity`, `message`, and an optional

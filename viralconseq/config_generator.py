@@ -10,13 +10,26 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import yaml
 
 from viralconseq import __version__
-from viralconseq.constants import ConfigKeys, DataType, ResourceDefaults, ViralQCDatabase
+from viralconseq.constants import (
+    Clair3Models,
+    ConfigKeys,
+    DataType,
+    ResourceDefaults,
+    ViralQCDatabase,
+)
 from viralconseq.exceptions import ConfigurationError
 
 # The viralQC database inputs ``rules/viralqc.smk`` declares, as paths relative
 # to the placeholder directory. Derived from the database contract so the two
 # cannot drift apart.
 _VIRALQC_DB_PLACEHOLDERS = [f"viralqc_db/{name}" for name in ViralQCDatabase.REQUIRED_FILES]
+# The Clair3 model inputs ``rules/consensus_nanopore.smk`` declares (empty files
+# suffice: the DAG needs them to exist, validation is Python pre-flight only).
+_SKELETON_CLAIR3_MODEL = "r1041_e82_400bps_sup_v500"
+_CLAIR3_MODEL_PLACEHOLDERS = [
+    f"clair3_models/{_SKELETON_CLAIR3_MODEL}/{checkpoint}"
+    for checkpoint in Clair3Models.CHECKPOINTS
+]
 
 
 # Section of each known key, for configs loaded back from disk (``from_dict``).
@@ -43,6 +56,7 @@ _KEY_SECTIONS: Dict[str, str] = {
     ConfigKeys.RUN_ISNV: "isnv",
     ConfigKeys.CHUNK_SIZE: "clair3",
     ConfigKeys.CLAIR3_MODEL: "clair3",
+    ConfigKeys.CLAIR3_MODEL_DIR: "clair3",
     ConfigKeys.VARIANT_QUALITY: "clair3",
     ConfigKeys.VARIANT_DEPTH: "clair3",
     ConfigKeys.MINIMUM_MAP_QUALITY: "clair3",
@@ -54,6 +68,11 @@ _KEY_SECTIONS: Dict[str, str] = {
     ConfigKeys.MAX_MEMORY_MB: "resources",
     ConfigKeys.MEMORY_DETECTED_MB: "resources",
 }
+
+
+def sample_key(sample_name: str) -> str:
+    """The config/output key of a sample: ``sample-<id>``."""
+    return f"sample-{sample_name}"
 
 
 class ConfigGenerator:
@@ -166,7 +185,7 @@ class ConfigGenerator:
         """
         formatted_samples = {}
         for sample_name, file_paths in samples.items():
-            key = f"sample-{sample_name}"
+            key = sample_key(sample_name)
             if data_type == DataType.ILLUMINA:
                 if len(file_paths) != 2:
                     raise ConfigurationError(
@@ -214,10 +233,11 @@ class ConfigGenerator:
         minimum_read_length: int,
         af_threshold: float,
         chunk_size: int,
-        clair3_model: str,
+        clair3_model: Union[str, Dict[str, str]],
         variant_quality: int,
         variant_depth: int,
         minimum_map_quality: int,
+        clair3_model_dir: str = "",
     ) -> None:
         """Add Nanopore consensus-specific settings to configuration.
 
@@ -225,7 +245,11 @@ class ConfigGenerator:
             minimum_read_length: Minimum read length threshold
             af_threshold: Allele frequency threshold to call a variant into consensus
             chunk_size: Size of chunks to process [clair3]
-            clair3_model: Model to use for variant calling [clair3]
+            clair3_model: Model for variant calling [clair3]: one name for every
+                sample, or ``{sample id: name}`` (re-keyed ``sample-<id>`` like
+                ``samples``) when samples were basecalled with different models
+            clair3_model_dir: Directory holding ``<model>/pileup.pt`` and
+                ``full_alignment.pt`` (``constants.Clair3Models``)
             variant_quality: Minimum variant quality to call a variant into consensus [clair3]
             variant_depth: Minimum alt allele depth to call a variant into consensus [clair3]
             minimum_map_quality: Minimum map quality to call a variant into consensus [clair3]
@@ -234,7 +258,11 @@ class ConfigGenerator:
         self._set(ConfigKeys.AF_THRESHOLD, af_threshold, self.SECTION_CONSENSUS)
         C = self.SECTION_CLAIR3
         self._set(ConfigKeys.CHUNK_SIZE, chunk_size, C)
+        if isinstance(clair3_model, dict):
+            clair3_model = {sample_key(sample): name for sample, name in clair3_model.items()}
         self._set(ConfigKeys.CLAIR3_MODEL, clair3_model, C)
+        if clair3_model_dir:
+            self._set(ConfigKeys.CLAIR3_MODEL_DIR, clair3_model_dir, C)
         self._set(ConfigKeys.VARIANT_QUALITY, variant_quality, C)
         self._set(ConfigKeys.VARIANT_DEPTH, variant_depth, C)
         self._set(ConfigKeys.MINIMUM_MAP_QUALITY, minimum_map_quality, C)
@@ -460,10 +488,11 @@ class ConfigGenerator:
                     minimum_read_length=50,
                     af_threshold=0.51,
                     chunk_size=10000,
-                    clair3_model="r1041_e82_400bps_sup_v500",
+                    clair3_model=_SKELETON_CLAIR3_MODEL,
                     variant_quality=20,
                     variant_depth=10,
                     minimum_map_quality=30,
+                    clair3_model_dir=f"{root}/clair3_models",
                 )
             # run_viralqc=True pulls run_viralqc (envs/viralqc.yaml) into the
             # DAG; the placeholder DB files are listed in SKELETON_PLACEHOLDERS.
@@ -499,6 +528,7 @@ class ConfigGenerator:
                 "reads/skel.fastq.gz",
                 "references/skel.reference.fasta",
                 *_VIRALQC_DB_PLACEHOLDERS,
+                *_CLAIR3_MODEL_PLACEHOLDERS,
             ],
         },
     }
