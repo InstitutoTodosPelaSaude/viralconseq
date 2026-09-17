@@ -87,3 +87,10 @@ thresholds) can be appended through the config-only key `viralqc_extra_flags`.
 make test          # unit suite
 make test-dryrun   # snakemake -n against every workflow
 ```
+
+The unit suite includes `test/rule_inventory_test.py`, a text-level audit of the
+workflow files: every rule must declare `log:` and `benchmark:`, every `shell:`
+body must fail fast and redirect into its log, a rule may read only its own
+`_cpus`/`_ram` key, analysis keys may not carry a literal fallback, and every
+dry-run config must hold the required keys. A new rule that breaks a convention
+fails the suite rather than hiding its output.

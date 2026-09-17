@@ -20,7 +20,9 @@ ConfigGenerator → YAML            viralconseq/config_generator.py
    │  emits the exact keys the .smk files read (config["samples"], …)
    ▼
 snakemake(workflow.smk, config)   viralconseq/scripts/consensus_<datatype>[_segmented].smk
-   │  rule all → include: rules/*.smk
+   │  workdir = <output>/<run_name> (so .snakemake/ lives next to the results)
+   │  include: rules/common.smk (constraints, run.log hooks, config guard)
+   │  rule all (default target) → include: rules/*.smk
    ▼
 per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
    │  incl. envs/viralqc.yaml (viralQC + nextclade + BLAST) for the final QC step,
@@ -44,8 +46,8 @@ per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
 | `constants.py` | `ConfigKeys`, `DataType`, `ResourceDefaults` (per-workflow rule lists), `ViralQCDatabase` (the database directory layout contract). |
 | `exceptions.py` | Typed error hierarchy with machine-readable `code`s. |
 | `logging_config.py` | Central logging (run id, text/JSON). |
-| `provenance.py` | `run_manifest.json` (version, config, input checksums). |
-| `scripts/*.smk`, `scripts/rules/*.smk` | The actual workflows. `rules/viralqc.smk` is the consensus-QC stage; `scripts/viralqc_setup.smk` is the database download driven by `setup`. |
+| `provenance.py` | `run_manifest.json` (version, config, input checksums, outcome) and the copy of the Snakemake transcript to `logs/snakemake.log`. |
+| `scripts/*.smk`, `scripts/rules/*.smk` | The actual workflows. `rules/common.smk` is included first by every entry file (exact-sample wildcard constraints, required-key and flag-string guards, `run.log` hooks); `rules/viralqc.smk` is the consensus-QC stage; `scripts/viralqc_setup.smk` is the database download driven by `setup`. |
 | `scripts/python/*.py` | Helpers run via Snakemake's `script:` directive. |
 
 ## The config is the contract
@@ -54,8 +56,13 @@ per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
 (e.g. `config["samples"]`, `config["output"]`, `config["run_isnv"]`).
 Adding a pipeline option means touching four places: the click option in
 `consensus_cli.py`, the `validators.py` check, a `ConfigGenerator.add_*` setter,
-and the rule(s) that read it. `config["samples"]` maps `sample-<id>` to a **list**
-of FASTQ paths (readers tolerate the legacy space-joined string form too).
+and the rule(s) that read it. Analysis parameters are *required* keys: the rules
+read `config["key"]` with no fallback, so the CLI default is the only default, and
+`rules/common.smk` lists the required keys and refuses a YAML missing one at parse
+time (add a new required key there too). Optional keys (`scheme`, `adapters`,
+`run_isnv`, `run_viralqc`, the two `*_flags` strings, per-rule `*_cpus`/`*_ram`) are
+read with `config.get`. `config["samples"]` maps `sample-<id>` to a **list** of
+absolute FASTQ paths (readers tolerate the legacy space-joined string form too).
 
 ## Workflow selection
 

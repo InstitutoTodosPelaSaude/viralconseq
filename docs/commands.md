@@ -140,8 +140,8 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--minimum-read-length` | `50` | Minimum read length threshold. |
 | `--af-threshold` | `0.51` | Min allele frequency to call variant into consensus. |
 | `--run-name` | `undefined` | Name for the sequencing run. |
-| `--threads` | `1` | Threads per individual task. |
-| `--threads-total` | `1` | Total threads for the workflow. |
+| `--threads` | `1` | Threads per individual task (at least 1). |
+| `--threads-total` | `1` | Total threads for the workflow (at least 1). |
 | `--create-config-only` | off | Only generate the config file; do not run the workflow. |
 | `--skip-input-validation` | off | Skip content-level integrity checks of the input files (FASTQ/FASTA/BED). Existence checks still run. |
 | `--conda-prefix` | `~/.cache/viralconseq/conda-envs` | Cache directory for per-rule conda envs. Picked up from `$VIRALCONSEQ_CONDA_PREFIX` if set. Pre-warm with `viralconseq setup`. |
@@ -334,7 +334,7 @@ viralconseq consensus illumina \
 
 A few tool-level parameters are tunable only through the YAML config file produced by `--config-file` (they are not exposed as CLI flags because they rarely need to change). The defaults preserve the historical behaviour, so most users can ignore this section.
 
-Open the generated YAML config file after running with `--create-config-only` and edit the corresponding key under the `# parameters` section:
+Open the generated YAML config file after running with `--create-config-only` and edit the corresponding key (`minimap2_consensus_align_flags` sits in the `# --- consensus ---` section, `viralqc_extra_flags` in `# --- viralqc ---`). Both values are spliced unquoted into a shell command, so they must be plain tool flags: an unbalanced quote or a shell metacharacter (`; & | < > ` $ \\`) is refused when the workflow is parsed.
 
 | Config key | Default | Effect |
 |------------|---------|--------|
@@ -347,18 +347,26 @@ Example: edit the YAML config to
 minimap2_consensus_align_flags: "-a --sam-hit-only --secondary=no"
 ```
 
-then run Snakemake directly against the edited config:
+then run Snakemake directly against the edited config. Point `--directory` at the run
+directory (the `output` key of the YAML) so Snakemake's `.snakemake/` state lands where
+`viralconseq consensus` would have put it:
 
 ```bash
 snakemake -s "$(python -c 'import viralconseq, os; print(os.path.dirname(viralconseq.__file__))')/scripts/consensus_illumina.smk" \
-    --configfile example.yml --use-conda --conda-prefix ~/.cache/viralconseq/conda-envs -j 4 all
+    --configfile example.yml --directory <output>/<run_name> \
+    --use-conda --conda-prefix ~/.cache/viralconseq/conda-envs -j 4
 ```
+
+The analysis keys the CLI writes (`minimum_depth`, `af_threshold`, `chunk_size`,
+`clair3_model`, …) are required: the rules read them without a fallback, and a
+YAML missing one is refused at parse time with the key named. Regenerate the
+file with `--create-config-only` rather than writing it from scratch.
 
 ---
 
 ## Per-rule CPU and RAM overrides
 
-`viralconseq consensus` auto-generates a `--<rule>-cpus` and a `--<rule>-ram` option for each computationally significant Snakemake rule, so you can size individual steps without touching the global `--threads` / `--threads-total`. Every such option defaults to **2** CPUs / **4** GB and is written into the generated YAML as `{rule}_cpus` / `{rule}_ram`.
+`viralconseq consensus` auto-generates a `--<rule>-cpus` and a `--<rule>-ram` option for each computationally significant Snakemake rule, so you can size individual steps without touching the global `--threads` / `--threads-total`. Every such option defaults to **2** CPUs / **4** GB, must be at least 1, and is written into the generated YAML as `{rule}_cpus` / `{rule}_ram` under the `# --- resources ---` section.
 
 The exact set depends on the data type — run the relevant subcommand's `--help` to list them all (flags replace `_` with `-` and append `-cpus` / `-ram`):
 

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 viralconseq is a Python package whose only job at runtime is to validate inputs, write a YAML config, and launch one of four Snakemake workflows for reference-guided viral consensus inference. All of the actual bioinformatics — QC, alignment, primer clipping, variant and consensus calling, coverage statistics, and the final consensus QC with viralQC — lives in the Snakemake files under `viralconseq/scripts/`. Treat the Python layer as a CLI + orchestration shim; treat the `.smk` rule files as the substantive code.
 
-viralconseq was extracted from the consensus half of [ViralUnity](https://github.com/InstitutoTodosPelaSaude/ViralUnity) v1.5.0. The retained rule modules, env YAMLs and helper scripts were copied byte-for-byte; keep it that way unless a change is deliberately about pipeline behaviour.
+viralconseq was extracted from the consensus half of [ViralUnity](https://github.com/InstitutoTodosPelaSaude/ViralUnity) v1.5.0. The rule modules, env YAMLs and helper scripts started as byte-for-byte copies; since 0.1.1 they diverge freely, and every divergence that changes behaviour or outputs gets a `CHANGELOG.md` line.
 
 ## Common commands
 
@@ -59,7 +59,11 @@ The single console entry point `viralconseq` (declared in `pyproject.toml`'s `[p
 
 ### Config file is the contract
 
-`viralconseq/config_generator.py` (`ConfigGenerator`) writes the YAML that Snakemake reads. The keys it emits are the same strings hard-coded in the `.smk` files (e.g. `config["samples"]`, `config["output"]`, `config["run_isnv"]`). If you add a new pipeline option, you touch four places: the Click option in `consensus_cli.py`, the `validators.py` checks, a `ConfigGenerator.add_*` setter, and the rule(s) that read it. Constants for these key names live in `viralconseq/constants.py` (`ConfigKeys`) but the `.smk` files reference the raw strings directly, so renaming a key means grepping `viralconseq/scripts/` too.
+`viralconseq/config_generator.py` (`ConfigGenerator`) writes the YAML that Snakemake reads. The keys it emits are the same strings hard-coded in the `.smk` files (e.g. `config["samples"]`, `config["output"]`, `config["run_isnv"]`). If you add a new pipeline option, you touch four places: the Click option in `consensus_cli.py`, the `validators.py` checks, a `ConfigGenerator.add_*` setter (pick the right `SECTION_*` so the key lands under the right commented section), and the rule(s) that read it. Constants for these key names live in `viralconseq/constants.py` (`ConfigKeys`) but the `.smk` files reference the raw strings directly, so renaming a key means grepping `viralconseq/scripts/` too.
+
+Analysis parameters are **required** keys: rules read `config["key"]` with no fallback (the CLI default is the only default), and `rules/common.smk` holds the `_REQUIRED_KEYS` list that refuses a YAML missing one at parse time. A new required key goes into that list and into the mirror list in `test/rule_inventory_test.py`. Only sentinel/optional keys (`scheme`, `adapters`, `run_isnv`, `run_viralqc`, the two `*_flags` strings, `*_cpus`/`*_ram`, `viralconseq_version`) are read with `config.get`.
+
+Snakemake runs with `<output>/<run_name>/` as its working directory (`_orchestrator.run_workflow` passes `workdir=`), so every path in the YAML must be absolute: `resolve_path_args` handles the CLI path options and `validators.absolutise_sample_paths` the sample FASTQs. `.snakemake/` therefore lives inside the run directory, next to `logs/run.log` (written by the `onstart`/`onsuccess`/`onerror` hooks in `rules/common.smk`) and `logs/snakemake.log` (copied by `provenance.copy_snakemake_log`).
 
 `ConfigGenerator.add_resource_settings(args, rule_list)` emits one `{rule}_cpus` / `{rule}_ram` pair per rule. The rule lists are declared as class attributes on `ResourceDefaults` in `constants.py` (`CONSENSUS_ILLUMINA_RULES`, `CONSENSUS_NANOPORE_RULES`). When you add a computationally heavy rule, add it to the right list so its resources land in the generated config.
 
@@ -89,7 +93,7 @@ Cross-cutting conventions to know before editing rules:
 
 CSV with no header. Illumina has 3 columns (`sample_id,R1,R2`), Nanopore has 2 (`sample_id,fastq`). `create-samplesheet` builds them by scanning a run directory; the parser (`viralconseq/validators.py:validate_sample_sheet`) keys off the data type given on the CLI and rejects rows with the wrong column count.
 
-Sample names are prefixed with `sample-` inside the generated YAML by `ConfigGenerator.add_samples`, and the `.smk` files refer to `sample-<id>` everywhere. The prefix is visible in the outputs: `samples/sample-<id>/`, `assembly/coverage_stats/sample-<id>.table_cov_basewise.txt`, the `sample_name` column of `assembly_stats_summary.csv` and the consensus FASTA headers. Only `benchmark.tsv` strips it. Tests, docs and config inspection should expect the prefixed form.
+Sample names are prefixed with `sample-` inside the generated YAML by `ConfigGenerator.add_samples`, and the `.smk` files refer to `sample-<id>` everywhere. The prefix is visible in every output: `samples/sample-<id>/`, `assembly/coverage_stats/sample-<id>.table_cov_basewise.txt`, the `sample_name` column of `assembly_stats_summary.csv`, the `sample` column of `benchmark.tsv`, the `samples` block of `run_manifest.json` and the consensus FASTA headers. Tests, docs and config inspection should expect the prefixed form; the bare id exists only in the sample sheet and the `args` dict.
 
 ## Tests
 

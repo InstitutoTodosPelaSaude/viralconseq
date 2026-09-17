@@ -4,7 +4,12 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 
 ```
 {output}/{run_name}/
-├── run_manifest.json                 # version, config path, input checksums
+├── run_manifest.json                 # version, config path, input checksums, outcome
+├── logs/
+│   ├── run.log                       # start/end lines written by the workflow itself
+│   ├── snakemake.log                 # copy of the newest Snakemake transcript
+│   ├── fastp/, consensus_<data>/...  # per-rule logs and *.benchmark.txt (see below)
+├── .snakemake/                       # Snakemake's own state (locks, metadata, transcripts)
 ├── assembly/
 │   ├── assembly_stats_summary.csv    # per-sample QC metrics
 │   ├── coverage_stats/
@@ -45,10 +50,11 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 └── benchmark.tsv                     # per-task runtime
 ```
 
-Every sample id from the sample sheet appears with a `sample-` prefix in the output
-tree (`samples/sample-<id>/`), in the `sample_name` column of
-`assembly_stats_summary.csv`, in the coverage-table file names and in the consensus
-FASTA headers. Only `benchmark.tsv` reports the bare id.
+Every sample id from the sample sheet appears with a `sample-` prefix everywhere:
+in the output tree (`samples/sample-<id>/`), in the `sample_name` column of
+`assembly_stats_summary.csv`, in the `sample` column of `benchmark.tsv`, in the
+`samples` block of `run_manifest.json`, in the coverage-table file names and in the
+consensus FASTA headers.
 
 In segmented runs the per-sample symlinks are nested one level deeper, under
 `samples/sample-{sample_id}/{segment}/`, and the per-segment results live under
@@ -61,7 +67,12 @@ before symlinking, `aln.consensus.sam`, the indel-masked alignment),
 `assembly/clair3/{sample}/` (nanopore variant calls), `assembly/isnvs/` (LoFreq VCFs
 with `--run-isnv`), `qc/data/` and `qc/reports/` (fastp-trimmed reads and per-sample
 fastp reports, illumina), and `logs/` / `assembly/logs/` (per-rule logs and
-`*.benchmark.txt`).
+`*.benchmark.txt`). Every rule writes its tool output into its own log, so a
+failure is diagnosed from `logs/**/<rule>/<sample>.log` (or
+`assembly/logs/<tool>/<sample>.log` for the per-sample alignment and consensus
+steps); nothing is only on the console. Snakemake runs with the run directory as
+its working directory, so `.snakemake/` is here too and can be deleted once the
+run is finished.
 
 ## Key files
 
@@ -76,8 +87,10 @@ fastp reports, illumina), and `logs/` / `assembly/logs/` (per-rule logs and
 | `assembly/consensus/final_consensus/samples_alignment.fasta` | All consensus sequences aligned to the reference (MSA-ready) |
 | `qc/viralqc/outputs/results.tsv` | viralQC table: virus, clade and genome-quality score per consensus sequence (see below) |
 | `samples/sample-{id}/viralqc.tsv` | The rows of `results.tsv` belonging to one sample |
-| `run_manifest.json` | Provenance: version, timestamp, config path, input SHA-256 checksums |
-| `benchmark.tsv` | Runtime and resource usage per task |
+| `run_manifest.json` | Provenance: version, timestamp, config path and hash, input SHA-256 checksums, outcome, path of the copied Snakemake log |
+| `logs/run.log` | One line per run start and end, written by the workflow (survives a `.snakemake/` clean-up) |
+| `logs/snakemake.log` | Copy of the newest Snakemake transcript for this run directory |
+| `benchmark.tsv` | Runtime and resource usage per task (`sample` is `sample-<id>`, or `All` for run-level tasks) |
 
 ## Assembly statistics columns
 
