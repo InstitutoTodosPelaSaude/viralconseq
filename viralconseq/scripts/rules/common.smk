@@ -14,6 +14,7 @@
 import datetime
 import os
 import re
+import shlex
 
 from snakemake.exceptions import WorkflowError
 
@@ -60,6 +61,23 @@ if _missing:
         + ", ".join(_missing)
         + " - regenerate it with 'viralconseq consensus ... --create-config-only'"
     )
+
+# viralqc_extra_flags and minimap2_consensus_align_flags are interpolated
+# unquoted into shell commands. Refuse anything that is not a plain list of
+# tokens (same rule as validators.validate_flag_strings, for hand-edited YAMLs).
+for _key in ("viralqc_extra_flags", "minimap2_consensus_align_flags"):
+    _value = config.get(_key)
+    if _value is None:
+        continue
+    try:
+        shlex.split(str(_value))
+    except ValueError as _exc:
+        raise WorkflowError(f"config key {_key} is not a valid flag string ({_exc}): {_value!r}")
+    if re.search(r"[;&|<>`$\\\n]", str(_value)):
+        raise WorkflowError(
+            f"config key {_key} contains a shell metacharacter: {_value!r}. "
+            "Pass plain tool flags only."
+        )
 
 wildcard_constraints:
     sample="|".join(re.escape(s) for s in config["samples"]),

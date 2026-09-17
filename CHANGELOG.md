@@ -35,6 +35,11 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   30). A hand-edited YAML missing a key fails at parse time with the key named.
 - `--threads`, `--threads-total`, every `--<rule>-cpus`/`--<rule>-ram` and
   `setup --threads` reject values below 1 at the command line.
+- The config-only flag strings `viralqc_extra_flags` and
+  `minimap2_consensus_align_flags` are validated with `shlex` and refused if
+  they contain a shell metacharacter, both by the Python layer and at
+  Snakefile parse time for hand-edited YAMLs (the rules splice them unquoted
+  into shell commands).
 - Every rule now declares `log:` and `benchmark:` and redirects its shell
   output into the log (`sanitize_reference`, nanopore `trim_primer_sequences`,
   `calculate_coverage_basewise`, `rename_sequences`, nanopore

@@ -5,6 +5,7 @@ import glob
 import logging
 import os
 import re
+import shlex
 from typing import Any, Dict, List, Optional, cast
 
 from viralconseq import integrity
@@ -109,6 +110,41 @@ _NUMERIC_BOUNDS = {
     "af_threshold": (0.0, 1.0),
     "af_isnv_threshold": (0.0, 1.0),
 }
+
+
+# Config keys whose value is spliced unquoted into a rule's shell command line
+# as extra tool flags. They are config-only (no CLI option), so the check runs
+# both here (embedding API) and at Snakefile parse time (hand-edited YAML).
+FLAG_STRING_KEYS = ("viralqc_extra_flags", "minimap2_consensus_align_flags")
+_SHELL_META_RE = re.compile(r"[;&|<>`$\\\n]")
+
+
+def validate_flag_strings(args: Dict[str, Any]) -> None:
+    """Reject flag strings that would not survive, or would escape, the shell.
+
+    A flag string must split cleanly with ``shlex`` and contain no shell
+    metacharacters (``; & | < > ` $ \\`` or a newline): the rules interpolate
+    these values unquoted, so anything beyond plain tokens is a command
+    injection, not a flag.
+
+    Raises:
+        ValidationError: On an unbalanced quote or a metacharacter.
+    """
+    for key in FLAG_STRING_KEYS:
+        value = args.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise ValidationError(f"{key} must be a string, got {value!r}.")
+        try:
+            shlex.split(value)
+        except ValueError as e:
+            raise ValidationError(f"{key} is not a valid flag string ({e}): {value!r}") from e
+        if _SHELL_META_RE.search(value):
+            raise ValidationError(
+                f"{key} contains a shell metacharacter (one of ; & | < > ` $ \\ or a newline): "
+                f"{value!r}. Pass plain tool flags only."
+            )
 
 
 def validate_numeric_parameters(args: Dict[str, Any]) -> None:

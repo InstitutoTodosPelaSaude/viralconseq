@@ -20,6 +20,7 @@ from viralconseq.validators import (
     get_samples_from_args,
     missing_viralqc_database_files,
     sanitize_identifier,
+    validate_flag_strings,
     validate_numeric_parameters,
     validate_sample_sheet,
     validate_viralqc_database,
@@ -156,6 +157,34 @@ class Test_AbsolutiseSamplePaths(unittest.TestCase):
             finally:
                 os.chdir(old)
         self.assertEqual(samples["s1"], [os.path.join(os.path.realpath(tmp), "s.fastq.gz")])
+
+
+class Test_FlagStrings(unittest.TestCase):
+    """Config-only tool flags are interpolated unquoted into shell commands."""
+
+    def test_plain_flags_accepted(self):
+        validate_flag_strings(
+            {
+                "viralqc_extra_flags": "--blast-pident 75 --verbose",
+                "minimap2_consensus_align_flags": "-a --sam-hit-only --secondary=no --score-N=0",
+            }
+        )
+        validate_flag_strings({"viralqc_extra_flags": ""})
+        validate_flag_strings({})
+
+    def test_unbalanced_quote_rejected(self):
+        with self.assertRaises(ValidationError):
+            validate_flag_strings({"viralqc_extra_flags": "--x '"})
+
+    def test_shell_metacharacters_rejected(self):
+        for bad in ("--x; rm -rf /", "$(id)", "a | b", "--x > out", "a\nb", "`id`"):
+            with self.subTest(value=bad):
+                with self.assertRaises(ValidationError):
+                    validate_flag_strings({"minimap2_consensus_align_flags": bad})
+
+    def test_non_string_rejected(self):
+        with self.assertRaises(ValidationError):
+            validate_flag_strings({"viralqc_extra_flags": ["--x"]})
 
 
 class Test_Sanitization(unittest.TestCase):

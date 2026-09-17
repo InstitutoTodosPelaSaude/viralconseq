@@ -19,6 +19,7 @@ from viralconseq.validators import (
     sanitize_identifier,
     validate_consensus_input_integrity,
     validate_consensus_requirements,
+    validate_flag_strings,
     validate_illumina_requirements,
     validate_numeric_parameters,
     validate_viralqc_database,
@@ -49,6 +50,8 @@ def validate_args(args: Dict[str, Any]) -> Dict[str, list]:
 
     # Range-check numeric parameters (threads, thresholds, coverage, ...).
     validate_numeric_parameters(args)
+    # Extra tool flags are spliced unquoted into shell commands.
+    validate_flag_strings(args)
 
     # Get and validate samples
     samples = get_samples_from_args(args)

@@ -107,3 +107,28 @@ def test_missing_required_key_is_reported_at_parse_time(tmp_path):
     assert result.returncode != 0
     combined = result.stdout + result.stderr
     assert "missing required key(s): minimum_depth" in combined, combined
+
+
+def test_unsafe_flag_string_is_rejected_at_parse_time(tmp_path):
+    """A flag string with a shell metacharacter never reaches a shell."""
+    import yaml
+
+    with open(os.path.join(CONFIG_DIR, "consensus_illumina.yaml")) as fh:
+        config = yaml.safe_load(fh)
+    config["viralqc_extra_flags"] = "--x; rm -rf /"
+    broken = tmp_path / "broken.yaml"
+    broken.write_text(yaml.safe_dump(config))
+
+    cmd = [
+        "snakemake",
+        "-s",
+        get_workflow_file("consensus_illumina.yaml"),
+        "--configfile",
+        str(broken),
+        "-n",
+        "--cores",
+        "1",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    assert result.returncode != 0
+    assert "viralqc_extra_flags contains a shell metacharacter" in result.stdout + result.stderr
