@@ -212,14 +212,6 @@ rule run_config:
     output:
         # "copy" is a reserved Snakemake name; hence config_copy.
         config_copy = config["output"] + "config.yml"
-    params:
-        source = (
-            os.path.abspath(workflow.configfiles[-1])
-            if workflow.configfiles
-            and os.path.abspath(workflow.configfiles[-1])
-            != os.path.abspath(config["output"] + "config.yml")
-            else ""
-        ),
     log:
         LOG("run_config", target="run_config", per_segment=False)
     benchmark:
@@ -228,10 +220,17 @@ rule run_config:
         import shutil
         import yaml
 
+        # Resolved here rather than in params: a params value that depends on
+        # the --configfile path would count as a parameter change and make
+        # `viralconseq rerun <run>/config.yml` redo this rule (and the report
+        # behind it) on a finished run.
+        source = os.path.abspath(workflow.configfiles[-1]) if workflow.configfiles else ""
+        if source == os.path.abspath(output.config_copy):
+            source = ""
         with open(log[0], "w") as handle:
-            if params.source:
-                shutil.copyfile(params.source, output.config_copy)
-                handle.write(f"copied {params.source}\n")
+            if source:
+                shutil.copyfile(source, output.config_copy)
+                handle.write(f"copied {source}\n")
             else:
                 with open(output.config_copy, "w") as out:
                     yaml.safe_dump(dict(config), out, sort_keys=False)

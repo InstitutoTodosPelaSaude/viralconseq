@@ -70,7 +70,13 @@ def describe_resources(args: Dict[str, Any], rule_list: list) -> str:
                 (r, int(args.get(f"{r}_ram") or ResourceDefaults.ram_for(r))) for r in memory_rules
             )
         )
-        detected = f", detected {detected_mb / 1024:.1f} GB" if detected_mb else ""
+        # The source text already names the detected figure when detection set
+        # the budget; add it only for an explicit --max-memory.
+        detected = (
+            f", detected {detected_mb / 1024:.1f} GB"
+            if detected_mb and "detected" not in str(source)
+            else ""
+        )
         parts.append(f"memory budget {budget / 1024:.1f} GB ({source}{detected}): {allowances}")
     return " | ".join(parts)
 

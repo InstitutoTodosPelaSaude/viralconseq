@@ -124,6 +124,17 @@ class Test_RunWorkflowRunsInsideTheRunDirectory(unittest.TestCase):
         self.assertIn("memory budget 8.0 GB", on)
         self.assertIn("infer_consensus_sequence 2 GB -> at most 4 at once", on)
         self.assertIn("run_viralqc 1 GB -> at most 8 at once", on)
+        self.assertEqual(on.count("detected"), 1)  # not repeated after the source text
+        explicit = _orchestrator.describe_resources(
+            {
+                "threads_total": 8,
+                "max_memory_mb": 4096,
+                "memory_detected_mb": 16384,
+                "memory_budget_source": "--max-memory",
+            },
+            rules,
+        )
+        self.assertIn("(--max-memory, detected 16.0 GB)", explicit)
 
     def test_run_dir_for(self):
         self.assertIsNone(_orchestrator.run_dir_for({"output": "x"}))
