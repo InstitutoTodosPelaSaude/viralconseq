@@ -1,8 +1,9 @@
 # Workflow-side provenance: which tool versions produced this run.
 #
-# Included LAST by the four entry-point workflows (after rules/viralqc.smk).
+# Included LAST by the four entry-point workflows, after organize_files.
 # Expects: config (output, data, run_isnv, run_viralqc, viralqc_db, optional
-# viralconseq_version), PY / LOG / BENCH from rules/common.smk.
+# viralconseq_version), PY / LOGS / LOG / BENCH from rules/common.smk,
+# SEGMENT_WILDCARD, TERMINAL_INPUTS and rules.organize_files from the entry file.
 #
 # One ``versions_<env>`` rule per conda environment probes the tools installed
 # in that environment (``scripts/python/tool_versions.py``, stdlib only) and
@@ -236,3 +237,37 @@ rule run_config:
                 with open(output.config_copy, "w") as out:
                     yaml.safe_dump(dict(config), out, sort_keys=False)
                 handle.write("dumped the in-memory config (no separate source file)\n")
+
+
+rule collect_benchmarks:
+    # The terminal rule of every workflow: it depends on every analysis product
+    # (TERMINAL_INPUTS), the symlink tree and the other provenance files, so its
+    # own benchmark is the only one that can be missing from benchmark.tsv.
+    conda:
+        "../envs/utils.yaml"
+    input:
+        script = os.path.join(PY, "collect_benchmarks.py"),
+        terminal = TERMINAL_INPUTS,
+        organized = rules.organize_files.output.sentinel,
+        versions = rules.versions.output.versions,
+        config_copy = rules.run_config.output.config_copy,
+    output:
+        benchmark = config["output"] + "benchmark.tsv"
+    params:
+        logs_dir = LOGS,
+        samples = list(config["samples"].keys()),
+        segmented = ["--segmented"] if SEGMENT_WILDCARD else [],
+        cpus = [f"{key[: -len('_cpus')]}={value}" for key, value in config.items() if key.endswith("_cpus")],
+        own = BENCH("collect_benchmarks", target="collect_benchmarks", per_segment=False),
+    log:
+        LOG("collect_benchmarks", target="collect_benchmarks", per_segment=False)
+    benchmark:
+        BENCH("collect_benchmarks", target="collect_benchmarks", per_segment=False)
+    shell:
+        """
+        set -euo pipefail
+        exec 2> {log}
+        python {input.script:q} --logs-dir {params.logs_dir:q} --samples {params.samples:q} \
+            {params.segmented:q} --cpus {params.cpus:q} --exclude {params.own:q} \
+            --output {output.benchmark:q}
+        """

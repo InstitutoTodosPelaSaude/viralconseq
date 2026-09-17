@@ -153,13 +153,20 @@ class Test_RuleInventory(unittest.TestCase):
                 all_body = dict(rule_blocks(text))["all"]
                 self.assertIn("default_target: True", all_body)
 
-    def test_every_rule_declares_log_and_benchmark(self):
+    def test_every_rule_declares_log_and_benchmark_via_the_helpers(self):
+        """Paths come from LOG()/BENCH() with the rule's own name, so every log
+        lands at logs/<rule>/[<segment>/]<target> and the benchmark collector
+        can attribute it."""
         for (entry, name), (path, body) in self.rules.items():
             if name in LOG_EXEMPT:
                 continue
             with self.subTest(workflow=entry, rule=name, file=path.name):
                 self.assertTrue(has("log", body), "missing log:")
                 self.assertTrue(has("benchmark", body), "missing benchmark:")
+                self.assertIn(f'LOG("{name}"', body, "log: must use LOG(<own rule name>, ...)")
+                self.assertIn(
+                    f'BENCH("{name}"', body, "benchmark: must use BENCH(<own rule name>, ...)"
+                )
 
     def test_shell_rules_fail_fast_and_write_their_log(self):
         for (entry, name), (path, body) in self.rules.items():

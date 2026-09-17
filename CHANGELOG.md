@@ -22,6 +22,21 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   (rule `run_config`), so a run is self-describing wherever `--config-file`
   pointed.
 
+### Changed
+
+- All per-rule logs and benchmarks now live under one tree,
+  `<run>/logs/<rule>/[<segment>/]<target>.{log,benchmark.txt}` (`target` is
+  `sample-<id>` for per-sample rules and the rule name for run-level ones).
+  `assembly/logs/`, `logs/fastp/` and `logs/consensus_<data>/` are gone.
+- `benchmark.tsv` is produced by a new terminal rule, `collect_benchmarks`
+  (stdlib `scripts/python/collect_benchmarks.py`), instead of a bash loop in
+  `organize_files`. Columns: `sample`, `[segment,]`, `rule`, `target`,
+  `threads`, then Snakemake's measured columns read from each file's header.
+  `rule` holds the rule name (`ampliconclip`, `gsaalign`, `consensus` used to
+  be tool names), run-level rows are `All`, and every benchmarked rule appears
+  (two were missed before). `organize_files` now only builds the `samples/`
+  symlink tree and marks completion with `samples/.organized`.
+
 ## [0.1.1] - 2026-09-17
 
 ### Changed

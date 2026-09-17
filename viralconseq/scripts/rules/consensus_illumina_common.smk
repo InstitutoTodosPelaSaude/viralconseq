@@ -5,11 +5,8 @@ The including snakefile must define:
 * ``SEGMENT_WILDCARD``       -- ``"{segment}/"`` (segmented) or ``""`` (single)
 * ``REFERENCE``              -- path string (single) or callable taking
                                 ``wildcards`` and returning a path (segmented)
-* ``SAMPLE_SEGMENT_LOG_PREFIX`` -- log/benchmark prefix for per-sample (and,
-                                in segmented mode, per-segment) rules
+* ``LOG`` / ``BENCH``           -- log path helpers from rules/common.smk
 """
-
-_TOP_LOG = config['output'] + "logs/consensus_illumina/"
 
 
 rule calculate_assembly_statistics:
@@ -26,9 +23,9 @@ rule calculate_assembly_statistics:
     params:
         minimum_depth = config["minimum_depth"]
     log:
-        SAMPLE_SEGMENT_LOG_PREFIX + "calculate_assembly_statistics/{sample}.log"
+        LOG("calculate_assembly_statistics")
     benchmark:
-        SAMPLE_SEGMENT_LOG_PREFIX + "calculate_assembly_statistics/{sample}.benchmark.txt"
+        BENCH("calculate_assembly_statistics")
     script:
         "../python/calculate_assembly_stats.py"
 
@@ -53,9 +50,9 @@ rule generate_multiqc_report:
     params:
         temp = config['output']
     log:
-        _TOP_LOG + "generate_multiqc_report/generate_multiqc_report.log"
+        LOG("generate_multiqc_report", target="generate_multiqc_report", per_segment=False)
     benchmark:
-        _TOP_LOG + "generate_multiqc_report/generate_multiqc_report.benchmark.txt"
+        BENCH("generate_multiqc_report", target="generate_multiqc_report", per_segment=False)
     shell:
         """
         set -euo pipefail
@@ -83,9 +80,9 @@ rule align_consensus_to_reference_genome:
         reference = REFERENCE,
         minimap2_flags = config.get("minimap2_consensus_align_flags", "-a --sam-hit-only --secondary=no --score-N=0")
     log:
-        SAMPLE_SEGMENT_LOG_PREFIX + "align_consensus_to_reference_genome/align_consensus_to_reference_genome.log"
+        LOG("align_consensus_to_reference_genome", target="align_consensus_to_reference_genome")
     benchmark:
-        SAMPLE_SEGMENT_LOG_PREFIX + "align_consensus_to_reference_genome/align_consensus_to_reference_genome.benchmark.txt"
+        BENCH("align_consensus_to_reference_genome", target="align_consensus_to_reference_genome")
     shell:
         """
         set -euo pipefail

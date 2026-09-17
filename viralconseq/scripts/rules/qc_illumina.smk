@@ -31,9 +31,9 @@ rule perform_qc:
     resources:
         mem_mb = config.get("perform_qc_ram", 4) * 1024
     log:
-        config['output'] + "logs/fastp/{sample}.log"
+        LOG("perform_qc", per_segment=False)
     benchmark:
-        config['output'] + "logs/fastp/{sample}.benchmark.txt"
+        BENCH("perform_qc", per_segment=False)
     shell:
         """
         set -euo pipefail

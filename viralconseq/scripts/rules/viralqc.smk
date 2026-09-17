@@ -35,7 +35,6 @@ RUN_VIRALQC = config.get("run_viralqc", True)
 # outputs match textually. Only the values handed to ``vqc`` are made absolute.
 VIRALQC_DIR = config["output"] + "qc/viralqc/"
 VIRALQC_DB = str(config.get("viralqc_db", "") or "")
-VIRALQC_LOG_PREFIX = config["output"] + "logs/consensus_" + str(config.get("data", "run")) + "/"
 
 if RUN_VIRALQC and VIRALQC_DB in ("", "NA"):
     raise WorkflowError(
@@ -67,9 +66,9 @@ rule prepare_viralqc_input:
     params:
         segmented = "1" if SEGMENT_WILDCARD else ""
     log:
-        VIRALQC_LOG_PREFIX + "prepare_viralqc_input/prepare_viralqc_input.log"
+        LOG("prepare_viralqc_input", target="prepare_viralqc_input", per_segment=False)
     benchmark:
-        VIRALQC_LOG_PREFIX + "prepare_viralqc_input/prepare_viralqc_input.benchmark.txt"
+        BENCH("prepare_viralqc_input", target="prepare_viralqc_input", per_segment=False)
     shell:
         """
         set -euo pipefail
@@ -140,9 +139,9 @@ rule run_viralqc:
     resources:
         mem_mb = int(config.get("run_viralqc_ram", 4)) * 1024
     log:
-        VIRALQC_LOG_PREFIX + "run_viralqc/run_viralqc.log"
+        LOG("run_viralqc", target="run_viralqc", per_segment=False)
     benchmark:
-        VIRALQC_LOG_PREFIX + "run_viralqc/run_viralqc.benchmark.txt"
+        BENCH("run_viralqc", target="run_viralqc", per_segment=False)
     shell:
         """
         set -euo pipefail
@@ -215,9 +214,9 @@ rule split_viralqc_results:
     output:
         tsv = VIRALQC_DIR + "per_sample/{sample}.viralqc.tsv"
     log:
-        VIRALQC_LOG_PREFIX + "split_viralqc_results/{sample}.log"
+        LOG("split_viralqc_results", per_segment=False)
     benchmark:
-        VIRALQC_LOG_PREFIX + "split_viralqc_results/{sample}.benchmark.txt"
+        BENCH("split_viralqc_results", per_segment=False)
     shell:
         """
         set -euo pipefail

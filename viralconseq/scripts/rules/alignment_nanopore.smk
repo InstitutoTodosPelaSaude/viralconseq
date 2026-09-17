@@ -16,9 +16,9 @@ rule map_reads:
         bam = config['output'] + "assembly/" + SEGMENT_WILDCARD + "mapped_reads/raw/{sample}.sorted.bam",
         bam_index = config['output'] + "assembly/" + SEGMENT_WILDCARD + "mapped_reads/raw/{sample}.sorted.bam.bai",
     log:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/minimap2/{sample}.log"
+        LOG("map_reads")
     benchmark:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/minimap2/{sample}.benchmark.txt"
+        BENCH("map_reads")
     threads: config.get("map_reads_cpus", 2)
     resources:
         mem_mb = config.get("map_reads_ram", 4) * 1024
@@ -47,9 +47,9 @@ rule trim_primer_sequences:
         minimum_length = config["minimum_length"],
         path = config['output'] + "assembly/" + SEGMENT_WILDCARD + "mapped_reads/raw/"
     log:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/samtools/ampliconclip/{sample}.log"
+        LOG("trim_primer_sequences")
     benchmark:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/samtools/ampliconclip/{sample}.benchmark.txt"
+        BENCH("trim_primer_sequences")
     threads: config.get("trim_primer_sequences_cpus", 2)
     resources:
         mem_mb = config.get("trim_primer_sequences_ram", 4) * 1024

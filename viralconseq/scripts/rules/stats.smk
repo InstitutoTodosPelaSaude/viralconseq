@@ -14,9 +14,9 @@ rule calculate_coverage_basewise:
     output:
         table_cov = config['output'] + "assembly/" + SEGMENT_WILDCARD + "coverage_stats/{sample}.table_cov_basewise.txt"
     log:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/bedtools/{sample}.log"
+        LOG("calculate_coverage_basewise")
     benchmark:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/bedtools/{sample}.benchmark.txt"
+        BENCH("calculate_coverage_basewise")
     shell:
         """
         set -euo pipefail
@@ -32,8 +32,8 @@ rule rename_sequences:
     output:
         consensus_renamed = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.consensus.renamed.fasta"
     log:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/rename_sequences/{sample}.log"
+        LOG("rename_sequences")
     benchmark:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/rename_sequences/{sample}.benchmark.txt"
+        BENCH("rename_sequences")
     script:
         "../python/rename_sequences.py"

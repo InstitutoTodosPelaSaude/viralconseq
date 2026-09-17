@@ -29,9 +29,9 @@ rule infer_consensus_sequence:
         minimum_map_quality = config["minimum_map_quality"],
         variant_depth = config["variant_depth"]
     benchmark:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/consensus/{sample}.benchmark.txt"
+        BENCH("infer_consensus_sequence")
     log:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/consensus/{sample}.log"
+        LOG("infer_consensus_sequence")
     threads: config.get("infer_consensus_sequence_cpus", 2)
     resources:
         mem_mb = config.get("infer_consensus_sequence_ram", 4) * 1024

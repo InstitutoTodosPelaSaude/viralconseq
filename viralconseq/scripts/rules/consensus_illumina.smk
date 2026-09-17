@@ -20,9 +20,9 @@ rule detect_isnv:
     params:
         af_min_threshold = config["af_isnv_threshold"]
     log:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/lofreq/{sample}.log"
+        LOG("detect_isnv")
     benchmark:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/lofreq/{sample}.benchmark.txt"
+        BENCH("detect_isnv")
     threads: config.get("detect_isnv_cpus", 2)
     resources:
         mem_mb = config.get("detect_isnv_ram", 4) * 1024
@@ -60,9 +60,9 @@ rule infer_consensus_sequence:
         minimum_depth = config["minimum_depth"],
         af_threshold = config["af_threshold"]
     benchmark:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/samtools/consensus/{sample}.benchmark.txt"
+        BENCH("infer_consensus_sequence")
     log:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/samtools/consensus/{sample}.log"
+        LOG("infer_consensus_sequence")
     shell:
         """
         set -euo pipefail
@@ -80,9 +80,9 @@ rule generate_vcf_consensus:
         vcf = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.consensus.vcf.gz",
         vcf_index = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.consensus.vcf.gz.tbi"
     benchmark:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/gsaalign/{sample}.benchmark.txt"
+        BENCH("generate_vcf_consensus")
     log:
-        config['output'] + "assembly/" + SEGMENT_WILDCARD + "logs/gsaalign/{sample}.log"
+        LOG("generate_vcf_consensus")
     shell:
         """
         set -euo pipefail

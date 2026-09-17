@@ -3,14 +3,21 @@ include: "rules/common.smk"
 
 SEGMENTS = config["reference"]  # dict: {"S": "/path/S.fa", "L": "/path/L.fa", ...}
 
+# The analysis products; everything else (versions.tsv, config.yml,
+# benchmark.tsv) is provenance about them. rules/provenance.smk's
+# collect_benchmarks depends on this list so it runs last.
+TERMINAL_INPUTS = [
+    expand(
+        config['output'] + "assembly/{segment}/consensus/final_consensus/samples_alignment.fasta",
+        segment=SEGMENTS.keys()
+    ),
+    config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
+]
+
 rule all:
     default_target: True
     input:
-        expand(
-            config['output'] + "assembly/{segment}/consensus/final_consensus/samples_alignment.fasta",
-            segment=SEGMENTS.keys()
-        ),
-        config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
+        TERMINAL_INPUTS,
         config['output'] + "versions.tsv",
         config['output'] + "config.yml",
         config['output'] + "benchmark.tsv"
@@ -23,9 +30,9 @@ rule sanitize_reference:
         fasta = config["output"] + "reference/{segment}.sanitized.fasta",
         fai = config["output"] + "reference/{segment}.sanitized.fasta.fai"
     log:
-        config["output"] + "logs/consensus_nanopore/sanitize_reference/{segment}.log"
+        LOG("sanitize_reference", target="{segment}", per_segment=False)
     benchmark:
-        config["output"] + "logs/consensus_nanopore/sanitize_reference/{segment}.benchmark.txt"
+        BENCH("sanitize_reference", target="{segment}", per_segment=False)
     shell:
         """
         set -euo pipefail
@@ -49,7 +56,6 @@ include: "rules/consensus_nanopore.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_nanopore_common.smk"
 include: "rules/viralqc.smk"
-include: "rules/provenance.smk"
 
 rule unify_assembly_statistics_reports:
     conda:
@@ -63,9 +69,9 @@ rule unify_assembly_statistics_reports:
     output:
         unified_stats_summary = config['output'] + "assembly/assembly_stats_summary.csv"
     log:
-        config['output'] + "logs/consensus_nanopore/unify_assembly_statistics_reports/unify_assembly_statistics_reports.log"
+        LOG("unify_assembly_statistics_reports", target="unify_assembly_statistics_reports", per_segment=False)
     benchmark:
-        config['output'] + "logs/consensus_nanopore/unify_assembly_statistics_reports/unify_assembly_statistics_reports.benchmark.txt"
+        BENCH("unify_assembly_statistics_reports", target="unify_assembly_statistics_reports", per_segment=False)
     shell:
         """
         set -euo pipefail
@@ -106,16 +112,17 @@ rule organize_files:
             rules.split_viralqc_results.output.tsv, sample=config["samples"]
         ) if config.get("run_viralqc", True) else [],
     output:
-        config['output'] + "benchmark.tsv"
+        # Sentinel: the symlink tree has no single file to declare. benchmark.tsv
+        # is produced by collect_benchmarks (rules/provenance.smk).
+        sentinel = touch(config['output'] + "samples/.organized")
     params:
         outdir = config['output'],
         samples = " ".join(config["samples"].keys()),
-        segments = " ".join(SEGMENTS.keys()),
-        own_benchmark = config['output'] + "logs/consensus_nanopore/organize_files/organize_files.benchmark.txt"
+        segments = " ".join(SEGMENTS.keys())
     log:
-        config['output'] + "logs/consensus_nanopore/organize_files/organize_files.log"
+        LOG("organize_files", target="organize_files", per_segment=False)
     benchmark:
-        config['output'] + "logs/consensus_nanopore/organize_files/organize_files.benchmark.txt"
+        BENCH("organize_files", target="organize_files", per_segment=False)
     shell:
         """
         set -euo pipefail
@@ -173,35 +180,8 @@ rule organize_files:
             ln -sf $_file {params.outdir}samples/$sample/viralqc.tsv;
         done
 
-        # Benchmark aggregation. Drop this rule's own benchmark from a previous
-        # run first: Snakemake clears log: but not benchmark: before a job, so a
-        # rerun would otherwise ingest a stale row for organize_files itself.
-        rm -f {params.own_benchmark}
-        echo -e "sample\\tsegment\\ttask\\tseconds\\th:m:s\\tmax_rss\\tmax_vms\\tmax_uss\\tmax_pss\\tio_in\\tio_out\\tmean_load\\tcpu_time" > {output}
-        find {params.outdir} -name "*.benchmark.txt" | while read -r file; do
-            task=$(basename $(dirname $file))
-            sample=$(basename $file .benchmark.txt)
-
-            outdir="{params.outdir}"; rel=${{file#$outdir}};
-            if [[ "$rel" == assembly/* ]]; then
-                rel=${{rel#assembly/}}
-                segment=$(echo "$rel" | cut -d'/' -f1);
-            else
-                segment="-"
-            fi
-
-            matched=false
-            for s in {params.samples}; do
-                if [[ "$sample" == "$s" ]]; then
-                    matched=true
-                    break
-                fi
-            done
-
-            if [[ "$matched" == "false" ]]; then
-                sample="All"
-            fi
-
-            tail -n +2 $file | awk -v sample=$sample -v segment=$segment -v task=$task '{{print sample"\\t"segment"\\t"task"\\t"$0}}' >> {output}
-        done
         """
+
+# Provenance and the benchmark collector last: collect_benchmarks depends on
+# TERMINAL_INPUTS and on rules.organize_files, both defined above.
+include: "rules/provenance.smk"
