@@ -49,6 +49,7 @@ pipelines:
       - samples/sample-itps-0001/consensus.fasta
       - samples/sample-itps-0002/consensus.fasta
       - samples/sample-itps-0001/trimmed_mapped_reads.bam
+      - summary.tsv
       - assembly/assembly_stats_summary.csv
       - assembly/consensus/final_consensus/samples_alignment.fasta
       - qc/reports/multiqc_report.html
@@ -82,6 +83,7 @@ pipelines:
       - qc/viralqc/outputs/results.tsv
       - qc/viralqc/viralqc_status.txt
       - samples/sample-barcode05/viralqc.tsv
+      - summary.tsv
       - versions.tsv
       - config.yml
       - logs/run.log

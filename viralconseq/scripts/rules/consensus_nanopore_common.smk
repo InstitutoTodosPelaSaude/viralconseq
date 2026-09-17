@@ -13,14 +13,12 @@ rule calculate_assembly_statistics:
     conda:
         "../envs/utils.yaml"
     input:
-        get_map_input_fastqs,
-        get_map_input_fastqs,
-        get_map_input_fastqs,
-        rules.trim_primer_sequences.output.bam,
-        rules.calculate_coverage_basewise.output.table_cov,
-        rules.rename_sequences.output.consensus_renamed
+        raw = get_map_input_fastqs,
+        bam = rules.trim_primer_sequences.output.bam,
+        table_cov = rules.calculate_coverage_basewise.output.table_cov,
+        consensus = rules.rename_sequences.output.consensus_renamed
     output:
-        stats_summary = temp(config['output'] + "assembly/" + SEGMENT_WILDCARD + "coverage_stats/{sample}.stats_summary.csv")
+        stats = config['output'] + "assembly/" + SEGMENT_WILDCARD + "coverage_stats/{sample}.stats.tsv"
     params:
         minimum_depth = config["minimum_depth"]
     log:
@@ -35,11 +33,6 @@ rule align_consensus_to_reference_genome:
     conda:
         "../envs/alignment.yaml"
     input:
-        # Literal path (instead of ``rules.unify_assembly_statistics_reports.``)
-        # to avoid an include-order cycle: ``unify_assembly_statistics_reports``
-        # lives in the top-level snakefile and itself references
-        # ``rules.calculate_assembly_statistics`` defined here.
-        stats = config['output'] + "assembly/assembly_stats_summary.csv",
         consensus_files = expand(
             rules.rename_sequences.output.consensus_renamed,
             sample=config["samples"],

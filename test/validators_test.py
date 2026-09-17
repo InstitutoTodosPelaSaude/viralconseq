@@ -283,6 +283,10 @@ class Test_ValidateConfigDict(unittest.TestCase):
                 with self.assertRaises(ConfigurationError):
                     validate_config_dict(config)
 
+    def test_illumina_adapters_may_be_null(self):
+        """--adapters omitted -> `adapters: null` in the YAML; fastp then detects them."""
+        validate_config_dict(_good_config("illumina", adapters=None))
+
     def test_per_sample_model_mapping_accepted(self):
         validate_config_dict(_good_config(clair3_model={"sample-a": "r941_prom_hac_g360+g422"}))
 

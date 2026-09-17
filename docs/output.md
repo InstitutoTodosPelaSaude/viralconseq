@@ -5,6 +5,7 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 ```
 {output}/{run_name}/
 ├── run_manifest.json                 # version, config path, input checksums, outcome
+├── summary.tsv                       # START HERE: one row per sample, status + stats + viralQC
 ├── versions.tsv                      # tool versions probed at run time (component, version)
 ├── config.yml                        # copy of the resolved config this run used
 ├── logs/
@@ -14,7 +15,7 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 ├── other/versions/                   # per-environment fragments behind versions.tsv
 ├── .snakemake/                       # Snakemake's own state (locks, metadata, transcripts)
 ├── assembly/
-│   ├── assembly_stats_summary.csv    # per-sample QC metrics
+│   ├── assembly_stats_summary.csv    # deprecated pre-0.2.0 shape of summary.tsv (removed in 0.3.0)
 │   ├── coverage_stats/
 │   │   └── {sample}.table_cov_basewise.txt
 │   ├── consensus/                    # non-segmented
@@ -47,7 +48,7 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 │       ├── status.txt                # nanopore: ok / no_mapped_reads (see below)
 │       ├── isnvs.vcf.gz              # illumina + --run-isnv
 │       ├── fastp.html                # illumina
-│       ├── stats_summary.csv         # illumina
+│       ├── stats.tsv                 # this sample's row of the assembly statistics
 │       ├── table_cov_basewise.txt    # nanopore
 │       ├── viralqc.tsv               # unless --no-run-viralqc
 │       ├── raw_mapped_reads.bam
@@ -56,8 +57,8 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 ```
 
 Every sample id from the sample sheet appears with a `sample-` prefix everywhere:
-in the output tree (`samples/sample-<id>/`), in the `sample_name` column of
-`assembly_stats_summary.csv`, in the `sample` column of `benchmark.tsv`, in the
+in the output tree (`samples/sample-<id>/`), in the `sample_id` column of
+`summary.tsv`, in the `sample` column of `benchmark.tsv`, in the
 `samples` block of `run_manifest.json`, in the coverage-table file names and in the
 consensus FASTA headers.
 
@@ -92,7 +93,8 @@ deleted once the run is finished.
 
 | File | Description |
 |------|-------------|
-| `assembly/assembly_stats_summary.csv` | Read counts, mapped reads, average depth, breadth of coverage per sample (and per segment) |
+| `summary.tsv` | One row per sample (per sample and segment when segmented): status, read counts, depth, breadth of coverage, consensus length and N content, iSNV count, viralQC virus / clade / grade, Clair3 model. The place to start; columns below |
+| `assembly/assembly_stats_summary.csv` | Deprecated: the pre-0.2.0 table (fractions 0–1, mean depth) derived from the same rows; removed in 0.3.0 |
 | `samples/sample-{id}/consensus.fasta` | Final consensus sequence |
 | `samples/sample-{id}/consensus.vcf.gz` | Variants relative to the reference |
 | `assembly/coverage_stats/sample-{id}.table_cov_basewise.txt` | Per-base coverage table (`RNAME`, `POS`, `DEPTH`) |
@@ -102,7 +104,7 @@ deleted once the run is finished.
 | `qc/viralqc/outputs/results.tsv` | viralQC table: virus, clade and genome-quality score per consensus sequence (see below) |
 | `samples/sample-{id}/viralqc.tsv` | The rows of `results.tsv` belonging to one sample |
 | `run_manifest.json` | Provenance: version, timestamp, config path and hash, input SHA-256 checksums, outcome, paths of `logs/snakemake.log`, `versions.tsv` and `config.yml` |
-| `versions.tsv` | `component<TAB>version`: viralconseq, Snakemake, every tool probed inside its conda environment at run time (minimap2, samtools, bedtools, GSAlign, gofasta, fastp, MultiQC, LoFreq, bcftools, Clair3, Python, pandas, viralQC, Nextclade, BLAST as applicable) and, when viralQC ran, the database directory and dataset download date |
+| `versions.tsv` | `component<TAB>version`: viralconseq, Snakemake, every tool probed inside its conda environment at run time (minimap2, samtools, bedtools, GSAlign, gofasta, fastp, MultiQC, LoFreq, bcftools, Clair3, Python, seqtk, viralQC, Nextclade, BLAST as applicable) and, when viralQC ran, the database directory and dataset download date |
 | `config.yml` | The resolved configuration this run used (a copy of the file `--config-file` pointed at) |
 | `logs/run.log` | One line per run start and end, written by the workflow (survives a `.snakemake/` clean-up) |
 | `logs/snakemake.log` | Copy of the newest Snakemake transcript for this run directory |
@@ -122,20 +124,53 @@ sheet order) and run-level rows (`sample` = `All`) last:
 | `threads` | The CPUs the rule was given (`--<rule>-cpus`, else `--threads`); empty for rules without a `--<rule>-cpus` option, which run single-threaded |
 | `s`, `h:m:s`, `max_rss`, `max_vms`, `max_uss`, `max_pss`, `io_in`, `io_out`, `mean_load`, `cpu_time` | Snakemake's own measurements (seconds, memory in MB, I/O in MB) |
 
-## Assembly statistics columns
+## summary.tsv columns
 
-`assembly_stats_summary.csv` has one row per sample (one row per sample and segment in
-segmented runs, which add a `segment` column after `sample_name`):
+`summary.tsv` is tab-separated with a pinned header, one row per sample in sample
+sheet order (one row per sample and segment in segmented runs, which add a
+`segment` column after `sample_id`). Percentages are 0–100 with two decimals;
+a value that does not exist for a row is `NA`. Every sample of the sheet has a
+row, even when nothing was assembled for it.
 
 | Column | Meaning |
 |---|---|
-| `sample_name` | Sample id, with the `sample-` prefix |
-| `number_of_reads` | Raw reads in the input FASTQ(s) |
-| `number_of_trim_paired_reads` | Reads retained after QC (Illumina); equals the raw count on Nanopore |
-| `number_of_mapped_reads` | Reads mapped to the reference |
-| `average_depth` | Mean depth over all reference positions |
-| `percentage_above_10x` / `_100x` / `_1000x` | Fraction of reference positions at or above each depth |
-| `horizontal_coverage` | Fraction of reference positions at or above `--minimum-coverage` |
+| `sample_id` | `sample-<id>` |
+| `status` | `ok`, or why the row is not a normal genome (table below) |
+| `total_reads` | Sequenced reads in the input FASTQ(s); both mates on Illumina |
+| `qc_passed_reads` | Reads kept by fastp (Illumina); `NA` on nanopore |
+| `mapped_reads` | Primary mapped reads in the primer-clipped BAM (each Illumina mate counts once, so `pct_mapped` is bounded by 100) |
+| `pct_mapped` | `100 × mapped_reads / total_reads` |
+| `mean_depth`, `median_depth` | Depth over all reference positions (all contigs), zeros included |
+| `coverage_10x`, `coverage_100x`, `coverage_1000x` | Percent of reference positions at or above each depth |
+| `coverage_min_depth` | Percent of reference positions at or above `--minimum-coverage` (the value in `min_depth`); the completeness figure the `consensus/*.cov<T>.fasta` filter and the report use |
+| `min_depth` | The `--minimum-coverage` threshold behind `coverage_min_depth` |
+| `consensus_length`, `n_count`, `n_pct` | Length of the consensus (all records), number and percent of `N` |
+| `isnv_count` | Intra-host variants called (Illumina with `--run-isnv`), else `NA` |
+| `virus`, `clade`, `lineage` | viralQC identification (a multi-contig reference reports the contig with the highest coverage) |
+| `genome_quality`, `genome_quality_score` | viralQC grade A–D and its 0–24 score |
+| `qc_overall_status` | Nextclade's overall verdict (`good` / `mediocre` / `bad`) as reported by viralQC |
+| `viralqc_dataset`, `viralqc_dataset_version` | Nextclade dataset and version behind the clade call |
+| `clair3_model` | Clair3 model used for this sample (nanopore), else `NA` |
+
+`status` values, in the order they are tested:
+
+| Status | Meaning |
+|---|---|
+| `missing_stats` | No statistics were produced for the sample (should not happen in a completed run) |
+| `no_mapped_reads` | Nanopore: fewer than `--minimum-mapped-reads` reads mapped; the consensus is all `N` and Clair3 was skipped |
+| `empty_consensus` | The consensus has no called bases (length 0 or 100 % `N`) |
+| `viralqc_failed`, `viralqc_partial`, `viralqc_skipped` | viralQC did not deliver a verdict for the run (see `qc/viralqc/viralqc_status.txt`); consensus outputs are unaffected |
+| `viralqc_missing` | viralQC ran but has no row for this sample |
+| `ok` | A genome with statistics and, when viralQC ran, a QC verdict |
+
+`samples/sample-<id>/stats.tsv` is the single-row per-sample statistics file the
+summary is built from (same statistics columns, no viralQC). The deprecated
+`assembly/assembly_stats_summary.csv` keeps the pre-0.2.0 header
+(`sample_name`, `number_of_reads`, `number_of_trim_paired_reads`,
+`number_of_mapped_reads`, `average_depth`, `percentage_above_{10,100,1000}x`,
+`horizontal_coverage`) with fractions 0–1; note that `number_of_reads` and
+`number_of_mapped_reads` now count both Illumina mates, where 0.1.x counted R1
+reads against mapped mates.
 
 ## viralQC results
 

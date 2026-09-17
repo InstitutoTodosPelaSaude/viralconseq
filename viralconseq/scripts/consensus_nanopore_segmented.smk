@@ -12,6 +12,7 @@ TERMINAL_INPUTS = [
         segment=SEGMENTS.keys()
     ),
     config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
+    config['output'] + "summary.tsv",
 ]
 
 rule all:
@@ -56,29 +57,7 @@ include: "rules/consensus_nanopore.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_nanopore_common.smk"
 include: "rules/viralqc.smk"
-
-rule unify_assembly_statistics_reports:
-    conda:
-        "envs/utils.yaml"
-    input:
-        reports = expand(
-            rules.calculate_assembly_statistics.output.stats_summary,
-            sample=config["samples"],
-            segment=SEGMENTS.keys()
-        )
-    output:
-        unified_stats_summary = config['output'] + "assembly/assembly_stats_summary.csv"
-    log:
-        LOG("unify_assembly_statistics_reports", target="unify_assembly_statistics_reports", per_segment=False)
-    benchmark:
-        BENCH("unify_assembly_statistics_reports", target="unify_assembly_statistics_reports", per_segment=False)
-    shell:
-        """
-        set -euo pipefail
-        exec > {log} 2>&1
-        echo \"sample_name,segment,number_of_reads,number_of_trim_paired_reads,number_of_mapped_reads,average_depth,percentage_above_10x,percentage_above_100x,percentage_above_1000x,horizontal_coverage\" > {output.unified_stats_summary} ;
-        cat {input.reports} >> {output.unified_stats_summary}
-        """
+include: "rules/collect.smk"
 
 rule organize_files:
     conda:
@@ -98,6 +77,10 @@ rule organize_files:
         ),
         status_files = expand(
             rules.check_mapped_reads.output.status,
+            sample=config["samples"], segment=SEGMENTS.keys()
+        ),
+        stats_files = expand(
+            rules.calculate_assembly_statistics.output.stats,
             sample=config["samples"], segment=SEGMENTS.keys()
         ),
         table_cov = expand(
@@ -165,6 +148,12 @@ rule organize_files:
             # assembly/status/<sample>.<segment>.txt
             base=$(basename $_file .txt); segment=${{base##*.}}; sample=${{base%.*}};
             ln -sf $_file {params.outdir}samples/$sample/$segment/status.txt;
+        done
+        for _file in {input.stats_files}; do
+            outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
+            segment=$(echo "$rel" | cut -d'/' -f1);
+            sample=$(basename $_file .stats.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/$segment/stats.tsv;
         done
         for _file in {input.table_cov}; do
             outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};

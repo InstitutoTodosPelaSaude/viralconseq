@@ -128,8 +128,7 @@ rule versions_utils:
         """
         set -euo pipefail
         exec > {log} 2>&1
-        python {input.script:q} --tools python --python-dists pandas \
-            --output {output.fragment:q}
+        python {input.script:q} --tools python samtools bcftools seqtk --output {output.fragment:q}
         cat {output.fragment:q}
         """
 

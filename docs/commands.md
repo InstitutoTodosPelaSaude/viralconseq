@@ -306,9 +306,10 @@ viralconseq consensus illumina \
 
 Behavior notes for a multi-contig single reference:
 
-- **Coverage/depth statistics** (`assembly_stats_summary.csv`) are aggregated across
-  all contigs: `horizontal_coverage` is the fraction of *all* reference positions at
-  or above the threshold, and `average_depth` is the whole-assembly mean.
+- **Coverage/depth statistics** (`summary.tsv`) are aggregated across all contigs:
+  `coverage_min_depth` is the percentage of *all* reference positions at or above
+  the threshold, and `mean_depth` / `median_depth` are whole-assembly figures; the
+  viralQC columns report the contig with the highest coverage.
 - **Consensus** keeps one record per contig (contigs are never fused).
 - The cross-sample alignment is written **per contig** under
   `consensus/final_consensus/per_contig_alignments/<contig>.fasta` (one MSA each).

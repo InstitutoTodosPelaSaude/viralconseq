@@ -30,6 +30,7 @@ REFERENCE = rules.sanitize_reference.output.fasta
 TERMINAL_INPUTS = [
     config['output'] + "assembly/consensus/final_consensus/samples_alignment.fasta",
     config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
+    config['output'] + "summary.tsv",
 ]
 
 rule all:
@@ -51,31 +52,12 @@ include: "rules/consensus_nanopore.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_nanopore_common.smk"
 include: "rules/viralqc.smk"
+include: "rules/collect.smk"
 
 # ``calculate_assembly_statistics`` and ``align_consensus_to_reference_genome``
 # are defined in the included ``consensus_nanopore_common.smk``. The
 # ``calculate_assembly_stats.py`` helper expects three fastq inputs
 # (raw_r1, raw_r2, trimmed) — Nanopore passes the same fastq for all three.
-
-rule unify_assembly_statistics_reports:
-    conda:
-        "envs/utils.yaml"
-    input:
-        reports = expand(rules.calculate_assembly_statistics.output.stats_summary, sample=config["samples"])
-    output:
-        unified_stats_summary = config['output'] + "assembly/assembly_stats_summary.csv"
-    log:
-        LOG("unify_assembly_statistics_reports", target="unify_assembly_statistics_reports", per_segment=False)
-    benchmark:
-        BENCH("unify_assembly_statistics_reports", target="unify_assembly_statistics_reports", per_segment=False)
-    shell:
-        """
-        set -euo pipefail
-        exec > {log} 2>&1
-        echo \"sample_name,number_of_reads,number_of_trim_paired_reads,number_of_mapped_reads,average_depth,percentage_above_10x,percentage_above_100x,percentage_above_1000x,horizontal_coverage\" > {output.unified_stats_summary} ;
-        cat {input.reports} >> {output.unified_stats_summary}
-        """
-
 
 rule organize_files:
     conda:
@@ -85,6 +67,7 @@ rule organize_files:
         vcf_raw_files = expand(rules.infer_consensus_sequence.output.vcf_raw, sample=config["samples"]),
         model_files = expand(rules.infer_consensus_sequence.output.model_txt, sample=config["samples"]),
         status_files = expand(rules.check_mapped_reads.output.status, sample=config["samples"]),
+        stats_files = expand(rules.calculate_assembly_statistics.output.stats, sample=config["samples"]),
         table_cov = expand(rules.calculate_coverage_basewise.output.table_cov, sample=config["samples"]),
         consensus_files = expand(rules.rename_sequences.output.consensus_renamed, sample=config["samples"]),
         raw_mapped_reads = expand(rules.map_reads.output.bam, sample=config["samples"]),
@@ -126,6 +109,10 @@ rule organize_files:
         for _file in {input.status_files}; do
             sample=$(basename $_file .txt);
             ln -sf $_file {params.outdir}samples/$sample/status.txt;
+        done
+        for _file in {input.stats_files}; do
+            sample=$(basename $_file .stats.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/stats.tsv;
         done
         for _file in {input.table_cov}; do
             sample=$(basename $_file .table_cov_basewise.txt);

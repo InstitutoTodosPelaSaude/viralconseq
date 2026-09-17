@@ -42,9 +42,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    # pandas is only needed to unit-test scripts/python/calculate_assembly_stats.py,
     # which runs inside envs/utils.yaml at pipeline runtime.
-    "pandas>=1.5",
     "black>=26,<27",
     "pytest>=9.0",
     "pytest-cov>=5.0",

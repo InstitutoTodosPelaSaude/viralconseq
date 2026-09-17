@@ -1,50 +1,67 @@
 #!/usr/bin/env python
-"""Per-sample assembly-statistics summary for the viralunity consensus pipeline.
+"""Per-sample assembly statistics for the viralconseq consensus workflows.
 
-This script is executed by Snakemake via a ``script:`` directive in
-``rules/consensus_*_common.smk``. Snakemake injects a ``snakemake`` global
-at runtime (``snakemake.input``, ``snakemake.output``, ``snakemake.params``,
-``snakemake.wildcards``) — ruff/mypy cannot see it and are silenced for this
-file via the ``viralunity/scripts/python/*.py`` overrides in
-``pyproject.toml``.
+Executed by Snakemake via a ``script:`` directive in
+``rules/consensus_*_common.smk``; Snakemake injects a ``snakemake`` global
+(``snakemake.input`` with named members ``raw``, ``qc_passed`` (Illumina
+only), ``bam``, ``table_cov``, ``consensus``; ``snakemake.output[0]``;
+``snakemake.params.minimum_depth``; ``snakemake.wildcards``). ruff/mypy
+cannot see the global and are silenced for this directory in ``pyproject.toml``.
+Standard library only.
 
-For each sample the script writes a one-row CSV containing read counts,
-mean depth, and the fraction of reference positions exceeding 10x, 100x,
-1000x, and the user-supplied ``minimum_depth`` threshold. In segmented mode
-the segment name is inserted as the second column.
+Writes a one-row, headered TSV: read counts (every sequenced read, so both
+mates on Illumina), mapped reads, mean and median depth, breadth of coverage
+at 10x / 100x / 1000x / ``minimum_depth`` as percentages (0-100, 2 dp), and
+the consensus length and N content. ``summary.tsv`` (``build_summary.py``)
+joins these rows with viralQC and the rest, so the coverage arithmetic lives
+here only.
 """
 
 import gzip
+import statistics
 import subprocess
-import sys
-from typing import Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Union
 
-import pandas as pd
+Value = Union[int, float, str]
+
+COLUMNS = [
+    "sample_id",
+    "segment",
+    "total_reads",
+    "qc_passed_reads",
+    "mapped_reads",
+    "pct_mapped",
+    "mean_depth",
+    "median_depth",
+    "coverage_10x",
+    "coverage_100x",
+    "coverage_1000x",
+    "coverage_min_depth",
+    "min_depth",
+    "consensus_length",
+    "n_count",
+    "n_pct",
+]
+NA = "NA"
 
 
-def get_number_of_reads(fastq: str) -> int:
-    """Count records in a FASTQ file as ``number of lines // 4``.
+def count_reads(fastq: str) -> int:
+    """Records in a FASTQ (plain or gzip) as ``lines // 4``.
 
-    Works for both plain and gzip-compressed inputs. Avoids subprocess +
-    shell=True so the path is not interpreted by a shell. Counting the "+"
-    separator line is unsafe: the separator may carry the read id ("+<id>"),
-    and a single-base read's quality line can itself be "+", so a line count
-    is used instead (matching ``add_RPM_to_summary.count_fastq_reads``).
+    A line count, not a count of ``+`` separators: the separator may carry
+    the read id and a one-base read's quality line can itself be ``+``.
     """
     opener = gzip.open if fastq.endswith(".gz") else open
     n_lines = 0
-    with opener(fastq, "rt") as f:
-        for _ in f:
+    with opener(fastq, "rt") as handle:
+        for _ in handle:
             n_lines += 1
-    if n_lines % 4 != 0:
-        sys.stderr.write(
-            f"WARNING: FASTQ line count not divisible by 4: {fastq} (lines={n_lines}).\n"
-        )
     return n_lines // 4
 
 
-def get_number_of_mapped_reads(bam: str) -> int:
-    """Return the number of mapped reads in a BAM via `samtools view -c -F 260`."""
+def count_mapped_reads(bam: str) -> int:
+    """Primary mapped records (``samtools view -c -F 260``): each Illumina
+    mate counts once, matching how ``total_reads`` counts both mates."""
     result = subprocess.run(
         ["samtools", "view", "-c", "-F", "260", bam],
         check=True,
@@ -54,114 +71,119 @@ def get_number_of_mapped_reads(bam: str) -> int:
     return int(result.stdout.strip())
 
 
-def get_coverage_info(
-    table_cov: str, minimum_depth: int
-) -> Tuple[float, float, float, float, float]:
-    """Read a basewise-coverage TSV and return mean depth + fractions of
-    positions above 10x / 100x / 1000x / ``minimum_depth``.
-    """
-    try:
-        df = pd.read_csv(table_cov, header=None, sep=r"\s+")
-    except pd.errors.EmptyDataError:
-        # A header-only BAM (sample with no mapped reads) can yield an empty
-        # coverage table; every metric is then zero.
-        return (0.0, 0.0, 0.0, 0.0, 0.0)
-    total_sequenced_bases = df[2].sum()
-    reference_genome_length = len(df)
-    average_depth = total_sequenced_bases / reference_genome_length
-    percentage_of_sites_above_10x = len(df[df[2] >= 10]) / reference_genome_length
-    percentage_of_sites_above_100x = len(df[df[2] >= 100]) / reference_genome_length
-    percentage_of_sites_above_1000x = len(df[df[2] >= 1000]) / reference_genome_length
-    percentage_of_sites_above_specified_threshold = (
-        len(df[df[2] >= minimum_depth]) / reference_genome_length
-    )
-    return (
-        average_depth,
-        percentage_of_sites_above_10x,
-        percentage_of_sites_above_100x,
-        percentage_of_sites_above_1000x,
-        percentage_of_sites_above_specified_threshold,
-    )
+def _pct(numerator: float, denominator: float) -> Value:
+    return round(100.0 * numerator / denominator, 2) if denominator else NA
 
 
-def generate_output(
-    fastq: str,
-    trim_fastq: str,
+def coverage_stats(table_cov: str, minimum_depth: int) -> Dict[str, Value]:
+    """Depth and breadth from a ``bedtools genomecov -d`` table (chrom, pos,
+    depth; every reference position, all contigs). An empty table (a BAM
+    without reads) yields zeros for the breadths and NA for the depths."""
+    depths: List[int] = []
+    with open(table_cov) as handle:
+        for line in handle:
+            fields = line.split()
+            if len(fields) >= 3:
+                depths.append(int(fields[2]))
+    n = len(depths)
+    if n == 0:
+        return {
+            "mean_depth": NA,
+            "median_depth": NA,
+            "coverage_10x": 0.0,
+            "coverage_100x": 0.0,
+            "coverage_1000x": 0.0,
+            "coverage_min_depth": 0.0,
+        }
+    return {
+        "mean_depth": round(sum(depths) / n, 2),
+        "median_depth": round(statistics.median(depths), 1),
+        "coverage_10x": _pct(sum(1 for d in depths if d >= 10), n),
+        "coverage_100x": _pct(sum(1 for d in depths if d >= 100), n),
+        "coverage_1000x": _pct(sum(1 for d in depths if d >= 1000), n),
+        "coverage_min_depth": _pct(sum(1 for d in depths if d >= minimum_depth), n),
+    }
+
+
+def consensus_stats(fasta: str) -> Dict[str, Value]:
+    """Total sequence length, N count and N % over every record of a FASTA."""
+    length = 0
+    n_count = 0
+    with open(fasta) as handle:
+        for line in handle:
+            if line.startswith(">"):
+                continue
+            seq = line.strip()
+            length += len(seq)
+            n_count += seq.count("N") + seq.count("n")
+    return {
+        "consensus_length": length,
+        "n_count": n_count,
+        "n_pct": _pct(n_count, length),
+    }
+
+
+def build_row(
+    sample_id: str,
+    segment: Optional[str],
+    raw_fastqs: Sequence[str],
+    qc_fastqs: Optional[Sequence[str]],
     bam: str,
     table_cov: str,
-    sample_name: str,
+    consensus: str,
     minimum_depth: int,
-    output: str,
-    segment: Optional[str] = None,
-) -> pd.DataFrame:
-    """Assemble the one-row DataFrame written to ``output``."""
-    number_of_reads = get_number_of_reads(fastq)
-    number_of_trim_reads = get_number_of_reads(trim_fastq)
-    number_of_mapped_reads = get_number_of_mapped_reads(bam)
-    (
-        average_depth,
-        percentage_of_sites_above_10x,
-        percentage_of_sites_above_100x,
-        percentage_of_sites_above_1000x,
-        percentage_of_sites_above_specified_threshold,
-    ) = get_coverage_info(table_cov, minimum_depth)
-    data = [sample_name]
+) -> Dict[str, Value]:
+    """The per-sample row (``segment`` key present only when given)."""
+    total_reads = sum(count_reads(path) for path in raw_fastqs)
+    qc_passed: Value = sum(count_reads(path) for path in qc_fastqs) if qc_fastqs else NA
+    mapped = count_mapped_reads(bam)
+    row: Dict[str, Value] = {"sample_id": sample_id}
     if segment is not None:
-        data.append(segment)
-
-    data.extend(
-        [
-            number_of_reads,
-            number_of_trim_reads,
-            number_of_mapped_reads,
-            average_depth,
-            percentage_of_sites_above_10x,
-            percentage_of_sites_above_100x,
-            percentage_of_sites_above_1000x,
-            percentage_of_sites_above_specified_threshold,
-        ]
+        row["segment"] = segment
+    row.update(
+        {
+            "total_reads": total_reads,
+            "qc_passed_reads": qc_passed,
+            "mapped_reads": mapped,
+            "pct_mapped": _pct(mapped, total_reads),
+        }
     )
-    return pd.DataFrame(data).T
+    row.update(coverage_stats(table_cov, minimum_depth))
+    row["min_depth"] = minimum_depth
+    row.update(consensus_stats(consensus))
+    return row
 
 
-def main(
-    input_paths: Sequence[str],
-    output: str,
-    minimum_depth: int,
-    segment: Optional[str] = None,
-) -> None:
-    """Snakemake entry point.
+def write_tsv(row: Dict[str, Value], output: str) -> None:
+    columns = [c for c in COLUMNS if c in row]
+    with open(output, "w") as handle:
+        handle.write("\t".join(columns) + "\n")
+        handle.write("\t".join(str(row[c]) for c in columns) + "\n")
 
-    ``input_paths`` is the list passed via ``snakemake.input``; positions 0,
-    2, 3, 4 are used (raw fastq, trimmed fastq, sorted BAM, basewise-coverage
-    TSV). Position 1 is the Illumina paired R2 fastq, which is intentionally
-    ignored — the pipeline reports stats per-sample, not per-strand.
-    """
-    fastq = input_paths[0]
-    trim_fastq = input_paths[2]
-    bam = input_paths[3]
-    table_cov = input_paths[4]
 
-    sample_name = bam.replace(".sorted.bam", "")
-    sample_name = sample_name.split("/")[-1]
-
-    df_out = generate_output(
-        fastq, trim_fastq, bam, table_cov, sample_name, minimum_depth, output, segment
+def main_from_snakemake(smk) -> None:
+    """Entry point given the injected ``snakemake`` object."""
+    raw = list(smk.input.raw)
+    qc_passed = list(smk.input.qc_passed) if "qc_passed" in smk.input.keys() else None
+    segment = getattr(smk.wildcards, "segment", None)
+    row = build_row(
+        sample_id=smk.wildcards.sample,
+        segment=segment,
+        raw_fastqs=raw,
+        qc_fastqs=qc_passed,
+        bam=str(smk.input.bam),
+        table_cov=str(smk.input.table_cov),
+        consensus=str(smk.input.consensus),
+        minimum_depth=int(smk.params.minimum_depth),
     )
-
-    df_out.to_csv(output, header=False, index=False)
+    write_tsv(row, smk.output[0])
 
 
 if __name__ == "__main__":
+    import sys
+
     # Snakemake does not redirect a script:'s output; do it here so the rule log
     # holds whatever this script prints.
     if snakemake.log:
         sys.stdout = sys.stderr = open(snakemake.log[0], "w")
-    main(
-        snakemake.input,
-        snakemake.output[0],
-        snakemake.params[0],
-        getattr(snakemake.wildcards, "segment", None),
-    )
-
-    exit()
+    main_from_snakemake(snakemake)

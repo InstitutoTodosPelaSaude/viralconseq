@@ -88,9 +88,9 @@ samples/sample-<id>/           # note the sample- prefix on every sample directo
 ├── fastp.html                 # fastp QC report
 ├── raw_mapped_reads.bam       # post-mapping, before primer clipping
 ├── trimmed_mapped_reads.bam   # primer-clipped — the BAM used for consensus
-└── stats_summary.csv          # per-sample mapped/coverage stats
+└── stats.tsv                  # this sample's row of the assembly statistics
+summary.tsv                              # START HERE: one row per sample, status + stats + viralQC
 assembly/
-├── assembly_stats_summary.csv          # the per-sample stats combined into one CSV
 ├── coverage_stats/sample-<id>.table_cov_basewise.txt  # per-base depth
 └── consensus/final_consensus/
     └── samples_alignment.fasta          # all samples + reference, MSA-ready
@@ -105,7 +105,7 @@ logs/run.log, logs/snakemake.log         # start/end lines and the Snakemake tra
 
 How to read each one:
 
-**`samples/sample-<id>/consensus.fasta`** — your finished genome. Long runs of `N` indicate stretches with coverage below `--minimum-coverage` (or where every read disagreed with the reference but no allele exceeded `--af-threshold`). A first sanity check is the proportion of non-N bases — `assembly_stats_summary.csv` reports it as `horizontal_coverage`.
+**`samples/sample-<id>/consensus.fasta`** — your finished genome. Long runs of `N` indicate stretches with coverage below `--minimum-coverage` (or where every read disagreed with the reference but no allele exceeded `--af-threshold`). A first sanity check is the proportion of non-N bases — `summary.tsv` reports it as `coverage_min_depth` (and `n_pct`).
 
 **`samples/sample-<id>/consensus.vcf.gz`** — the differences between your sample and the reference, called from the consensus FASTA via GSAlign. Inspect with:
 
@@ -121,7 +121,7 @@ awk '$3 < 20' results/consensus_illumina/sarscov2/assembly/coverage_stats/sample
 
 **`samples/sample-<id>/{raw,trimmed}_mapped_reads.bam`** — both exist deliberately. `raw_mapped_reads.bam` is what minimap2 produced; `trimmed_mapped_reads.bam` is the same BAM after `samtools ampliconclip` removed primer sequences (only different when you passed `--primer-scheme`). The consensus is called from the trimmed BAM.
 
-**`assembly/assembly_stats_summary.csv`** — one row per sample (`sample_name` carries the `sample-` prefix), with `number_of_reads`, `number_of_trim_paired_reads`, `number_of_mapped_reads`, `average_depth`, `percentage_above_{10,100,1000}x`, and `horizontal_coverage`. Quick way to spot low-coverage or poorly-mapping samples without opening each BAM.
+**`summary.tsv`** — one row per sample (`sample_id` carries the `sample-` prefix) with a `status`, read counts (`total_reads`, `qc_passed_reads`, `mapped_reads`, `pct_mapped`), depth (`mean_depth`, `median_depth`), breadth (`coverage_10x` … `coverage_min_depth`, in percent), the consensus `n_pct`, and the viralQC `virus`, `clade` and `genome_quality`. The quickest way to spot low-coverage or poorly-mapping samples without opening a single BAM; a `status` other than `ok` says what went wrong. The pre-0.2.0 `assembly/assembly_stats_summary.csv` is still written (deprecated).
 
 **`assembly/consensus/final_consensus/samples_alignment.fasta`** — all per-sample consensuses plus the reference, aligned (built by `minimap2` followed by `gofasta sam toMultiAlign`). Drop this straight into a tree-builder such as IQ-TREE for a quick phylogeny.
 
@@ -144,7 +144,7 @@ Columns worth checking first (names are stable; positions are not, hence the nam
 
 - **`virus` / `clade`** — a sanity check that the reference matched the sample. For the example data expect *Severe acute respiratory syndrome coronavirus 2* and a Pango lineage / Nextstrain clade.
 - **`genomeQuality`** — A (complete, clean) to D (fragmentary or suspicious), derived from `genomeQualityScore`, which combines coverage, private-mutation counts, frameshifts and premature stop codons reported by Nextclade. Treat B as fine for most surveillance use, C as "look at the sample" and D as not suitable for phylogenetics.
-- **`coverage`** — should agree with `horizontal_coverage` in `assembly_stats_summary.csv`.
+- **`coverage`** — should agree with `coverage_min_depth` in `summary.tsv` (there in percent).
 - **`inputSequenceStatus`** — empty for analysed sequences; set when viralQC could not analyse a record (e.g. all `N`).
 
 `samples/<sample>/viralqc.tsv` contains the header plus that sample's rows. Pass `--no-run-viralqc` to skip the step (for instance on a node without the databases or without internet access: `nextclade sort` fetches a small index from the Nextclade server on every run); if viralQC itself fails, the run still completes and `qc/viralqc/viralqc_status.txt` says why. Because the step is then considered done, delete `qc/viralqc/` and rerun the same command to retry it after fixing the cause.

@@ -277,8 +277,12 @@ def validate_config_dict(config: Any) -> None:
     for key in ("output", "scheme"):
         if not isinstance(config[key], str) or not config[key].strip():
             fail(f"{key} must be a non-empty string")
-    if data == DataType.ILLUMINA and not isinstance(config["adapters"], str):
-        fail("adapters must be a path or 'NA'")
+    # adapters is a path, "NA", or null (the CLI writes null when --adapters is
+    # not given; the fastp rule treats both null and "NA" as "detect adapters").
+    if data == DataType.ILLUMINA and not (
+        config["adapters"] is None or isinstance(config["adapters"], str)
+    ):
+        fail("adapters must be a path, 'NA' or null")
     if data == DataType.NANOPORE:
         model = config["clair3_model"]
         names = list(model.values()) if isinstance(model, dict) else [model]

@@ -49,6 +49,15 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   incomplete model fails with the `viralconseq setup --clair3-models NAME`
   command to run. New error codes `clair3_model_unresolved`,
   `clair3_model_mixed_within_sample`, `clair3_model_not_found`.
+- `<run>/summary.tsv`, the run's "start here" table: one row per sample (per
+  sample and segment when segmented) with a `status` column (`ok`,
+  `no_mapped_reads`, `empty_consensus`, `viralqc_failed` / `_partial` /
+  `_skipped` / `_missing`, `missing_stats`), read counts, mean and median
+  depth, breadth of coverage in percent, consensus length and N content, iSNV
+  count, viralQC virus / clade / lineage / grade / score / dataset, and the
+  Clair3 model. Built by the new `scripts/python/build_summary.py` (rule
+  `summary`, `rules/collect.smk`); pinned header. Every sample of the sheet
+  has a row.
 - Nanopore samples without mapped reads no longer abort the run. A new rule,
   `check_mapped_reads`, writes `assembly/status/<sample>.txt` (`status`,
   `mapped_reads`, `minimum_mapped_reads`); below `--minimum-mapped-reads`
@@ -75,6 +84,18 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ### Changed
 
+- Per-sample assembly statistics are a headered TSV
+  (`assembly/coverage_stats/<sample>.stats.tsv`, linked as
+  `samples/<sample>/stats.tsv` on both platforms) with the new columns
+  (median depth, consensus length and N content, `pct_mapped`), percentages
+  0–100, and read counts that include both Illumina mates (0.1.x counted R1
+  reads against mapped mates, so `pct_mapped` could exceed 100).
+  `assembly/assembly_stats_summary.csv` is still written with its old header
+  and fractions, derived from the same rows, and is **deprecated**: it will be
+  removed in 0.3.0. The `unify_assembly_statistics_reports` rule is gone.
+- `scripts/envs/utils.yaml` no longer carries pandas or biopython (nothing
+  used them); `calculate_assembly_stats.py` is standard-library only, and the
+  `pandas` dev extra is gone.
 - **Breaking for nanopore runs:** `--clair3-model` no longer defaults to
   `r1041_e82_400bps_sup_v500`, and the model is read from `--clair3-model-dir`
   instead of the conda environment. Runs on untagged reads (Guppy-era data)

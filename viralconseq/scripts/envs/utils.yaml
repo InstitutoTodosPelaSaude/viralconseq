@@ -2,9 +2,10 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  # Helper scripts under scripts/python/ are standard-library only; the tools
+  # below serve the shell rules that run in this env (prepare_viralqc_input,
+  # summarize_isnvs, organize_files, collect_benchmarks, summary).
   - python=3.11
-  - pandas=2.0
   - seqtk=1.5
-  - biopython=1.81
   - samtools=1.23
   - bcftools=1.23

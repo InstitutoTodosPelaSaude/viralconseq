@@ -13,13 +13,13 @@ rule calculate_assembly_statistics:
     conda:
         "../envs/utils.yaml"
     input:
-        get_map_input_fastqs,
-        rules.perform_qc.output.paired_R1,
-        rules.trim_primer_sequences.output.bam,
-        rules.calculate_coverage_basewise.output.table_cov,
-        rules.rename_sequences.output.consensus_renamed
+        raw = get_map_input_fastqs,
+        qc_passed = [rules.perform_qc.output.paired_R1, rules.perform_qc.output.paired_R2],
+        bam = rules.trim_primer_sequences.output.bam,
+        table_cov = rules.calculate_coverage_basewise.output.table_cov,
+        consensus = rules.rename_sequences.output.consensus_renamed
     output:
-        stats_summary = config['output'] + "assembly/" + SEGMENT_WILDCARD + "coverage_stats/{sample}.stats_summary.csv"
+        stats = config['output'] + "assembly/" + SEGMENT_WILDCARD + "coverage_stats/{sample}.stats.tsv"
     params:
         minimum_depth = config["minimum_depth"]
     log:
@@ -34,13 +34,8 @@ rule generate_multiqc_report:
     conda:
         "../envs/qc.yaml"
     input:
-        # Literal path (instead of ``rules.unify_assembly_statistics_reports.``)
-        # to avoid an include-order cycle: ``unify_assembly_statistics_reports``
-        # lives in the top-level snakefile and itself references
-        # ``rules.calculate_assembly_statistics`` defined here.
-        unified_stats_summary = config['output'] + "assembly/assembly_stats_summary.csv",
-        # Declare the fastp JSONs MultiQC actually aggregates so that editing a
-        # fastp output retriggers the report (the shell scans the directory).
+        # The fastp JSONs MultiQC aggregates (the shell scans the directory);
+        # declaring them retriggers the report when a fastp output changes.
         fastp_json = expand(
             config['output'] + "qc/reports/trim.{sample}_fastp.json",
             sample=config["samples"],

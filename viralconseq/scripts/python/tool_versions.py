@@ -38,6 +38,7 @@ PROBES: Dict[str, List[str]] = {
     "bcftools": ["bcftools", "--version"],
     "clair3": ["run_clair3.sh", "--version"],
     "python": ["python", "--version"],
+    "seqtk": ["seqtk"],
     "nextclade": ["nextclade", "--version"],
     "blastn": ["blastn", "-version"],
 }
