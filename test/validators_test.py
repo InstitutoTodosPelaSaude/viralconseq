@@ -27,6 +27,7 @@ from viralconseq.validators import (
     sanitize_identifier,
     validate_clair3_model,
     validate_config_dict,
+    validate_consensus_input_integrity,
     validate_flag_strings,
     validate_numeric_parameters,
     validate_sample_sheet,
@@ -134,6 +135,34 @@ class Test_SampleSheetIntegrity(unittest.TestCase):
             validate_sample_sheet(sheet, "nanopore")
 
 
+class Test_NanoporeEmptyFastqIsAWarning(unittest.TestCase):
+    """A nanopore barcode with zero reads flows into the per-sample degrade
+    path; Illumina keeps refusing it."""
+
+    def _run(self, data_type):
+        import gzip
+
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = os.path.join(tmp, "empty.fastq.gz")
+            with gzip.open(empty, "wt"):
+                pass
+            ref = os.path.join(tmp, "ref.fa")
+            with open(ref, "w") as fh:
+                fh.write(">chr\nACGT\n")
+            args = {"data_type": data_type, "reference": ref, "primer_scheme": "NA"}
+            files = [empty, empty] if data_type == "illumina" else [empty]
+            validate_consensus_input_integrity(args, {"s": files})
+
+    def test_nanopore_warns(self):
+        self._run("nanopore")  # no exception
+
+    def test_illumina_errors(self):
+        from viralconseq.exceptions import InputIntegrityError
+
+        with self.assertRaises(InputIntegrityError):
+            self._run("illumina")
+
+
 class Test_AbsolutiseSamplePaths(unittest.TestCase):
     """Sample FASTQ paths must be absolute in the config: Snakemake runs inside
     the run directory, so a relative path would resolve against the wrong base."""
@@ -188,6 +217,7 @@ def _good_config(data="nanopore", **overrides):
             chunk_size=10000,
             clair3_model="r941_prom_hac_g360+g422",
             clair3_model_dir="/models",
+            minimum_mapped_reads=10,
             variant_quality=20,
             variant_depth=10,
             minimum_map_quality=30,

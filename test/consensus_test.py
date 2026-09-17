@@ -575,6 +575,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
         self.assertIn("chunk_size", config_dict)
         self.assertIn("clair3_model", config_dict)
         self.assertIn("clair3_model_dir", config_dict)
+        self.assertEqual(config_dict["minimum_mapped_reads"], 10)
         self.assertEqual(config_dict["variant_quality"], 20)
         self.assertEqual(config_dict["variant_depth"], 10)
         self.assertEqual(config_dict["minimum_map_quality"], 30)

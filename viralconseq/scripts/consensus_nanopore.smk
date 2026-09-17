@@ -84,6 +84,7 @@ rule organize_files:
         vcf_files = expand(rules.infer_consensus_sequence.output.vcf, sample=config["samples"]),
         vcf_raw_files = expand(rules.infer_consensus_sequence.output.vcf_raw, sample=config["samples"]),
         model_files = expand(rules.infer_consensus_sequence.output.model_txt, sample=config["samples"]),
+        status_files = expand(rules.check_mapped_reads.output.status, sample=config["samples"]),
         table_cov = expand(rules.calculate_coverage_basewise.output.table_cov, sample=config["samples"]),
         consensus_files = expand(rules.rename_sequences.output.consensus_renamed, sample=config["samples"]),
         raw_mapped_reads = expand(rules.map_reads.output.bam, sample=config["samples"]),
@@ -121,6 +122,10 @@ rule organize_files:
         for _file in {input.model_files}; do
             sample=$(basename $(dirname $_file));
             ln -sf $_file {params.outdir}samples/$sample/clair3_model.txt;
+        done
+        for _file in {input.status_files}; do
+            sample=$(basename $_file .txt);
+            ln -sf $_file {params.outdir}samples/$sample/status.txt;
         done
         for _file in {input.table_cov}; do
             sample=$(basename $_file .table_cov_basewise.txt);

@@ -96,6 +96,10 @@ rule organize_files:
             rules.infer_consensus_sequence.output.model_txt,
             sample=config["samples"], segment=SEGMENTS.keys()
         ),
+        status_files = expand(
+            rules.check_mapped_reads.output.status,
+            sample=config["samples"], segment=SEGMENTS.keys()
+        ),
         table_cov = expand(
             rules.calculate_coverage_basewise.output.table_cov,
             sample=config["samples"], segment=SEGMENTS.keys()
@@ -156,6 +160,11 @@ rule organize_files:
             segment=$(echo "$rel" | cut -d'/' -f1);
             sample=$(basename $(dirname $_file));
             ln -sf $_file {params.outdir}samples/$sample/$segment/clair3_model.txt;
+        done
+        for _file in {input.status_files}; do
+            # assembly/status/<sample>.<segment>.txt
+            base=$(basename $_file .txt); segment=${{base##*.}}; sample=${{base%.*}};
+            ln -sf $_file {params.outdir}samples/$sample/$segment/status.txt;
         done
         for _file in {input.table_cov}; do
             outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};

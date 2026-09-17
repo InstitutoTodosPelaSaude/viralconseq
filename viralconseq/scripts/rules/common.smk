@@ -52,6 +52,7 @@ else:
         "clair3_model",
         "clair3_model_dir",
         "variant_quality",
+        "minimum_mapped_reads",
         "variant_depth",
         "minimum_map_quality",
     ]

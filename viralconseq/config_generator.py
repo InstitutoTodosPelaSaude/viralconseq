@@ -57,6 +57,7 @@ _KEY_SECTIONS: Dict[str, str] = {
     ConfigKeys.CHUNK_SIZE: "clair3",
     ConfigKeys.CLAIR3_MODEL: "clair3",
     ConfigKeys.CLAIR3_MODEL_DIR: "clair3",
+    ConfigKeys.MINIMUM_MAPPED_READS: "clair3",
     ConfigKeys.VARIANT_QUALITY: "clair3",
     ConfigKeys.VARIANT_DEPTH: "clair3",
     ConfigKeys.MINIMUM_MAP_QUALITY: "clair3",
@@ -238,6 +239,7 @@ class ConfigGenerator:
         variant_depth: int,
         minimum_map_quality: int,
         clair3_model_dir: str = "",
+        minimum_mapped_reads: int = 10,
     ) -> None:
         """Add Nanopore consensus-specific settings to configuration.
 
@@ -250,6 +252,9 @@ class ConfigGenerator:
                 ``samples``) when samples were basecalled with different models
             clair3_model_dir: Directory holding ``<model>/pileup.pt`` and
                 ``full_alignment.pt`` (``constants.Clair3Models``)
+            minimum_mapped_reads: Below this many primary mapped reads a sample
+                is not sent to Clair3 but gets an all-N consensus and a
+                ``no_mapped_reads`` status (0 disables the floor)
             variant_quality: Minimum variant quality to call a variant into consensus [clair3]
             variant_depth: Minimum alt allele depth to call a variant into consensus [clair3]
             minimum_map_quality: Minimum map quality to call a variant into consensus [clair3]
@@ -263,6 +268,7 @@ class ConfigGenerator:
         self._set(ConfigKeys.CLAIR3_MODEL, clair3_model, C)
         if clair3_model_dir:
             self._set(ConfigKeys.CLAIR3_MODEL_DIR, clair3_model_dir, C)
+        self._set(ConfigKeys.MINIMUM_MAPPED_READS, int(minimum_mapped_reads), C)
         self._set(ConfigKeys.VARIANT_QUALITY, variant_quality, C)
         self._set(ConfigKeys.VARIANT_DEPTH, variant_depth, C)
         self._set(ConfigKeys.MINIMUM_MAP_QUALITY, minimum_map_quality, C)

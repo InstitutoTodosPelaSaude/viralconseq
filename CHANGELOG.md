@@ -49,6 +49,14 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   incomplete model fails with the `viralconseq setup --clair3-models NAME`
   command to run. New error codes `clair3_model_unresolved`,
   `clair3_model_mixed_within_sample`, `clair3_model_not_found`.
+- Nanopore samples without mapped reads no longer abort the run. A new rule,
+  `check_mapped_reads`, writes `assembly/status/<sample>.txt` (`status`,
+  `mapped_reads`, `minimum_mapped_reads`); below `--minimum-mapped-reads`
+  (default 10, `0` disables) the sample gets an all-N consensus, header-only
+  VCFs and an empty low-coverage BED instead of a Clair3 crash, viralQC grades
+  it `D`, and the run continues. A nanopore FASTQ with zero reads is now an
+  input-integrity warning rather than an error (Illumina keeps the error).
+  `samples/<sample>/status.txt` links the status file.
 - `viralconseq setup --clair3-models NAME...` (default: `r1041_e82_400bps_sup_v500`,
   `r1041_e82_400bps_hac_v500`, `r941_prom_hac_g360+g422`; `all` for the whole
   29-model manifest) downloads Clair3 models into `--clair3-model-dir` from the

@@ -64,6 +64,7 @@ REQUIRED_ILLUMINA = [
 ]
 REQUIRED_NANOPORE = [
     "infer_consensus_sequence_ram",
+    "minimum_mapped_reads",
     "chunk_size",
     "clair3_model",
     "variant_quality",

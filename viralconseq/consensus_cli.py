@@ -426,6 +426,16 @@ def consensus_illumina(
     "full_alignment.pt). Populated by 'viralconseq setup --clair3-models'.",
 )
 @click.option(
+    "--minimum-mapped-reads",
+    default=10,
+    show_default=True,
+    type=click.IntRange(min=0),
+    help="Samples with fewer primary mapped reads than this are not sent to Clair3: "
+    "they get an all-N consensus, empty variant calls and status no_mapped_reads, and "
+    "the run continues. A crash guard for (near-)empty barcodes, not a QC threshold; "
+    "0 disables it.",
+)
+@click.option(
     "--variant-quality",
     default=20,
     show_default=True,

@@ -226,6 +226,10 @@ class Test_Clair3ModelOptions(unittest.TestCase):
         args = self._invoke([], env={"VIRALCONSEQ_CLAIR3_MODELS": "/from/env"})
         self.assertEqual(args["clair3_model_dir"], "/from/env")
 
+    def test_minimum_mapped_reads(self):
+        self.assertEqual(self._invoke([])["minimum_mapped_reads"], 10)
+        self.assertEqual(self._invoke(["--minimum-mapped-reads", "0"])["minimum_mapped_reads"], 0)
+
     def test_illumina_has_no_clair3_options(self):
         with patch("viralconseq.consensus_cli.consensus_main", return_value=0):
             result = CliRunner().invoke(

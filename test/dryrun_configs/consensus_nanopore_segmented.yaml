@@ -21,6 +21,7 @@ chunk_size: 10000
 clair3_model:
   SAMPLE_NP_SEG: r1041_e82_400bps_sup_v500
 clair3_model_dir: data/clair3_models
+minimum_mapped_reads: 10
 variant_quality: 20
 variant_depth: 10
 minimum_map_quality: 30

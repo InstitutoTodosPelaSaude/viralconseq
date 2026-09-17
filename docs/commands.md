@@ -238,6 +238,7 @@ Note that the step needs outbound HTTPS even with the databases in place:
 | `--variant-quality` | `20` | Minimum variant quality (clair3). |
 | `--variant-depth` | `10` | Minimum alt allele depth (clair3). |
 | `--minimum-map-quality` | `30` | Minimum mapping quality (clair3). |
+| `--minimum-mapped-reads` | `10` | Samples with fewer primary mapped reads than this are not sent to Clair3: they get an all-N consensus, header-only VCFs and `status no_mapped_reads` in `assembly/status/<sample>.txt`, and the run continues (a barcode with zero reads is a warning, not an error, on nanopore). A crash guard for (near-)empty barcodes, not a QC threshold; `0` disables it. |
 
 ### Examples
 

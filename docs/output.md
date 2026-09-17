@@ -43,6 +43,8 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 │       ├── consensus.fasta
 │       ├── consensus.vcf.gz
 │       ├── raw.vcf.gz                # nanopore
+│       ├── clair3_model.txt          # nanopore: the Clair3 model used
+│       ├── status.txt                # nanopore: ok / no_mapped_reads (see below)
 │       ├── isnvs.vcf.gz              # illumina + --run-isnv
 │       ├── fastp.html                # illumina
 │       ├── stats_summary.csv         # illumina
@@ -62,6 +64,15 @@ consensus FASTA headers.
 In segmented runs the per-sample symlinks are nested one level deeper, under
 `samples/sample-{sample_id}/{segment}/`, and the per-segment results live under
 `assembly/{segment}/`.
+
+On nanopore runs `assembly/status/<sample>[.<segment>].txt` records, per sample,
+`status` (`ok`, or `no_mapped_reads` when fewer than `--minimum-mapped-reads`
+primary reads mapped), `mapped_reads` and the threshold. A `no_mapped_reads`
+sample is not sent to Clair3: its consensus is all `N` (one record per reference
+contig), its VCFs are header-only, it is absent from `samples_alignment.fasta`
+(nothing aligns) and viralQC grades it `D` with `no usable sequence`; the run
+completes and the other samples are unaffected. `assembly/clair3/<sample>/model.txt`
+records the Clair3 model and model directory used (and the status, when skipped).
 
 Intermediate files are kept as well (useful for debugging, safe to delete):
 `assembly/mapped_reads/{raw,trimmed}/` (BAMs and the ampliconclip `*.trimmed.txt`

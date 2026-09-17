@@ -145,6 +145,7 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
             chunk_size=args.get("chunk_size", 10000),
             clair3_model=args.get("clair3_model", Clair3Models.AUTO),
             clair3_model_dir=args.get("clair3_model_dir") or Clair3Models.default_dir(),
+            minimum_mapped_reads=int(args.get("minimum_mapped_reads", 10)),
             variant_quality=args.get("variant_quality", 20),
             variant_depth=args.get("variant_depth", 10),
             minimum_map_quality=args.get("minimum_map_quality", 30),

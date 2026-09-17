@@ -115,6 +115,7 @@ _NUMERIC_BOUNDS = {
     "threads": (1, None),
     "threads_total": (1, None),
     "max_memory": (0, None),
+    "minimum_mapped_reads": (0, None),
     "minimum_coverage": (1, None),
     "minimum_depth": (1, None),
     "minimum_length": (0, None),
@@ -189,6 +190,7 @@ CONFIG_REQUIRED_NANOPORE = (
     "variant_quality",
     "variant_depth",
     "minimum_map_quality",
+    "minimum_mapped_reads",
 )
 # key -> (lower bound, upper bound, integer required)
 _CONFIG_NUMERIC = {
@@ -208,6 +210,7 @@ _CONFIG_NUMERIC = {
     "variant_quality": (0, None, True),
     "variant_depth": (0, None, True),
     "minimum_map_quality": (0, None, True),
+    "minimum_mapped_reads": (0, None, True),
     "max_memory_mb": (0, None, True),
     "memory_detected_mb": (0, None, True),
 }
@@ -708,6 +711,14 @@ def validate_consensus_input_integrity(args: Dict[str, Any], samples: Dict[str, 
 
     errors = [(report.path, issue) for report in reports for issue in report.errors]
     warnings = [(report.path, issue) for report in reports for issue in report.warnings]
+    if args.get("data_type") == DataType.NANOPORE:
+        # A barcode with zero reads is the everyday case the nanopore workflow
+        # degrades per sample (all-N consensus, status no_mapped_reads); it must
+        # not stop a 96-sample run. Illumina keeps the error: fastp/minimap2
+        # have no such path.
+        demoted = [(p, i) for p, i in errors if i.code == "fastq_empty"]
+        errors = [(p, i) for p, i in errors if i.code != "fastq_empty"]
+        warnings.extend(demoted)
 
     for path, issue in warnings:
         loc = f" (line {issue.line})" if issue.line else ""

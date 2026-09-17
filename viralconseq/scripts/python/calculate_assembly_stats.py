@@ -60,7 +60,12 @@ def get_coverage_info(
     """Read a basewise-coverage TSV and return mean depth + fractions of
     positions above 10x / 100x / 1000x / ``minimum_depth``.
     """
-    df = pd.read_csv(table_cov, header=None, sep=r"\s+")
+    try:
+        df = pd.read_csv(table_cov, header=None, sep=r"\s+")
+    except pd.errors.EmptyDataError:
+        # A header-only BAM (sample with no mapped reads) can yield an empty
+        # coverage table; every metric is then zero.
+        return (0.0, 0.0, 0.0, 0.0, 0.0)
     total_sequenced_bases = df[2].sum()
     reference_genome_length = len(df)
     average_depth = total_sequenced_bases / reference_genome_length
