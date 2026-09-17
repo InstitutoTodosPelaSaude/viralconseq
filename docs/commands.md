@@ -377,6 +377,34 @@ present, gets its `status` updated.
 
 ---
 
+## `viralconseq create-report`
+
+Rebuild `report.html` for a finished run directory (`<output>/<run_name>`),
+for example after `--no-report`, for a run made by an older version, or to
+give the page another header label:
+
+```bash
+viralconseq create-report results/run1
+viralconseq create-report results/run1 -o /tmp/run1_report.html --label "Run 1, re-analysed"
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `RUN_DIR` | The run directory; must contain `summary.tsv`. |
+| `-o`, `--output` | Where to write the page (default `RUN_DIR/report.html`). |
+| `--label` | Run name shown in the page header (default: the directory's name). |
+
+The parameters (data type, minimum depth, coverage threshold, segments, primer
+scheme, display-only thresholds) are read from `RUN_DIR/config.yml`, the copy
+the workflow leaves behind; without it the data type is inferred from the
+layout and the CLI defaults are used, with a warning. The page is built by the
+same script as the workflow's `report` rule and fails with `[report_error]` if
+its figures would contradict `summary.tsv`.
+
+---
+
 ## Configuration file overrides
 
 A few tool-level parameters are tunable only through the YAML config file produced by `--config-file` (they are not exposed as CLI flags because they rarely need to change). The defaults preserve the historical behaviour, so most users can ignore this section.

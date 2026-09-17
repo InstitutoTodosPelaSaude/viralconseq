@@ -193,6 +193,15 @@ class SampleSheetSeparator:
     DOT = "."
 
 
+class ReportDefaults:
+    """Fallbacks ``viralconseq create-report`` uses for a run directory whose
+    ``config.yml`` is missing; they match the CLI defaults of ``consensus``."""
+
+    DATA_TYPE = "illumina"
+    MIN_DEPTH = 20
+    CONSENSUS_COVERAGE_THRESHOLD = 70.0
+
+
 class ResourceDefaults:
     """Resource contract for the computational Snakemake rules.
 

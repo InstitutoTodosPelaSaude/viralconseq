@@ -17,7 +17,8 @@ viralconseq infers consensus genome sequences from viral high-throughput sequenc
 - Optional **intra-host variant calling** (LoFreq) for Illumina data
 - **Consensus QC with [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC)**: virus and clade assignment plus a genome-quality score (A–D) for every consensus sequence (Nextclade + BLAST), on by default
 - **Content-level input validation**: truncated FASTQs, protein FASTAs or mismatched primer schemes are rejected before the run starts
-- Per-sample coverage statistics, a multi-sample alignment ready for phylogenetics, and a `run_manifest.json` with input checksums for reproducibility
+- **One place to look**: `summary.tsv` with a status column per sample, a share-ready `consensus/` directory and a self-contained interactive `report.html`
+- Per-sample coverage statistics, a multi-sample alignment ready for phylogenetics, `versions.tsv`, and a `run_manifest.json` with input checksums for reproducibility
 
 ## Installation
 
@@ -54,6 +55,8 @@ viralconseq consensus illumina --sample-sheet samples.csv --reference ref.fasta 
     --primer-scheme primers.bed --run-name run1 --config-file run1.yml --output results/
 viralconseq consensus nanopore --sample-sheet samples.csv --reference ref.fasta \
     --run-name run1 --config-file run1.yml --output results/
+viralconseq rerun results/run1/config.yml --dry-run                # replay a run from its config
+viralconseq create-report results/run1                             # rebuild report.html
 ```
 
 Global options: `--log-level {DEBUG,INFO,WARNING,ERROR}` and `--json-logs`

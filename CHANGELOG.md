@@ -23,6 +23,10 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   facet by segment; unsegmented runs with several viruses facet by virus. The
   page self-checks against `summary.tsv` before it is written. Toggle with
   `--report/--no-report` (config key `run_report`, section `report`).
+- `viralconseq create-report RUN_DIR [-o OUTPUT] [--label]`: rebuild the
+  report for a finished run directory from `summary.tsv` and
+  `<run>/config.yml` (`viralconseq/report.py`, `report_cli.py`), with the
+  same script and template as the workflow's `report` rule.
 - `<run>/consensus/`: a flat, share-ready copy of the consensus sequences
   (rule `collect_consensus`, `scripts/python/collect_consensus.py`):
   `sample-<id>[.<segment>].fasta` per sample with headers normalised to

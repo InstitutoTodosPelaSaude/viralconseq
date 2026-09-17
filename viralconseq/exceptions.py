@@ -136,6 +136,14 @@ class Clair3ModelNotFoundError(Clair3ModelError):
     code = "clair3_model_not_found"
 
 
+class ReportError(ViralConseqError):
+    """Raised by ``viralconseq create-report`` when the directory is not a
+    finished run or the page cannot be built (for example when it fails its
+    self-check against ``summary.tsv``)."""
+
+    code = "report_error"
+
+
 class ViralQCDatabaseNotFoundError(ViralConseqError):
     """Raised when viralQC is enabled but its database directory is missing or
     incomplete. The message names the directory and the ``viralconseq setup``
