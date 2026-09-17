@@ -12,6 +12,7 @@ rule all:
         ),
         config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
         config['output'] + "versions.tsv",
+        config['output'] + "config.yml",
         config['output'] + "benchmark.tsv"
 
 rule sanitize_reference:

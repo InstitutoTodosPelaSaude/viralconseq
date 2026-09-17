@@ -13,6 +13,7 @@ rule all:
         config['output'] + "isnvs/isnvs_summary.tsv" if config.get("run_isnv", False) else [],
         config['output'] + "qc/viralqc/outputs/results.tsv" if config.get("run_viralqc", True) else [],
         config['output'] + "versions.tsv",
+        config['output'] + "config.yml",
         config['output'] + "benchmark.tsv"
 
 def get_map_input_fastqs(wildcards):

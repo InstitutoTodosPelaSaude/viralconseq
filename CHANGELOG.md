@@ -18,6 +18,9 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   the new `scripts/rules/provenance.smk` (one `versions_<env>` rule per
   environment plus `versions`) and `scripts/python/tool_versions.py`. The
   config gains a `viralconseq_version` key (section `provenance`).
+- `<run>/config.yml`: a copy of the resolved config inside the run directory
+  (rule `run_config`), so a run is self-describing wherever `--config-file`
+  pointed.
 
 ## [0.1.1] - 2026-09-17
 

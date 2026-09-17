@@ -107,6 +107,7 @@ When changing rule wiring, run `make test-dryrun` — it catches missing inputs,
 
 - Don't rename `validate_args`, `generate_config_file`, or `run_snakemake_workflow` in `viralconseq/consensus.py` — multiple tests patch those exact module-level names.
 - The `viralconseq/scripts/python/*.py` scripts run inside Snakemake's `script:` directive, which injects a `snakemake` global. Ruff would otherwise flag F821; `pyproject.toml` already silences this for that path. Don't add `from snakemake import snakemake` to those files, and don't make them import from the `viralconseq` package (they run inside per-rule conda envs where it is not installed).
+- Snakemake reserves some names for rule keywords' attributes: `copy`, `count`, `index`, `keys`, `items` (and other `list`/`dict` method names) cannot be used as `input:`/`output:`/`params:`/`log:` keys — the parser raises `AttributeError: ... is reserved for internal use` at the rule line. Use `config_copy`, `n_reads`, and so on.
 - `viralconseq` is a published console script (`pyproject.toml: [project.scripts]`). After a fresh checkout, `pip install -e .` is required before `viralconseq --help` works — `make install-dev` does this.
 - `viralconseq/__init__.py` must stay import-free: `docs/conf.py` imports `__version__` from it on ReadTheDocs, where the runtime dependencies are not installed.
 - Version is single-sourced from `viralconseq/__init__.py:__version__`. Bumping it for release also requires editing the `Dockerfile` LABEL and `CITATION.cff` — see `RELEASING.md`.

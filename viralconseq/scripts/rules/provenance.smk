@@ -201,3 +201,38 @@ rule versions:
         }} > {output.versions}
         """
 
+
+rule run_config:
+    # Copy of the resolved config into the run directory, so a run directory
+    # is self-describing (the CLI writes the config wherever --config-file
+    # pointed). Copying keeps the section comments; when the config file IS the
+    # output path (a user passed --config-file <run>/config.yml) Snakemake
+    # would have deleted it before this job runs, so fall back to dumping the
+    # in-memory config instead.
+    output:
+        # "copy" is a reserved Snakemake name; hence config_copy.
+        config_copy = config["output"] + "config.yml"
+    params:
+        source = (
+            os.path.abspath(workflow.configfiles[-1])
+            if workflow.configfiles
+            and os.path.abspath(workflow.configfiles[-1])
+            != os.path.abspath(config["output"] + "config.yml")
+            else ""
+        ),
+    log:
+        LOG("run_config", target="run_config", per_segment=False)
+    benchmark:
+        BENCH("run_config", target="run_config", per_segment=False)
+    run:
+        import shutil
+        import yaml
+
+        with open(log[0], "w") as handle:
+            if params.source:
+                shutil.copyfile(params.source, output.config_copy)
+                handle.write(f"copied {params.source}\n")
+            else:
+                with open(output.config_copy, "w") as out:
+                    yaml.safe_dump(dict(config), out, sort_keys=False)
+                handle.write("dumped the in-memory config (no separate source file)\n")
