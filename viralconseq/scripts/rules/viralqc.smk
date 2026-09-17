@@ -135,9 +135,9 @@ rule run_viralqc:
         workdir = os.path.abspath(VIRALQC_DIR),
         db = os.path.abspath(VIRALQC_DB) if VIRALQC_DB not in ("", "NA") else VIRALQC_DB,
         extra_flags = config.get("viralqc_extra_flags", "") or "",
-    threads: config.get("run_viralqc_cpus", 2)
+    threads: cpus("run_viralqc")
     resources:
-        mem_mb = int(config.get("run_viralqc_ram", 4)) * 1024
+        mem_mb = ram_mb("run_viralqc")
     log:
         LOG("run_viralqc", target="run_viralqc", per_segment=False)
     benchmark:

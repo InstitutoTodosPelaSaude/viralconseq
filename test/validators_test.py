@@ -7,6 +7,7 @@ import csv
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from viralconseq.constants import ViralQCDatabase
 from viralconseq.exceptions import (
@@ -19,6 +20,7 @@ from viralconseq.validators import (
     ensure_within_base,
     get_samples_from_args,
     missing_viralqc_database_files,
+    resolve_resource_budget,
     sanitize_identifier,
     validate_flag_strings,
     validate_numeric_parameters,
@@ -157,6 +159,54 @@ class Test_AbsolutiseSamplePaths(unittest.TestCase):
             finally:
                 os.chdir(old)
         self.assertEqual(samples["s1"], [os.path.join(os.path.realpath(tmp), "s.fastq.gz")])
+
+
+class Test_ResolveResourceBudget(unittest.TestCase):
+    RULES = ["map_reads", "infer_consensus_sequence", "run_viralqc"]
+
+    def test_explicit_budget_wins_and_is_converted_to_mb(self):
+        args = {"max_memory": 8}
+        with patch("viralconseq.validators.detect_memory_mb", return_value=32768):
+            source = resolve_resource_budget(args, self.RULES)
+        self.assertEqual(source, "--max-memory")
+        self.assertEqual(args["max_memory_mb"], 8192)
+        self.assertEqual(args["memory_detected_mb"], 32768)
+
+    def test_zero_disables_the_budget(self):
+        args = {"max_memory": 0}
+        with patch("viralconseq.validators.detect_memory_mb", return_value=None):
+            resolve_resource_budget(args, self.RULES)
+        self.assertEqual(args["max_memory_mb"], 0)
+
+    def test_explicit_budget_below_largest_rule_refused(self):
+        with self.assertRaises(ValidationError):
+            resolve_resource_budget({"max_memory": 1}, self.RULES)  # Clair3 wants 2 GB
+        # ...unless the operator lowered that rule's figure too.
+        args = {"max_memory": 1, "infer_consensus_sequence_ram": 1}
+        with patch("viralconseq.validators.detect_memory_mb", return_value=None):
+            resolve_resource_budget(args, self.RULES)
+        self.assertEqual(args["max_memory_mb"], 1024)
+
+    def test_detected_budget_takes_headroom(self):
+        args = {}
+        with patch("viralconseq.validators.detect_memory_mb", return_value=32768):
+            source = resolve_resource_budget(args, self.RULES)
+        self.assertEqual(args["max_memory_mb"], 29491)
+        self.assertIn("detected 32.0 GB", source)
+
+    def test_small_machine_clamps_up_to_one_job(self):
+        args = {}
+        with patch("viralconseq.validators.detect_memory_mb", return_value=1024):
+            source = resolve_resource_budget(args, self.RULES)
+        self.assertEqual(args["max_memory_mb"], 2048)
+        self.assertIn("clamped", source)
+
+    def test_undetectable_memory_runs_without_budget(self):
+        args = {}
+        with patch("viralconseq.validators.detect_memory_mb", return_value=None):
+            source = resolve_resource_budget(args, self.RULES)
+        self.assertEqual(args["max_memory_mb"], 0)
+        self.assertEqual(source, "undetectable")
 
 
 class Test_FlagStrings(unittest.TestCase):

@@ -64,8 +64,10 @@ class ConfigGenerator:
         ),
         (
             "resources",
-            "Per-rule CPUs and RAM in GB; override on the command line with "
-            "--<rule>-cpus / --<rule>-ram.",
+            "Run-wide budgets given to Snakemake (threads_total cores; max_memory_mb, "
+            "0 = no memory budget) and per-rule overrides: <rule>_cpus (absent = the "
+            "threads baseline) and <rule>_ram in GB for the rules that declare memory. "
+            "Override with --<rule>-cpus / --<rule>-ram / --threads-total / --max-memory.",
         ),
     ]
     SECTION_RUN = "run"
@@ -293,24 +295,44 @@ class ConfigGenerator:
         self._set("workflow_path", workflow_path, self.SECTION_PARAMETERS)
 
     def add_resource_settings(self, args: Dict[str, Any], rule_names: list) -> None:
-        """Add per-rule resource settings (CPUs and RAM) to configuration.
+        """Add per-rule resource settings to the configuration.
 
-        For each rule name in rule_names, writes ``<rule>_cpus`` and
-        ``<rule>_ram`` keys to the config dict.  Values are taken from
-        *args* if present; otherwise the defaults from
-        ``ResourceDefaults`` are used.
+        ``<rule>_cpus`` is written only when the operator set ``--<rule>-cpus``
+        (the rule otherwise falls back to the ``threads`` baseline, see
+        ``cpus()`` in ``rules/common.smk``). ``<rule>_ram`` (GB) is written for
+        every rule in ``ResourceDefaults.MEMORY_RULES`` that appears in
+        ``rule_names``, from ``--<rule>-ram`` or the measured default: those
+        rules read it as a required key.
 
         Args:
             args: Dictionary of pipeline arguments (from the CLI).
-            rule_names: List of Snakemake rule name strings that should
-                receive resource entries.
+            rule_names: Snakemake rule names that have resource options.
         """
         R = self.SECTION_RESOURCES
         for rule in rule_names:
-            cpus_key = f"{rule}_cpus"
-            ram_key = f"{rule}_ram"
-            self._set(cpus_key, args.get(cpus_key, ResourceDefaults.DEFAULT_CPUS), R)
-            self._set(ram_key, args.get(ram_key, ResourceDefaults.DEFAULT_RAM), R)
+            cpus = args.get(f"{rule}_cpus")
+            if cpus is not None:
+                self._set(f"{rule}_cpus", int(cpus), R)
+            if rule in ResourceDefaults.MEMORY_RULES:
+                ram = args.get(f"{rule}_ram")
+                self._set(
+                    f"{rule}_ram",
+                    int(ram) if ram is not None else ResourceDefaults.ram_for(rule),
+                    R,
+                )
+
+    def add_run_resources(
+        self, threads_total: int, max_memory_mb: int, memory_detected_mb: int
+    ) -> None:
+        """Record the run-wide budgets Snakemake was given.
+
+        The rules do not read these; ``viralconseq rerun`` does, and a reader of
+        the config sees what bounded the run.
+        """
+        R = self.SECTION_RESOURCES
+        self._set(ConfigKeys.THREADS_TOTAL, int(threads_total), R)
+        self._set(ConfigKeys.MAX_MEMORY_MB, int(max_memory_mb), R)
+        self._set(ConfigKeys.MEMORY_DETECTED_MB, int(memory_detected_mb), R)
 
     @classmethod
     def write_skeleton(
@@ -394,6 +416,13 @@ class ConfigGenerator:
             gen.add_viralqc_settings(run_viralqc=True, viralqc_db=f"{root}/viralqc_db")
             gen.add_workflow_path(".")
             gen.add_provenance(__version__)
+            rules = (
+                ResourceDefaults.CONSENSUS_ILLUMINA_RULES
+                if data_type == DataType.ILLUMINA
+                else ResourceDefaults.CONSENSUS_NANOPORE_RULES
+            )
+            gen.add_resource_settings({}, rules)
+            gen.add_run_resources(threads_total=1, max_memory_mb=0, memory_detected_mb=0)
         else:
             raise ValueError(f"Unknown pipeline: {pipeline!r} (expected 'consensus')")
 

@@ -7,7 +7,7 @@ from typing import Any, Optional, Tuple
 import click
 
 from viralconseq.consensus import main as consensus_main
-from viralconseq.constants import ResourceDefaults, ViralQCDatabase
+from viralconseq.constants import ResourceDefaults, ViralQCDatabase, detect_cores
 
 
 def _default_conda_prefix() -> str:
@@ -130,10 +130,22 @@ _COMMON_OPTIONS = [
     ),
     click.option(
         "--threads-total",
-        default=1,
-        show_default=True,
+        # A lambda, not the function itself: click captures the default at
+        # import time, and tests patch detect_cores.
+        default=lambda: detect_cores(),
+        show_default="the cores available to this process, minus one",
         type=click.IntRange(min=1),
-        help="Total threads for the entire workflow.",
+        help="Total cores Snakemake may use at once across all running jobs.",
+    ),
+    click.option(
+        "--max-memory",
+        default=None,
+        type=click.IntRange(min=0),
+        show_default="detected: memory available to this process minus 10%",
+        help="Memory budget in GB for the rules that declare memory (Clair3 and "
+        "viralQC): they run concurrently only while their declared RAM fits the "
+        "budget. Detected from the machine (MemTotal capped by the cgroup limit, "
+        "minus 10% headroom) when omitted; 0 disables the budget.",
     ),
     click.option(
         "--create-config-only",
@@ -183,28 +195,35 @@ def _add_common_options(func):
 
 
 def _generate_resource_options(rules: list) -> list:
-    """Generate click options for CPUs and RAM for a list of rules."""
+    """Generate click options for CPUs (every rule) and RAM (memory rules only).
+
+    A CPU option defaults to ``None`` so the config carries ``<rule>_cpus`` only
+    when the operator set it; otherwise the rule uses the ``--threads`` baseline.
+    A RAM option exists only for rules that declare ``mem_mb`` (a flag on any
+    other rule would be a silent no-op).
+    """
     options = []
     for rule in rules:
         cmd_rule = rule.replace("_", "-")
         options.append(
             click.option(
                 f"--{cmd_rule}-cpus",
-                default=ResourceDefaults.DEFAULT_CPUS,
-                show_default=True,
+                default=None,
                 type=click.IntRange(min=1),
-                help=f"Threads for {rule} rule.",
+                show_default="--threads",
+                help=f"Threads for the {rule} rule.",
             )
         )
-        options.append(
-            click.option(
-                f"--{cmd_rule}-ram",
-                default=ResourceDefaults.DEFAULT_RAM,
-                show_default=True,
-                type=click.IntRange(min=1),
-                help=f"RAM (GB) for {rule} rule.",
+        if rule in ResourceDefaults.MEMORY_RULES:
+            options.append(
+                click.option(
+                    f"--{cmd_rule}-ram",
+                    default=None,
+                    type=click.IntRange(min=1),
+                    show_default=str(ResourceDefaults.ram_for(rule)),
+                    help=f"RAM (GB) the {rule} rule declares; counts against --max-memory.",
+                )
             )
-        )
     return options
 
 

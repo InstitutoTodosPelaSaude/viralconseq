@@ -69,7 +69,7 @@ What each flag does:
 - `--reference` — the reference FASTA. A single-record FASTA is used as-is; a multi-record FASTA is auto-split into one reference per segment (unless `--single-reference`). See [Segmented viruses](#segmented-viruses) below.
 - `--primer-scheme` — BED file of primer coordinates. Omit it for shotgun data; the primer-clipping step then becomes a pass-through.
 - `--minimum-coverage 20` — positions with fewer than 20 reads after primer clipping become `N` in the consensus.
-- `--threads 2 --threads-total 4` — 2 threads per task, 4 cores total across the workflow.
+- `--threads 2 --threads-total 4` — 2 threads per task, 4 cores total across the workflow. Leave `--threads-total` out to use every core but one; a memory budget is detected from the machine too (`--max-memory` overrides it) so the memory-hungry steps never oversubscribe RAM.
 
 ```{tip}
 Add `--create-config-only` to write the YAML config and stop. The file is organised in commented sections, so you can inspect or edit it before running `snakemake --configfile <config> -s "$(python -c 'import viralconseq, os; print(os.path.dirname(viralconseq.__file__))')/scripts/consensus_illumina.smk" --directory <output>/<run_name> --use-conda --conda-prefix ~/.cache/viralconseq/conda-envs -j 4` yourself.

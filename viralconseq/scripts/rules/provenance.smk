@@ -257,7 +257,7 @@ rule collect_benchmarks:
         logs_dir = LOGS,
         samples = list(config["samples"].keys()),
         segmented = ["--segmented"] if SEGMENT_WILDCARD else [],
-        cpus = [f"{key[: -len('_cpus')]}={value}" for key, value in config.items() if key.endswith("_cpus")],
+        cpus = [f"{rule}={cpus(rule)}" for rule in THREADED_RULES],
         own = BENCH("collect_benchmarks", target="collect_benchmarks", per_segment=False),
     log:
         LOG("collect_benchmarks", target="collect_benchmarks", per_segment=False)

@@ -32,9 +32,9 @@ rule infer_consensus_sequence:
         BENCH("infer_consensus_sequence")
     log:
         LOG("infer_consensus_sequence")
-    threads: config.get("infer_consensus_sequence_cpus", 2)
+    threads: cpus("infer_consensus_sequence")
     resources:
-        mem_mb = config.get("infer_consensus_sequence_ram", 4) * 1024
+        mem_mb = ram_mb("infer_consensus_sequence")
     shell:
         """
         set -euo pipefail

@@ -25,7 +25,8 @@ RULE_RE = re.compile(r"^rule (\w+):", re.MULTILINE)
 INCLUDE_RE = re.compile(r'^include:\s*"([^"]+\.smk)"', re.MULTILINE)
 # A rule body ends at the next line that starts in column 0.
 TOP_LEVEL_RE = re.compile(r"^(?=\S)", re.MULTILINE)
-RESOURCE_KEY_RE = re.compile(r'config\.get\("(\w+)_(?:cpus|ram)"')
+# cpus("<rule>") / ram_mb("<rule>") from rules/common.smk, or a raw config read.
+RESOURCE_KEY_RE = re.compile(r'(?:cpus|ram_mb)\("(\w+)"\)|config(?:\.get\(|\[)"(\w+)_(?:cpus|ram)"')
 DIRECTIVE_RE = {
     name: re.compile(rf"^\s+{name}:", re.MULTILINE)
     for name in ("log", "benchmark", "shell", "script", "run")
@@ -49,6 +50,8 @@ REQUIRED_COMMON = [
     "minimum_length",
     "af_threshold",
 ]
+# plus run_viralqc_ram when run_viralqc is on, and infer_consensus_sequence_ram
+# on nanopore (ConfigGenerator always writes them for the memory rules).
 REQUIRED_ILLUMINA = [
     "adapters",
     "trim_head",
@@ -60,6 +63,7 @@ REQUIRED_ILLUMINA = [
     "af_isnv_threshold",
 ]
 REQUIRED_NANOPORE = [
+    "infer_consensus_sequence_ram",
     "chunk_size",
     "clair3_model",
     "variant_quality",
@@ -188,14 +192,40 @@ class Test_RuleInventory(unittest.TestCase):
                     "use config[key] (the CLI owns the default)",
                 )
 
+    def test_only_memory_rules_declare_mem_mb(self):
+        """mem_mb binds under --max-memory; a figure that was never measured
+        would only throttle the run (ResourceDefaults.MEMORY_RULES is the list,
+        scoped by each workflow's own resource rule list: Illumina's
+        infer_consensus_sequence is samtools consensus, not Clair3)."""
+        lists = {
+            "consensus_illumina.smk": ResourceDefaults.CONSENSUS_ILLUMINA_RULES,
+            "consensus_illumina_segmented.smk": ResourceDefaults.CONSENSUS_ILLUMINA_RULES,
+            "consensus_nanopore.smk": ResourceDefaults.CONSENSUS_NANOPORE_RULES,
+            "consensus_nanopore_segmented.smk": ResourceDefaults.CONSENSUS_NANOPORE_RULES,
+        }
+        for (entry, name), (path, body) in self.rules.items():
+            declares = "mem_mb" in body
+            should = name in ResourceDefaults.MEMORY_RULES and name in lists[entry]
+            with self.subTest(workflow=entry, rule=name, file=path.name):
+                self.assertEqual(declares, should, "mem_mb declared iff a listed memory rule")
+                if declares:
+                    self.assertIn(f'ram_mb("{name}")', body)
+
     def test_rules_read_only_their_own_resource_keys(self):
         for (entry, name), (path, body) in self.rules.items():
-            keys = set(RESOURCE_KEY_RE.findall(body))
+            keys = {a or b for a, b in RESOURCE_KEY_RE.findall(body)}
             with self.subTest(workflow=entry, rule=name, file=path.name):
                 self.assertTrue(
                     keys <= {name},
                     f"rule {name} reads resource keys of {sorted(keys - {name})}",
                 )
+
+    def test_common_threaded_rules_mirror_resource_defaults(self):
+        text = (SCRIPTS_DIR / "rules" / "common.smk").read_text()
+        for rule in (
+            ResourceDefaults.CONSENSUS_ILLUMINA_RULES + ResourceDefaults.CONSENSUS_NANOPORE_RULES
+        ):
+            self.assertIn(f'"{rule}"', text.split("THREADED_RULES", 1)[1].split("def cpus", 1)[0])
 
     def test_resource_rule_lists_match_the_workflows(self):
         expectations = {
@@ -232,6 +262,8 @@ class Test_DryrunConfigsCarryRequiredKeys(unittest.TestCase):
                 config = yaml.safe_load(fh)
             required = list(REQUIRED_COMMON)
             required += REQUIRED_ILLUMINA if config["data"] == "illumina" else REQUIRED_NANOPORE
+            if config.get("run_viralqc", True):
+                required.append("run_viralqc_ram")
             missing = [k for k in required if k not in config]
             with self.subTest(config=path.name):
                 self.assertFalse(missing, f"missing {missing}")

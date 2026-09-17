@@ -9,7 +9,13 @@ import shlex
 from typing import Any, Dict, List, Optional, cast
 
 from viralconseq import integrity
-from viralconseq.constants import DataType, ViralQCDatabase
+from viralconseq.constants import (
+    DataType,
+    ResourceDefaults,
+    ViralQCDatabase,
+    detect_memory_mb,
+    memory_budget_mb,
+)
 from viralconseq.exceptions import (
     AdaptersNotFoundError,
     InputIntegrityError,
@@ -103,6 +109,7 @@ def ensure_within_base(path: str, base: str) -> str:
 _NUMERIC_BOUNDS = {
     "threads": (1, None),
     "threads_total": (1, None),
+    "max_memory": (0, None),
     "minimum_coverage": (1, None),
     "minimum_depth": (1, None),
     "minimum_length": (0, None),
@@ -145,6 +152,59 @@ def validate_flag_strings(args: Dict[str, Any]) -> None:
                 f"{key} contains a shell metacharacter (one of ; & | < > ` $ \\ or a newline): "
                 f"{value!r}. Pass plain tool flags only."
             )
+
+
+def resolve_resource_budget(args: Dict[str, Any], rule_list: List[str]) -> str:
+    """Fill ``args["max_memory_mb"]`` and ``args["memory_detected_mb"]``.
+
+    An explicit ``--max-memory`` (0 included) wins; it is refused when it is
+    positive but below the largest ``<rule>_ram`` in the run, because Snakemake
+    would then clamp every memory-declaring job down to the budget and
+    serialise the run without saying so. Otherwise the budget is the detected
+    memory less ``ResourceDefaults.MEMORY_HEADROOM``, raised to the largest
+    per-rule figure when the machine is smaller than one such job.
+
+    Returns:
+        A short label saying where the budget came from (for the run summary).
+
+    Raises:
+        ValidationError: On an explicit budget below the largest rule figure.
+    """
+    memory_rules = ResourceDefaults.memory_rules_for(rule_list)
+    largest_gb = max(
+        (int(args.get(f"{rule}_ram") or ResourceDefaults.ram_for(rule)) for rule in memory_rules),
+        default=0,
+    )
+    explicit = args.get("max_memory")
+    if explicit is not None:
+        budget = int(explicit) * 1024
+        if 0 < budget < largest_gb * 1024:
+            raise ValidationError(
+                f"--max-memory {explicit} GB is below the largest per-rule figure "
+                f"({largest_gb} GB); raise it, or pass 0 to run without a budget."
+            )
+        args["memory_detected_mb"] = detect_memory_mb() or 0
+        args["max_memory_mb"] = budget
+        return "--max-memory"
+    detected = detect_memory_mb()
+    args["memory_detected_mb"] = detected or 0
+    if detected is None:
+        args["max_memory_mb"] = 0
+        logger.warning(
+            "Could not detect the memory available to this process; running without a "
+            "memory budget (as --max-memory 0 would). Pass --max-memory to set one."
+        )
+        return "undetectable"
+    budget, clamped = memory_budget_mb(detected, largest_gb)
+    args["max_memory_mb"] = budget
+    if clamped:
+        logger.warning(
+            f"Detected {detected / 1024:.1f} GB usable, below the largest per-rule figure "
+            f"({largest_gb} GB); budget set to {largest_gb} GB so memory-declaring rules run "
+            "one at a time. Pass --max-memory to override."
+        )
+        return f"detected {detected / 1024:.1f} GB, clamped up to one job"
+    return f"detected {detected / 1024:.1f} GB, {ResourceDefaults.MEMORY_HEADROOM:.0%} headroom"
 
 
 def validate_numeric_parameters(args: Dict[str, Any]) -> None:

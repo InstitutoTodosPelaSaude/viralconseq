@@ -108,7 +108,7 @@ sheet order) and run-level rows (`sample` = `All`) last:
 | `segment` | Segmented runs only: the segment, or `-` for run-level rules |
 | `rule` | The Snakemake rule name (`map_reads`, `run_viralqc`, …) |
 | `target` | What the rule ran on: the sample id, or the rule name for run-level rules |
-| `threads` | The CPUs the rule was given (`--<rule>-cpus`); empty for rules without a resource option |
+| `threads` | The CPUs the rule was given (`--<rule>-cpus`, else `--threads`); empty for rules without a `--<rule>-cpus` option, which run single-threaded |
 | `s`, `h:m:s`, `max_rss`, `max_vms`, `max_uss`, `max_pss`, `io_in`, `io_out`, `mean_load`, `cpu_time` | Snakemake's own measurements (seconds, memory in MB, I/O in MB) |
 
 ## Assembly statistics columns

@@ -22,8 +22,28 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   (rule `run_config`), so a run is self-describing wherever `--config-file`
   pointed.
 
+- Resources that bind. `--threads-total` defaults to the cores available to
+  the process minus one (CPU affinity, so container and cgroup limits count).
+  A memory budget is detected from the machine (`MemTotal` capped by the
+  cgroup limit, minus 10 %) and passed to Snakemake as `--resources mem_mb=`,
+  so the `mem_mb` declared by Clair3 (`infer_consensus_sequence`, 2 GB) and
+  viralQC (`run_viralqc`, 1 GB) now limits how many of those jobs run at once.
+  `--max-memory GB` overrides the budget, `--max-memory 0` disables it, and a
+  positive value below the largest per-rule figure is refused. A one-line
+  summary of cores and budget is printed at start. The config records
+  `threads_total`, `max_memory_mb` and `memory_detected_mb`.
+
 ### Changed
 
+- Per-rule threads follow `--<rule>-cpus` > `--threads`: a `--<rule>-cpus`
+  option now defaults to unset and the config carries `<rule>_cpus` only when
+  you gave it; every rule otherwise uses the `--threads` baseline (rules used
+  to default to 2 regardless of `--threads`).
+- `mem_mb` is declared only by rules with a measured peak. The
+  `--perform-qc-ram`, `--map-reads-ram`, `--trim-primer-sequences-ram` and
+  `--detect-isnv-ram` options are gone (they never bound: no budget was ever
+  passed). `--infer-consensus-sequence-ram` and `--run-viralqc-ram` remain and
+  default to the measured 2 GB and 1 GB instead of 4 GB.
 - All per-rule logs and benchmarks now live under one tree,
   `<run>/logs/<rule>/[<segment>/]<target>.{log,benchmark.txt}` (`target` is
   `sample-<id>` for per-sample rules and the rule name for run-level ones).

@@ -16,6 +16,7 @@ from viralconseq.validators import (
     CONSENSUS_PATH_ARG_KEYS,
     get_samples_from_args,
     resolve_path_args,
+    resolve_resource_budget,
     sanitize_identifier,
     validate_consensus_input_integrity,
     validate_consensus_requirements,
@@ -27,6 +28,13 @@ from viralconseq.validators import (
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+
+def rule_list_for(args: Dict[str, Any]) -> list:
+    """The ``ResourceDefaults`` rule list for the run's data type."""
+    if args.get("data_type") == DataType.NANOPORE:
+        return ResourceDefaults.CONSENSUS_NANOPORE_RULES
+    return ResourceDefaults.CONSENSUS_ILLUMINA_RULES
 
 
 def validate_args(args: Dict[str, Any]) -> Dict[str, list]:
@@ -52,6 +60,8 @@ def validate_args(args: Dict[str, Any]) -> Dict[str, list]:
     validate_numeric_parameters(args)
     # Extra tool flags are spliced unquoted into shell commands.
     validate_flag_strings(args)
+    # Memory budget: explicit --max-memory, else detected from the machine.
+    args["memory_budget_source"] = resolve_resource_budget(args, rule_list_for(args))
 
     # Get and validate samples
     samples = get_samples_from_args(args)

@@ -19,9 +19,7 @@ rule map_reads:
         LOG("map_reads")
     benchmark:
         BENCH("map_reads")
-    threads: config.get("map_reads_cpus", 2)
-    resources:
-        mem_mb = config.get("map_reads_ram", 4) * 1024
+    threads: cpus("map_reads")
     shell:
         """
         set -euo pipefail
@@ -50,9 +48,7 @@ rule trim_primer_sequences:
         LOG("trim_primer_sequences")
     benchmark:
         BENCH("trim_primer_sequences")
-    threads: config.get("trim_primer_sequences_cpus", 2)
-    resources:
-        mem_mb = config.get("trim_primer_sequences_ram", 4) * 1024
+    threads: cpus("trim_primer_sequences")
     shell:
         """
         set -euo pipefail

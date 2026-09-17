@@ -8,6 +8,7 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from viralconseq.consensus_cli import consensus
+from viralconseq.constants import detect_cores
 
 
 class Test_ConsensusIlluminaCommand(unittest.TestCase):
@@ -119,7 +120,7 @@ class Test_ConsensusIlluminaCommand(unittest.TestCase):
         self.assertEqual(args["minimum_coverage"], 20)
         self.assertEqual(args["minimum_read_length"], 50)
         self.assertEqual(args["threads"], 1)
-        self.assertEqual(args["threads_total"], 1)
+        self.assertEqual(args["threads_total"], detect_cores())
         self.assertFalse(args["create_config_only"])
 
 
@@ -221,17 +222,50 @@ class Test_ResourceOptions(unittest.TestCase):
         return mock_main.call_args[0][0]
 
     def test_illumina_resource_options_land_in_args(self):
-        args = self._invoke("illumina", ["--map-reads-cpus", "8", "--perform-qc-ram", "16"])
+        args = self._invoke("illumina", ["--map-reads-cpus", "8", "--run-viralqc-ram", "3"])
         self.assertEqual(args["map_reads_cpus"], 8)
-        self.assertEqual(args["perform_qc_ram"], 16)
-        # Untouched rules keep the defaults.
-        self.assertEqual(args["detect_isnv_cpus"], 2)
-        self.assertEqual(args["trim_primer_sequences_ram"], 4)
+        self.assertEqual(args["run_viralqc_ram"], 3)
+        # Untouched rules carry None: the config then omits <rule>_cpus and the
+        # rule falls back to --threads.
+        self.assertIsNone(args["detect_isnv_cpus"])
+        # Only memory-declaring rules have a --ram option.
+        self.assertNotIn("trim_primer_sequences_ram", args)
+        self.assertNotIn("perform_qc_ram", args)
+
+    def test_ram_option_exists_only_for_memory_rules(self):
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0):
+            result = self.runner.invoke(
+                consensus, self._invoke_args("illumina", ["--perform-qc-ram", "16"])
+            )
+        self.assertEqual(result.exit_code, 2, result.output)
+        self.assertIn("No such option", result.output)
+
+    def _invoke_args(self, data_type, extra):
+        return [
+            data_type,
+            "--sample-sheet",
+            "sample_sheet.csv",
+            "--config-file",
+            "config_file.yaml",
+            "--output",
+            "output_dir",
+            "--reference",
+            "reference.fasta",
+        ] + extra
 
     def test_nanopore_resource_options_land_in_args(self):
         args = self._invoke("nanopore", ["--infer-consensus-sequence-cpus", "6"])
         self.assertEqual(args["infer_consensus_sequence_cpus"], 6)
         self.assertNotIn("perform_qc_cpus", args)
+
+    def test_max_memory_and_threads_total(self):
+        args = self._invoke("nanopore", ["--max-memory", "12"])
+        self.assertEqual(args["max_memory"], 12)
+        # No explicit --max-memory -> None (detected later, during validation).
+        self.assertIsNone(self._invoke("nanopore", [])["max_memory"])
+        with patch("viralconseq.consensus_cli.detect_cores", return_value=7):
+            self.assertEqual(self._invoke("illumina", [])["threads_total"], 7)
+        self.assertEqual(self._invoke("illumina", ["--threads-total", "3"])["threads_total"], 3)
 
 
 class Test_ConsensusNanoporeCommand(unittest.TestCase):
@@ -403,7 +437,7 @@ class Test_ConsensusViralQCOptions(unittest.TestCase):
         self.assertEqual(args["run_viralqc_cpus"], 8)
         self.assertEqual(args["run_viralqc_ram"], 16)
         nano = self._invoke(self._required("nanopore"))
-        self.assertEqual(nano["run_viralqc_cpus"], 2)
+        self.assertIsNone(nano["run_viralqc_cpus"])
 
 
 if __name__ == "__main__":

@@ -82,8 +82,19 @@ class Test_Save(unittest.TestCase):
         gen.add_consensus_settings("/ref.fa", "NA", 20)
         gen.add_consensus_nanopore_settings(50, 0.51, 10000, "model", 20, 10, 30)
         gen.add_viralqc_settings(run_viralqc=True, viralqc_db="/db")
-        gen.add_resource_settings({}, ["map_reads"])
+        gen.add_resource_settings({"map_reads_cpus": 4}, ["map_reads", "run_viralqc"])
         return gen
+
+    def test_resource_settings_contract(self):
+        gen = ConfigGenerator(os.path.join(self.tmp, "c.yml"))
+        gen.add_resource_settings(
+            {"map_reads_cpus": 4, "run_viralqc_ram": 3}, ["map_reads", "perform_qc", "run_viralqc"]
+        )
+        # cpus only when given; ram only for memory rules (default when not given)
+        self.assertEqual(gen.config, {"map_reads_cpus": 4, "run_viralqc_ram": 3})
+        gen2 = ConfigGenerator(os.path.join(self.tmp, "d.yml"))
+        gen2.add_resource_settings({}, ["infer_consensus_sequence", "map_reads"])
+        self.assertEqual(gen2.config, {"infer_consensus_sequence_ram": 2})
 
     def test_sections_written_in_order_with_comments(self):
         gen = self._full_generator()

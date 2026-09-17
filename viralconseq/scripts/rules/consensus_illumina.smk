@@ -23,9 +23,7 @@ rule detect_isnv:
         LOG("detect_isnv")
     benchmark:
         BENCH("detect_isnv")
-    threads: config.get("detect_isnv_cpus", 2)
-    resources:
-        mem_mb = config.get("detect_isnv_ram", 4) * 1024
+    threads: cpus("detect_isnv")
     shell:
         """
         set -euo pipefail

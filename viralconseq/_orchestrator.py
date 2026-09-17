@@ -15,6 +15,7 @@ from snakemake import snakemake
 
 from viralconseq import __version__
 from viralconseq.config_generator import ConfigGenerator
+from viralconseq.constants import DataType, ResourceDefaults
 from viralconseq.exceptions import ValidationError, ViralConseqError
 from viralconseq.provenance import (
     SNAKEMAKE_LOG_COPY,
@@ -39,7 +40,46 @@ def start_config(args: Dict[str, Any], samples: Dict[str, list]) -> ConfigGenera
     generator.add_output(args["output"], args["run_name"])
     generator.add_threads(args["threads"])
     generator.add_provenance(__version__)
+    generator.add_run_resources(
+        threads_total=int(args.get("threads_total") or 1),
+        max_memory_mb=int(args.get("max_memory_mb") or 0),
+        memory_detected_mb=int(args.get("memory_detected_mb") or 0),
+    )
     return generator
+
+
+def describe_resources(args: Dict[str, Any], rule_list: list) -> str:
+    """One line saying what bounds the run: cores, and the memory budget with
+    what it allows for each memory-declaring rule."""
+    cores = int(args.get("threads_total") or 1)
+    detected_mb = int(args.get("memory_detected_mb") or 0)
+    budget = int(args.get("max_memory_mb") or 0)
+    source = args.get("memory_budget_source", "")
+    memory_rules = ResourceDefaults.memory_rules_for(rule_list)
+    parts = [f"resources: {cores} core(s) for Snakemake"]
+    if not budget:
+        parts.append(
+            f"memory budget off ({source or '--max-memory 0'}); "
+            + " and ".join(memory_rules)
+            + " are bounded by --threads-total alone"
+        )
+    else:
+        allowances = ", ".join(
+            f"{rule} {gb} GB -> at most {max(1, budget // (gb * 1024))} at once"
+            for rule, gb in (
+                (r, int(args.get(f"{r}_ram") or ResourceDefaults.ram_for(r))) for r in memory_rules
+            )
+        )
+        detected = f", detected {detected_mb / 1024:.1f} GB" if detected_mb else ""
+        parts.append(f"memory budget {budget / 1024:.1f} GB ({source}{detected}): {allowances}")
+    return " | ".join(parts)
+
+
+def rule_list_for_args(args: Dict[str, Any]) -> list:
+    """The ``ResourceDefaults`` rule list for the run's data type."""
+    if args.get("data_type") == DataType.NANOPORE:
+        return ResourceDefaults.CONSENSUS_NANOPORE_RULES
+    return ResourceDefaults.CONSENSUS_ILLUMINA_RULES
 
 
 def run_dir_for(args: Dict[str, Any]) -> Optional[str]:
@@ -80,12 +120,20 @@ def run_workflow(workflow_path: str, args: Dict[str, Any]) -> bool:
         # which is now the run directory rather than the caller's cwd.
         conda_prefix = os.path.abspath(os.path.expanduser(str(conda_prefix)))
 
+    kwargs: Dict[str, Any] = {}
+    budget = int(args.get("max_memory_mb") or 0)
+    if budget > 0:
+        # Makes every rule's mem_mb declaration bind: memory-declaring jobs run
+        # concurrently only while their declared sum fits the budget.
+        kwargs["resources"] = {"mem_mb": budget}
+
     successful = snakemake(
         workflow_path,
         configfiles=[os.path.abspath(args["config_file"])],
         cores=args["threads_total"],
         use_conda=True,
         conda_prefix=conda_prefix,
+        **kwargs,
         # Run inside the run directory: every path in the config is absolute
         # (resolve_path_args + absolutise_sample_paths), so only .snakemake/
         # moves. force_incomplete resumes a run that was interrupted mid-job
@@ -137,6 +185,7 @@ def run_pipeline(
         samples = validate(args)
 
         generate_config(samples, args)
+        logger.info(describe_resources(args, rule_list_for_args(args)))
 
         if args.get("create_config_only", False):
             logger.info("Config file created. Exiting without running workflow.")

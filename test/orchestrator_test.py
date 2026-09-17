@@ -90,6 +90,35 @@ class Test_RunWorkflowRunsInsideTheRunDirectory(unittest.TestCase):
         self.assertIsNone(captured.get("workdir"))
         self.assertTrue(captured.get("force_incomplete"))
 
+    def test_memory_budget_forwarded_as_resources(self):
+        captured = self._run_with_args({"max_memory_mb": 4096})
+        self.assertEqual(captured.get("resources"), {"mem_mb": 4096})
+
+    def test_no_resources_kwarg_when_budget_is_off(self):
+        captured = self._run_with_args({"max_memory_mb": 0})
+        self.assertNotIn("resources", captured)
+        self.assertNotIn("resources", self._run_with_args({}))
+
+    def test_describe_resources(self):
+        rules = ["map_reads", "infer_consensus_sequence", "run_viralqc"]
+        off = _orchestrator.describe_resources(
+            {"threads_total": 4, "max_memory_mb": 0, "memory_budget_source": "--max-memory"}, rules
+        )
+        self.assertIn("4 core(s)", off)
+        self.assertIn("memory budget off", off)
+        on = _orchestrator.describe_resources(
+            {
+                "threads_total": 8,
+                "max_memory_mb": 8192,
+                "memory_detected_mb": 16384,
+                "memory_budget_source": "detected 16.0 GB, 10% headroom",
+            },
+            rules,
+        )
+        self.assertIn("memory budget 8.0 GB", on)
+        self.assertIn("infer_consensus_sequence 2 GB -> at most 4 at once", on)
+        self.assertIn("run_viralqc 1 GB -> at most 8 at once", on)
+
     def test_run_dir_for(self):
         self.assertIsNone(_orchestrator.run_dir_for({"output": "x"}))
         self.assertIsNone(_orchestrator.run_dir_for({"run_name": "x"}))

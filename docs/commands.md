@@ -140,8 +140,9 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--minimum-read-length` | `50` | Minimum read length threshold. |
 | `--af-threshold` | `0.51` | Min allele frequency to call variant into consensus. |
 | `--run-name` | `undefined` | Name for the sequencing run. |
-| `--threads` | `1` | Threads per individual task (at least 1). |
-| `--threads-total` | `1` | Total threads for the workflow (at least 1). |
+| `--threads` | `1` | Threads per individual task (at least 1); the baseline every rule uses unless a `--<rule>-cpus` override is given. |
+| `--threads-total` | cores available minus one | Total cores Snakemake may use at once across all running jobs (at least 1). Detected from the CPUs available to the process (affinity, so container and cgroup limits are honoured), leaving one core free. |
+| `--max-memory` | detected | Memory budget in GB for the rules that declare memory (Clair3 and viralQC): they run concurrently only while their declared RAM fits it. Detected as `MemTotal` capped by the cgroup limit, minus 10 % headroom; `0` disables the budget. Refused when positive but below the largest per-rule figure. |
 | `--create-config-only` | off | Only generate the config file; do not run the workflow. |
 | `--skip-input-validation` | off | Skip content-level integrity checks of the input files (FASTQ/FASTA/BED). Existence checks still run. |
 | `--conda-prefix` | `~/.cache/viralconseq/conda-envs` | Cache directory for per-rule conda envs. Picked up from `$VIRALCONSEQ_CONDA_PREFIX` if set. Pre-warm with `viralconseq setup`. |
@@ -366,15 +367,23 @@ file with `--create-config-only` rather than writing it from scratch.
 
 ## Per-rule CPU and RAM overrides
 
-`viralconseq consensus` auto-generates a `--<rule>-cpus` and a `--<rule>-ram` option for each computationally significant Snakemake rule, so you can size individual steps without touching the global `--threads` / `--threads-total`. Every such option defaults to **2** CPUs / **4** GB, must be at least 1, and is written into the generated YAML as `{rule}_cpus` / `{rule}_ram` under the `# --- resources ---` section.
+Three levels bound a run:
 
-The exact set depends on the data type — run the relevant subcommand's `--help` to list them all (flags replace `_` with `-` and append `-cpus` / `-ram`):
+1. `--threads-total` — the cores Snakemake may use at once (default: available cores minus one).
+2. `--threads` — the threads each rule gets (default 1).
+3. `--<rule>-cpus` — an override for one computationally significant rule. Precedence is `--<rule>-cpus` > `--threads`; the config carries `<rule>_cpus` only when you set it.
+
+The rules with a `--<rule>-cpus` option (flags replace `_` with `-`):
 
 - **Illumina** — `perform_qc`, `map_reads`, `trim_primer_sequences`, `detect_isnv`, `run_viralqc`.
 - **Nanopore** — `map_reads`, `trim_primer_sequences`, `infer_consensus_sequence`, `run_viralqc`.
 
+Memory is handled separately, and only where it was measured. Two rules declare memory and have a `--<rule>-ram` option (GB): `--infer-consensus-sequence-ram` (Clair3, default **2**) and `--run-viralqc-ram` (viralQC, default **1**). The declarations bind: Snakemake is given the `--max-memory` budget and runs those jobs concurrently only while their declared RAM fits it (with the default budget on a 16 GB machine, Clair3 runs at most 7 samples at once). Every other rule peaked well under 200 MB on the test data and declares nothing. The values land in the `# --- resources ---` section of the config as `<rule>_ram`, `threads_total`, `max_memory_mb` and `memory_detected_mb`.
+
 ```bash
-viralconseq consensus illumina ... \
-    --map-reads-cpus 8 --map-reads-ram 16 \
-    --perform-qc-cpus 4
+viralconseq consensus nanopore ... \
+    --threads 2 --threads-total 16 --max-memory 24 \
+    --infer-consensus-sequence-cpus 4 --infer-consensus-sequence-ram 3
 ```
+
+The run summary line printed at start (`resources: 16 core(s) for Snakemake | memory budget 24.0 GB ...`) shows what was resolved.

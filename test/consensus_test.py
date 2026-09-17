@@ -487,8 +487,12 @@ class Test_GenerateConfigFile(unittest.TestCase):
         self.assertTrue(config_dict["run_viralqc"])
         self.assertEqual(config_dict["viralqc_db"], "NA")
         self.assertEqual(config_dict["viralqc_extra_flags"], "")
-        self.assertEqual(config_dict["run_viralqc_cpus"], 2)
-        self.assertEqual(config_dict["run_viralqc_ram"], 4)
+        # No --run-viralqc-cpus given -> key absent (falls back to threads);
+        # run_viralqc declares memory -> its measured default RAM is written.
+        self.assertNotIn("run_viralqc_cpus", config_dict)
+        self.assertEqual(config_dict["run_viralqc_ram"], 1)
+        self.assertEqual(config_dict["threads_total"], 1)
+        self.assertIn("max_memory_mb", config_dict)
         self.assertEqual(
             config_dict["minimap2_consensus_align_flags"],
             "-a --sam-hit-only --secondary=no --score-N=0",
@@ -543,8 +547,12 @@ class Test_GenerateConfigFile(unittest.TestCase):
         self.assertNotIn("gene_annotation", config_dict)
         self.assertNotIn("generate_html_report", config_dict)
         self.assertTrue(config_dict["run_viralqc"])
-        self.assertEqual(config_dict["run_viralqc_cpus"], 2)
-        self.assertEqual(config_dict["run_viralqc_ram"], 4)
+        # No --run-viralqc-cpus given -> key absent (falls back to threads);
+        # run_viralqc declares memory -> its measured default RAM is written.
+        self.assertNotIn("run_viralqc_cpus", config_dict)
+        self.assertEqual(config_dict["run_viralqc_ram"], 1)
+        self.assertEqual(config_dict["threads_total"], 1)
+        self.assertIn("max_memory_mb", config_dict)
 
     def test_generate_config_file_segmented_reference(self):
         """Test config file generation with segmented reference."""

@@ -25,3 +25,4 @@ viralqc_db: data/viralqc_db
 viralqc_extra_flags: ""
 run_viralqc_cpus: 2
 run_viralqc_ram: 4
+infer_consensus_sequence_ram: 2

@@ -54,6 +54,12 @@ else:
         "variant_depth",
         "minimum_map_quality",
     ]
+# Memory-declaring rules read <rule>_ram as a required key (ConfigGenerator
+# always writes it for them; see ResourceDefaults.MEMORY_RULES).
+if config.get("data") != "illumina":
+    _REQUIRED_KEYS.append("infer_consensus_sequence_ram")
+if config.get("run_viralqc", True):
+    _REQUIRED_KEYS.append("run_viralqc_ram")
 _missing = [k for k in _REQUIRED_KEYS if k not in config]
 if _missing:
     raise WorkflowError(
@@ -100,6 +106,25 @@ def LOG(rule, target="{sample}", per_segment=True):
     """
     segment = globals().get("SEGMENT_WILDCARD", "") if per_segment else ""
     return LOGS + rule + "/" + segment + target + ".log"
+
+
+# The rules with a --<rule>-cpus option (mirror of ResourceDefaults.CONSENSUS_*_RULES;
+# the inventory test keeps them in step). Used to report each rule's threads.
+THREADED_RULES = (
+    ["perform_qc", "map_reads", "trim_primer_sequences", "detect_isnv", "run_viralqc"]
+    if config.get("data") == "illumina"
+    else ["map_reads", "trim_primer_sequences", "infer_consensus_sequence", "run_viralqc"]
+)
+
+
+def cpus(rule):
+    """Threads for ``rule``: ``--<rule>-cpus`` if given, else the ``--threads`` baseline."""
+    return int(config.get(f"{rule}_cpus", config["threads"]))
+
+
+def ram_mb(rule):
+    """``mem_mb`` for a memory-declaring rule, from its required ``<rule>_ram`` (GB) key."""
+    return int(config[f"{rule}_ram"]) * 1024
 
 
 def BENCH(rule, target="{sample}", per_segment=True):
