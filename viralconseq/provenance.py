@@ -15,15 +15,18 @@ reliably.
 from __future__ import annotations
 
 import datetime
+import glob
 import hashlib
 import json
 import os
+import shutil
 from typing import Any, Dict, Optional
 
 from viralconseq import __version__
 from viralconseq.validators import _is_path_sentinel
 
 MANIFEST_FILENAME = "run_manifest.json"
+SNAKEMAKE_LOG_COPY = os.path.join("logs", "snakemake.log")
 
 
 def _sha256(path: str, chunk_size: int = 1 << 20) -> str:
@@ -63,8 +66,11 @@ def build_run_manifest(
     if timestamp is None:
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+    # Keyed ``sample-<id>`` like every other output (config, samples/ dirs,
+    # FASTA headers, summary tables).
     sample_inputs = {
-        sample: [_describe_input(p) for p in paths] for sample, paths in (samples or {}).items()
+        f"sample-{sample}": [_describe_input(p) for p in paths]
+        for sample, paths in (samples or {}).items()
     }
 
     config_file = args.get("config_file")
@@ -122,6 +128,7 @@ def record_run_completion(
     *,
     status: str,
     timestamp: Optional[str] = None,
+    extra: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Patch an existing manifest with the run outcome.
 
@@ -134,6 +141,8 @@ def record_run_completion(
         manifest_path: Path returned by :func:`write_run_manifest`.
         status: Outcome string, e.g. "success" or "failed".
         timestamp: ISO-8601 finish time; generated (UTC) if omitted.
+        extra: Additional top-level keys to record (e.g. the path of the
+            copied Snakemake log).
     """
     if timestamp is None:
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -141,5 +150,31 @@ def record_run_completion(
         manifest = json.load(fh)
     manifest["status"] = status
     manifest["finished_utc"] = timestamp
+    for key, value in (extra or {}).items():
+        manifest[key] = value
     with open(manifest_path, "w") as fh:
         json.dump(manifest, fh, indent=2, sort_keys=True)
+
+
+def copy_snakemake_log(run_dir: str) -> Optional[str]:
+    """Copy the newest Snakemake transcript into ``<run_dir>/logs/snakemake.log``.
+
+    Snakemake writes its console transcript under ``<run_dir>/.snakemake/log/``
+    with a timestamped name. Keeping a stable copy next to the results makes the
+    run self-describing and survives a later ``.snakemake/`` clean-up.
+
+    Returns:
+        The path of the copy, or ``None`` when no transcript exists. Never
+        raises: this is provenance, not analysis.
+    """
+    try:
+        candidates = glob.glob(os.path.join(run_dir, ".snakemake", "log", "*.snakemake.log"))
+        if not candidates:
+            return None
+        newest = max(candidates, key=os.path.getmtime)
+        destination = os.path.join(run_dir, SNAKEMAKE_LOG_COPY)
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        shutil.copyfile(newest, destination)
+        return destination
+    except OSError:
+        return None

@@ -625,6 +625,27 @@ def resolve_path_args(
     return args
 
 
+def absolutise_sample_paths(
+    samples: Dict[str, List[str]], base_dir: Optional[str] = None
+) -> Dict[str, List[str]]:
+    """Return ``samples`` with every relative FASTQ path made absolute.
+
+    Snakemake runs with the run directory as its working directory (so that
+    ``.snakemake/`` lives next to the results), which means every path in the
+    generated config must be absolute. Sample-sheet paths are resolved against
+    the current working directory, the same base ``validate_file_exists``
+    checked them against.
+    """
+    base_dir = base_dir or os.getcwd()
+    return {
+        sample: [
+            path if os.path.isabs(path) else os.path.abspath(os.path.join(base_dir, path))
+            for path in paths
+        ]
+        for sample, paths in samples.items()
+    }
+
+
 def get_samples_from_args(args: Dict[str, Any]) -> Dict[str, List[str]]:
     """Extract and validate samples from arguments.
 
@@ -646,9 +667,9 @@ def get_samples_from_args(args: Dict[str, Any]) -> Dict[str, List[str]]:
         # `samples`, which would report a misleading "nothing provided" error
         # when the real problem is a mistyped or missing sample-sheet path.
         validate_file_exists(sample_sheet, "Sample sheet file")
-        return validate_sample_sheet(sample_sheet, cast(str, data_type))
+        return absolutise_sample_paths(validate_sample_sheet(sample_sheet, cast(str, data_type)))
     if samples:
-        return samples
+        return absolutise_sample_paths(samples)
     raise SampleConfigurationNotFoundError(
         "Either 'sample_sheet' or 'samples' must be provided. " f"Sample sheet path: {sample_sheet}"
     )

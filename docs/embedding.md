@@ -47,13 +47,17 @@ normalises some values in place (e.g. an absent `primer_scheme` becomes `"NA"`).
 The option lists in `viralconseq/consensus_cli.py` are the reference for the full
 key set and defaults.
 
-## Per-job isolation (required)
+## Per-job isolation
 
-Snakemake writes a `.snakemake/` lock/state directory into the working directory
-and per-run outputs under `<output>/<run_name>/`. **Run each job in its own
-working directory** (a fresh temp dir per job) so concurrent jobs cannot collide
-on locks, logs, or conda-env creation. The in-process `snakemake()` call is not
-safe to run concurrently from the same cwd.
+Snakemake runs with the run directory `<output>/<run_name>/` as its working
+directory, so its `.snakemake/` lock/state directory and per-run transcripts
+live next to the results (a copy of the newest transcript is written to
+`<output>/<run_name>/logs/snakemake.log`). Two jobs therefore only collide when
+they share an `output` + `run_name`: give every job its own run directory. The
+in-process `snakemake()` call is still not safe to run concurrently *within one
+process*; use one process per job. Interrupted runs are resumed on the next
+invocation (`force_incomplete`), so a killed job can simply be relaunched with
+the same arguments.
 
 ## Input contract (enforce on untrusted uploads)
 
@@ -109,7 +113,9 @@ incomplete; the message names the directory and the `viralconseq setup` command.
 
 Each run writes `<output>/<run_name>/run_manifest.json` with the viralconseq
 version (`viralconseq_version`), a UTC timestamp, the resolved config path, whether
-viralQC ran and against which database directory (`viralqc`), and a
-`sha256`+size for every input FASTQ — enough to reproduce a result by record.
+viralQC ran and against which database directory (`viralqc`), a `sha256`+size
+for every input FASTQ (keyed `sample-<id>`), the outcome (`status`,
+`finished_utc`) and the path of the copied Snakemake transcript
+(`snakemake_log`) — enough to reproduce a result by record.
 Persist it alongside job outputs. Per-rule tool versions are pinned in the
 per-rule conda environment files under `viralconseq/scripts/envs/`.

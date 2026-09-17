@@ -11,6 +11,16 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ### Changed
 
+- Snakemake now runs with `<output>/<run_name>/` as its working directory, so
+  `.snakemake/` (locks, metadata, transcripts) lives next to the results
+  instead of in whatever directory the CLI was launched from. The newest
+  transcript is also copied to `<run>/logs/snakemake.log` and recorded in
+  `run_manifest.json` (`snakemake_log`). Sample FASTQ paths are written to the
+  config as absolute paths (they used to be copied verbatim from the sheet).
+  A run interrupted mid-job resumes on the next invocation instead of failing
+  with `IncompleteFilesException`.
+- `run_manifest.json` keys its `samples` block by `sample-<id>`, like every
+  other output.
 - Every rule now declares `log:` and `benchmark:` and redirects its shell
   output into the log (`sanitize_reference`, nanopore `trim_primer_sequences`,
   `calculate_coverage_basewise`, `rename_sequences`, nanopore

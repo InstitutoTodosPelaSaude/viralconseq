@@ -9,6 +9,7 @@ from viralconseq import __version__
 from viralconseq.provenance import (
     MANIFEST_FILENAME,
     build_run_manifest,
+    copy_snakemake_log,
     record_run_completion,
     write_run_manifest,
 )
@@ -41,7 +42,7 @@ class Test_RunManifest(unittest.TestCase):
         )
         self.assertEqual(manifest["viralconseq_version"], __version__)
         self.assertEqual(manifest["sample_count"], 1)
-        recs = manifest["samples"]["s"]
+        recs = manifest["samples"]["sample-s"]
         self.assertEqual(len(recs), 2)
         self.assertEqual(recs[0]["size_bytes"], 5)
         self.assertEqual(len(recs[0]["sha256"]), 64)
@@ -50,7 +51,7 @@ class Test_RunManifest(unittest.TestCase):
     def test_missing_input_flagged_not_crash(self):
         samples = {"s": [os.path.join(self.tmp, "nope.fastq.gz")]}
         manifest = build_run_manifest(self.args, samples)
-        self.assertTrue(manifest["samples"]["s"][0]["missing"])
+        self.assertTrue(manifest["samples"]["sample-s"][0]["missing"])
 
     def test_write_manifest_creates_json_in_run_dir(self):
         path = write_run_manifest(self.args, self.samples)
@@ -77,6 +78,42 @@ class Test_RunManifest(unittest.TestCase):
             loaded = json.load(fh)
         self.assertEqual(loaded["status"], "success")
         self.assertEqual(loaded["finished_utc"], "2026-01-02T00:00:00+00:00")
+
+    def test_record_run_completion_records_extra_keys(self):
+        path = write_run_manifest(self.args, self.samples)
+        record_run_completion(
+            path, status="failed", extra={"snakemake_log": "/run/logs/snakemake.log"}
+        )
+        with open(path) as fh:
+            loaded = json.load(fh)
+        self.assertEqual(loaded["snakemake_log"], "/run/logs/snakemake.log")
+
+    def test_sample_keys_carry_the_sample_prefix(self):
+        manifest = build_run_manifest(self.args, self.samples)
+        self.assertEqual(list(manifest["samples"]), ["sample-s"])
+
+
+class Test_CopySnakemakeLog(unittest.TestCase):
+    def test_returns_none_without_transcript(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(copy_snakemake_log(tmp))
+            self.assertFalse(os.path.exists(os.path.join(tmp, "logs")))
+
+    def test_copies_the_newest_transcript(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = os.path.join(tmp, ".snakemake", "log")
+            os.makedirs(log_dir)
+            older = os.path.join(log_dir, "2026-01-01T000000.000000.snakemake.log")
+            newer = os.path.join(log_dir, "2026-01-02T000000.000000.snakemake.log")
+            for path, text in ((older, "old"), (newer, "new")):
+                with open(path, "w") as fh:
+                    fh.write(text)
+            os.utime(older, (1, 1))
+            os.utime(newer, (2, 2))
+            copied = copy_snakemake_log(tmp)
+            self.assertEqual(copied, os.path.join(tmp, "logs", "snakemake.log"))
+            with open(copied) as fh:
+                self.assertEqual(fh.read(), "new")
 
 
 class Test_RunManifestViralQC(unittest.TestCase):

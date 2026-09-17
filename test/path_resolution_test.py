@@ -140,59 +140,62 @@ class TestResolvePathArgs(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# run_snakemake_workflow must not pin workdir to the config directory
+# run_snakemake_workflow runs Snakemake inside the run directory
 # ---------------------------------------------------------------------------
 
 
-class TestWorkdirUsesCwd(unittest.TestCase):
-    """``run_snakemake_workflow`` must not pin the working directory to the
-    config file's parent directory (this was the bug).
+class Test_WorkdirIsRunDir(unittest.TestCase):
+    """``run_snakemake_workflow`` must run Snakemake with the run directory
+    (``<output>/<run_name>``) as its working directory, never the config file's
+    parent directory (the historical bug) and never the caller's cwd (which
+    scattered ``.snakemake/`` wherever the CLI was launched from).
 
-    The fix relies on Snakemake's default behaviour: when ``workdir`` is not
-    passed to ``snakemake()``, Snakemake does not ``chdir`` and the shell's
-    cwd is used as-is. This test asserts that ``workdir`` is either omitted
-    or set to cwd — never the config file's directory.
+    Every path in the generated config is absolute by then, so only
+    ``.snakemake/`` moves.
     """
 
-    def test_workdir_is_not_config_dirname(self):
+    def _captured_kwargs(self, args):
         captured = {}
 
-        def fake_snakemake(*args, **kwargs):
+        def fake_snakemake(*_args, **kwargs):
             captured.update(kwargs)
             return True
 
-        with (
-            patch("viralconseq._orchestrator.snakemake", side_effect=fake_snakemake),
-            tempfile.TemporaryDirectory() as tmp,
-        ):
-            tmp_real = os.path.realpath(tmp)
-            old_cwd = os.getcwd()
-            os.chdir(tmp_real)
-            try:
-                consensus.run_snakemake_workflow(
-                    {
-                        "data_type": "nanopore",
-                        "reference": os.path.join(tmp_real, "ref.fasta"),
-                        # Pretend the user put the config in a sub-directory
-                        # so the old code would have set workdir=that subdir.
-                        "config_file": os.path.join(tmp_real, "scratch", "run.yml"),
-                        "threads_total": 1,
-                    }
-                )
-            finally:
-                os.chdir(old_cwd)
+        with patch("viralconseq._orchestrator.snakemake", side_effect=fake_snakemake):
+            consensus.run_snakemake_workflow(args)
+        return captured
 
-        config_dir = os.path.join(tmp_real, "scratch")
-        passed_workdir = captured.get("workdir")
-        self.assertNotEqual(
-            passed_workdir,
-            config_dir,
-            "workdir must NOT be the config file's parent directory",
+    def test_workdir_is_output_slash_run_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_real = os.path.realpath(tmp)
+            captured = self._captured_kwargs(
+                {
+                    "data_type": "nanopore",
+                    "reference": os.path.join(tmp_real, "ref.fasta"),
+                    # The config lives somewhere else entirely: it must not
+                    # influence the working directory.
+                    "config_file": os.path.join(tmp_real, "scratch", "run.yml"),
+                    "output": os.path.join(tmp_real, "results"),
+                    "run_name": "run1",
+                    "threads_total": 1,
+                }
+            )
+        self.assertEqual(captured["workdir"], os.path.join(tmp_real, "results", "run1"))
+        self.assertNotEqual(captured["workdir"], os.path.join(tmp_real, "scratch"))
+        self.assertTrue(captured["force_incomplete"])
+        self.assertTrue(os.path.isabs(captured["configfiles"][0]))
+
+    def test_workdir_omitted_without_output(self):
+        """Callers that pass no output/run_name (tests, embedding) keep Snakemake's default."""
+        captured = self._captured_kwargs(
+            {
+                "data_type": "illumina",
+                "reference": "ref.fasta",
+                "config_file": "c.yml",
+                "threads_total": 1,
+            }
         )
-        # Either workdir was omitted (Snakemake defaults to cwd) or it was
-        # explicitly set to cwd. Both are acceptable.
-        if passed_workdir is not None:
-            self.assertEqual(passed_workdir, tmp_real)
+        self.assertIsNone(captured["workdir"])
 
 
 # ---------------------------------------------------------------------------

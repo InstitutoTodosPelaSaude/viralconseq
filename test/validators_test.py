@@ -15,7 +15,9 @@ from viralconseq.exceptions import (
     ViralQCDatabaseNotFoundError,
 )
 from viralconseq.validators import (
+    absolutise_sample_paths,
     ensure_within_base,
+    get_samples_from_args,
     missing_viralqc_database_files,
     sanitize_identifier,
     validate_numeric_parameters,
@@ -122,6 +124,38 @@ class Test_SampleSheetIntegrity(unittest.TestCase):
         sheet = self._sheet([["../evil", self.np]])
         with self.assertRaises(SampleSheetError):
             validate_sample_sheet(sheet, "nanopore")
+
+
+class Test_AbsolutiseSamplePaths(unittest.TestCase):
+    """Sample FASTQ paths must be absolute in the config: Snakemake runs inside
+    the run directory, so a relative path would resolve against the wrong base."""
+
+    def test_relative_paths_resolved_against_cwd(self):
+        samples = {"s1": ["reads/a_R1.fastq.gz", "reads/a_R2.fastq.gz"]}
+        out = absolutise_sample_paths(samples)
+        self.assertEqual(out["s1"][0], os.path.abspath("reads/a_R1.fastq.gz"))
+        self.assertTrue(all(os.path.isabs(p) for p in out["s1"]))
+
+    def test_absolute_paths_untouched_and_base_dir_honoured(self):
+        samples = {"s1": ["/abs/a.fastq.gz"], "s2": ["b.fastq.gz"]}
+        out = absolutise_sample_paths(samples, base_dir="/base")
+        self.assertEqual(out["s1"], ["/abs/a.fastq.gz"])
+        self.assertEqual(out["s2"], [os.path.abspath("/base/b.fastq.gz")])
+
+    def test_get_samples_from_args_returns_absolute_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = os.getcwd()
+            os.chdir(tmp)
+            try:
+                _touch("s.fastq.gz")
+                with open("sheet.csv", "w") as fh:
+                    fh.write("s1,s.fastq.gz\n")
+                samples = get_samples_from_args(
+                    {"sample_sheet": "sheet.csv", "data_type": "nanopore"}
+                )
+            finally:
+                os.chdir(old)
+        self.assertEqual(samples["s1"], [os.path.join(os.path.realpath(tmp), "s.fastq.gz")])
 
 
 class Test_Sanitization(unittest.TestCase):
