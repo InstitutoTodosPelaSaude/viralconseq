@@ -8,6 +8,7 @@ the sample value.
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import yaml
 
@@ -63,6 +64,65 @@ class Test_AddSamples(unittest.TestCase):
         gen = self._gen()
         with self.assertRaises(ConfigurationError):
             gen.add_samples({"s1": ["a.fastq.gz", "b.fastq.gz"]}, DataType.NANOPORE)
+
+
+class Test_Save(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _full_generator(self):
+        gen = ConfigGenerator(os.path.join(self.tmp, "nested", "config.yml"))
+        gen.add_samples({"s1": ["/x/reads.fastq.gz"]}, DataType.NANOPORE)
+        gen.add_output("/out", "run")
+        gen.add_threads(2)
+        gen.add_consensus_settings("/ref.fa", "NA", 20)
+        gen.add_consensus_nanopore_settings(50, 0.51, 10000, "model", 20, 10, 30)
+        gen.add_viralqc_settings(run_viralqc=True, viralqc_db="/db")
+        gen.add_resource_settings({}, ["map_reads"])
+        return gen
+
+    def test_sections_written_in_order_with_comments(self):
+        gen = self._full_generator()
+        gen.save()
+        text = open(gen.config_path).read()
+        headers = [line for line in text.splitlines() if line.startswith("# --- ")]
+        self.assertEqual(
+            headers,
+            [
+                "# --- run ---",
+                "# --- consensus ---",
+                "# --- read_qc ---",
+                "# --- clair3 ---",
+                "# --- viralqc ---",
+                "# --- resources ---",
+            ],
+        )
+        # Every section header is followed by at least one explanatory comment.
+        lines = text.splitlines()
+        for header in headers:
+            nxt = lines[lines.index(header) + 1]
+            self.assertTrue(nxt.startswith("# ") and not nxt.startswith("# ---"), nxt)
+
+    def test_saved_yaml_roundtrips_and_leaves_no_tempfile(self):
+        gen = self._full_generator()
+        gen.save()
+        with open(gen.config_path) as fh:
+            loaded = yaml.safe_load(fh)
+        self.assertEqual(loaded, gen.config)
+        leftovers = [f for f in os.listdir(os.path.dirname(gen.config_path)) if f != "config.yml"]
+        self.assertEqual(leftovers, [])
+
+    def test_write_failure_raises_configuration_error_and_cleans_up(self):
+        gen = ConfigGenerator(os.path.join(self.tmp, "config.yml"))
+        gen.add_threads(1)
+        with patch("viralconseq.config_generator.os.replace", side_effect=OSError("disk full")):
+            with self.assertRaises(ConfigurationError):
+                gen.save()
+        self.assertEqual(os.listdir(self.tmp), [])
 
 
 if __name__ == "__main__":

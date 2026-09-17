@@ -2,7 +2,7 @@ import csv
 import os
 import tempfile
 import unittest
-from unittest.mock import mock_open, patch
+from unittest.mock import patch
 
 from viralconseq.consensus import (
     generate_config_file,
@@ -444,10 +444,17 @@ class Test_GenerateConfigFile(unittest.TestCase):
             "threads_total": 1,
         }
 
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("os.makedirs")
-    @patch("viralconseq.config_generator.yaml.dump")
-    def test_generate_config_file_illumina(self, mock_yaml_dump, mock_makedirs, mock_open):
+    def _generate(self):
+        """Write the config to a temp dir and return it parsed (comments dropped)."""
+        import yaml as _yaml
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.args["config_file"] = os.path.join(tmp, "config_file.yaml")
+            generate_config_file(self.samples, self.args)
+            with open(self.args["config_file"]) as fh:
+                return _yaml.safe_load(fh)
+
+    def test_generate_config_file_illumina(self):
         """Test config file generation for Illumina data."""
         self.args["data_type"] = "illumina"
         self.samples = {
@@ -455,17 +462,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
             "sample2": ["R1_sample2.fastq", "R2_sample2.fastq"],
         }
 
-        generate_config_file(self.samples, self.args)
-
-        # config_file.yaml has no directory component, so makedirs should NOT be called
-        mock_makedirs.assert_not_called()
-        mock_open.assert_called_once_with("config_file.yaml", "w")
-        # Check that yaml.dump was called (once per section)
-        self.assertGreaterEqual(mock_yaml_dump.call_count, 1)
-        # Aggregate all dumped sections into one dict
-        config_dict = {}
-        for call in mock_yaml_dump.call_args_list:
-            config_dict.update(call[0][0])
+        config_dict = self._generate()
         self.assertIn("samples", config_dict)
         self.assertEqual(config_dict["data"], "illumina")
         self.assertEqual(config_dict["reference"], "reference.fasta")
@@ -495,12 +492,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
             "-a --sam-hit-only --secondary=no --score-N=0",
         )
 
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("os.makedirs")
-    @patch("viralconseq.config_generator.yaml.dump")
-    def test_generate_config_file_illumina_with_isnv(
-        self, mock_yaml_dump, mock_makedirs, mock_open
-    ):
+    def test_generate_config_file_illumina_with_isnv(self):
         """Test config file generation for Illumina data with iSNV enabled."""
         self.args["data_type"] = "illumina"
         self.args["run_isnv"] = True
@@ -509,19 +501,11 @@ class Test_GenerateConfigFile(unittest.TestCase):
             "sample2": ["R1_sample2.fastq", "R2_sample2.fastq"],
         }
 
-        generate_config_file(self.samples, self.args)
-
-        self.assertGreaterEqual(mock_yaml_dump.call_count, 1)
-        config_dict = {}
-        for call in mock_yaml_dump.call_args_list:
-            config_dict.update(call[0][0])
+        config_dict = self._generate()
         self.assertEqual(config_dict["data"], "illumina")
         self.assertEqual(config_dict["run_isnv"], True)
 
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("os.makedirs")
-    @patch("viralconseq.config_generator.yaml.dump")
-    def test_generate_config_file_nanopore(self, mock_yaml_dump, mock_makedirs, mock_open):
+    def test_generate_config_file_nanopore(self):
         """Test config file generation for Nanopore data."""
         self.args["data_type"] = "nanopore"
         self.samples = {
@@ -529,17 +513,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
             "sample2": ["R1_sample2.fastq"],
         }
 
-        generate_config_file(self.samples, self.args)
-
-        # config_file.yaml has no directory component, so makedirs should NOT be called
-        mock_makedirs.assert_not_called()
-        mock_open.assert_called_once_with("config_file.yaml", "w")
-        # Check that yaml.dump was called (once per section)
-        self.assertGreaterEqual(mock_yaml_dump.call_count, 1)
-        # Aggregate all dumped sections into one dict
-        config_dict = {}
-        for call in mock_yaml_dump.call_args_list:
-            config_dict.update(call[0][0])
+        config_dict = self._generate()
         self.assertIn("samples", config_dict)
         self.assertEqual(config_dict["data"], "nanopore")
         self.assertEqual(config_dict["reference"], "reference.fasta")
@@ -570,12 +544,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
         self.assertEqual(config_dict["run_viralqc_cpus"], 2)
         self.assertEqual(config_dict["run_viralqc_ram"], 4)
 
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("os.makedirs")
-    @patch("viralconseq.config_generator.yaml.dump")
-    def test_generate_config_file_segmented_reference(
-        self, mock_yaml_dump, mock_makedirs, mock_open
-    ):
+    def test_generate_config_file_segmented_reference(self):
         """Test config file generation with segmented reference."""
         self.args["data_type"] = "nanopore"
         self.args["reference"] = {"S": "/path/to/S.fasta", "L": "/path/to/L.fasta"}
@@ -583,12 +552,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
             "sample1": ["R1_sample1.fastq"],
         }
 
-        generate_config_file(self.samples, self.args)
-
-        self.assertGreaterEqual(mock_yaml_dump.call_count, 1)
-        config_dict = {}
-        for call in mock_yaml_dump.call_args_list:
-            config_dict.update(call[0][0])
+        config_dict = self._generate()
         self.assertEqual(
             config_dict["reference"], {"S": "/path/to/S.fasta", "L": "/path/to/L.fasta"}
         )

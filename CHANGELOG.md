@@ -35,6 +35,11 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   30). A hand-edited YAML missing a key fails at parse time with the key named.
 - `--threads`, `--threads-total`, every `--<rule>-cpus`/`--<rule>-ram` and
   `setup --threads` reject values below 1 at the command line.
+- The generated config YAML is written atomically (temporary sibling file,
+  then rename) and is organised into commented sections (`run`, `consensus`,
+  `read_qc`, `isnv`, `clair3`, `viralqc`, `resources`) that explain each group
+  of keys, so the file doubles as the run's documentation. Keys and values are
+  unchanged; only comments and ordering differ.
 - The config-only flag strings `viralqc_extra_flags` and
   `minimap2_consensus_align_flags` are validated with `shlex` and refused if
   they contain a shell metacharacter, both by the Python layer and at

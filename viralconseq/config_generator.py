@@ -1,7 +1,10 @@
 """Configuration file generation for the viralconseq workflows."""
 
+import contextlib
 import os
-from typing import Any, Dict, List, Optional, Union
+import tempfile
+import textwrap
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import yaml
 
@@ -17,9 +20,63 @@ _VIRALQC_DB_PLACEHOLDERS = [f"viralqc_db/{name}" for name in ViralQCDatabase.REQ
 class ConfigGenerator:
     """Generates YAML configuration files for Snakemake workflows."""
 
-    # Section names used as comment headers in the output YAML
-    SECTION_PARAMETERS = "parameters"
+    # Sections of the written YAML, in output order, each with the comment
+    # block printed above it. The YAML doubles as the run's documentation, so
+    # a reader can tell what a key does and whether it is safe to edit.
+    SECTIONS: List[Tuple[str, str]] = [
+        (
+            "run",
+            "Samples (sample-<id> -> absolute FASTQ paths), data type, run directory "
+            "and the thread baseline. Written from the sample sheet and the CLI; "
+            "regenerate with --create-config-only rather than editing by hand.",
+        ),
+        (
+            "consensus",
+            "Reference-guided consensus calling: reference FASTA (or segment -> FASTA), "
+            "primer scheme BED or NA, minimum depth for a called base, allele-frequency "
+            "threshold. minimap2_consensus_align_flags is config-only (no CLI flag) and "
+            "must hold plain tool flags.",
+        ),
+        (
+            "read_qc",
+            "Read filtering. Illumina: fastp adapters and trimming. minimum_length is "
+            "fastp's --length_required on Illumina and the ampliconclip read-length "
+            "filter on nanopore.",
+        ),
+        (
+            "isnv",
+            "Intra-host variant calling with LoFreq (Illumina only, run_isnv).",
+        ),
+        (
+            "clair3",
+            "Clair3 variant calling (nanopore): model, chunk size, variant quality and "
+            "depth filters, minimum mapping quality.",
+        ),
+        (
+            "viralqc",
+            "Consensus QC with viralQC (virus, clade, genome-quality grade). "
+            "viralqc_extra_flags is config-only and must hold plain tool flags.",
+        ),
+        (
+            "provenance",
+            "Written by viralconseq for the record; not read as a parameter.",
+        ),
+        (
+            "resources",
+            "Per-rule CPUs and RAM in GB; override on the command line with "
+            "--<rule>-cpus / --<rule>-ram.",
+        ),
+    ]
+    SECTION_RUN = "run"
+    SECTION_CONSENSUS = "consensus"
+    SECTION_READ_QC = "read_qc"
+    SECTION_ISNV = "isnv"
+    SECTION_CLAIR3 = "clair3"
+    SECTION_VIRALQC = "viralqc"
+    SECTION_PROVENANCE = "provenance"
     SECTION_RESOURCES = "resources"
+    # Historical alias: keys with no better home land in the first section.
+    SECTION_PARAMETERS = SECTION_RUN
 
     def __init__(self, config_path: str):
         """Initialize config generator.
@@ -38,7 +95,7 @@ class ConfigGenerator:
         Args:
             key: Configuration key name
             value: Configuration value
-            section: Section name (parameters, resources)
+            section: One of the ``SECTION_*`` names
         """
         self.config[key] = value
         self._sections[key] = section
@@ -116,14 +173,14 @@ class ConfigGenerator:
             variant_depth: Minimum alt allele depth to call a variant into consensus [clair3]
             minimum_map_quality: Minimum map quality to call a variant into consensus [clair3]
         """
-        P = self.SECTION_PARAMETERS
-        self._set(ConfigKeys.MINIMUM_LENGTH, minimum_read_length, P)
-        self._set(ConfigKeys.AF_THRESHOLD, af_threshold, P)
-        self._set(ConfigKeys.CHUNK_SIZE, chunk_size, P)
-        self._set(ConfigKeys.CLAIR3_MODEL, clair3_model, P)
-        self._set(ConfigKeys.VARIANT_QUALITY, variant_quality, P)
-        self._set(ConfigKeys.VARIANT_DEPTH, variant_depth, P)
-        self._set(ConfigKeys.MINIMUM_MAP_QUALITY, minimum_map_quality, P)
+        self._set(ConfigKeys.MINIMUM_LENGTH, minimum_read_length, self.SECTION_READ_QC)
+        self._set(ConfigKeys.AF_THRESHOLD, af_threshold, self.SECTION_CONSENSUS)
+        C = self.SECTION_CLAIR3
+        self._set(ConfigKeys.CHUNK_SIZE, chunk_size, C)
+        self._set(ConfigKeys.CLAIR3_MODEL, clair3_model, C)
+        self._set(ConfigKeys.VARIANT_QUALITY, variant_quality, C)
+        self._set(ConfigKeys.VARIANT_DEPTH, variant_depth, C)
+        self._set(ConfigKeys.MINIMUM_MAP_QUALITY, minimum_map_quality, C)
 
     def add_illumina_settings(
         self,
@@ -154,18 +211,18 @@ class ConfigGenerator:
             af_isnv_threshold: Minimum allele frequency threshold to call a variant into iSNV analysis
             run_isnv: Whether to run iSNV analysis
         """
-        P = self.SECTION_PARAMETERS
-        self._set(ConfigKeys.ADAPTERS, adapters, P)
-        self._set(ConfigKeys.MINIMUM_LENGTH, minimum_read_length, P)
-        self._set(ConfigKeys.TRIM_HEAD, trim_head if trim_head is not None else 0, P)
-        self._set(ConfigKeys.TRIM_TAIL, trim_tail if trim_tail is not None else 0, P)
-        self._set(ConfigKeys.CUT_FRONT_MEAN_QUALITY, cut_front_mean_quality, P)
-        self._set(ConfigKeys.CUT_TAIL_MEAN_QUALITY, cut_tail_mean_quality, P)
-        self._set(ConfigKeys.CUT_RIGHT_WINDOW_SIZE, cut_right_window_size, P)
-        self._set(ConfigKeys.CUT_RIGHT_MEAN_QUALITY, cut_right_mean_quality, P)
-        self._set(ConfigKeys.AF_THRESHOLD, af_threshold, P)
-        self._set(ConfigKeys.AF_ISNV_THRESHOLD, af_isnv_threshold, P)
-        self._set(ConfigKeys.RUN_ISNV, run_isnv, P)
+        Q = self.SECTION_READ_QC
+        self._set(ConfigKeys.ADAPTERS, adapters, Q)
+        self._set(ConfigKeys.MINIMUM_LENGTH, minimum_read_length, Q)
+        self._set(ConfigKeys.TRIM_HEAD, trim_head if trim_head is not None else 0, Q)
+        self._set(ConfigKeys.TRIM_TAIL, trim_tail if trim_tail is not None else 0, Q)
+        self._set(ConfigKeys.CUT_FRONT_MEAN_QUALITY, cut_front_mean_quality, Q)
+        self._set(ConfigKeys.CUT_TAIL_MEAN_QUALITY, cut_tail_mean_quality, Q)
+        self._set(ConfigKeys.CUT_RIGHT_WINDOW_SIZE, cut_right_window_size, Q)
+        self._set(ConfigKeys.CUT_RIGHT_MEAN_QUALITY, cut_right_mean_quality, Q)
+        self._set(ConfigKeys.AF_THRESHOLD, af_threshold, self.SECTION_CONSENSUS)
+        self._set(ConfigKeys.AF_ISNV_THRESHOLD, af_isnv_threshold, self.SECTION_ISNV)
+        self._set(ConfigKeys.RUN_ISNV, run_isnv, self.SECTION_ISNV)
 
     def add_consensus_settings(
         self,
@@ -186,7 +243,7 @@ class ConfigGenerator:
                 reference for the final multiple-sequence alignment. The
                 default keeps the historical behaviour.
         """
-        P = self.SECTION_PARAMETERS
+        P = self.SECTION_CONSENSUS
         self._set(ConfigKeys.REFERENCE, reference, P)
         self._set(ConfigKeys.SCHEME, primer_scheme, P)
         self._set(ConfigKeys.MINIMUM_DEPTH, minimum_coverage, P)
@@ -213,7 +270,7 @@ class ConfigGenerator:
                 line. Config-only (no CLI flag), like
                 ``minimap2_consensus_align_flags``.
         """
-        P = self.SECTION_PARAMETERS
+        P = self.SECTION_VIRALQC
         self._set(ConfigKeys.RUN_VIRALQC, run_viralqc, P)
         self._set(ConfigKeys.VIRALQC_DB, viralqc_db, P)
         self._set(ConfigKeys.VIRALQC_EXTRA_FLAGS, viralqc_extra_flags, P)
@@ -354,48 +411,46 @@ class ConfigGenerator:
     }
 
     def save(self) -> None:
-        """Save configuration to YAML file with section comment headers.
+        """Write the YAML atomically, one commented section at a time.
 
-        Keys are grouped into sections (# parameters, # resources) based on
-        the tags assigned by ``_set()``.  Within
-        each section the insertion order of keys is preserved.
+        Keys are grouped by the section tags assigned in ``_set()`` and written
+        in ``SECTIONS`` order; empty sections are skipped and insertion order is
+        kept within a section. The file is written to a temporary sibling and
+        renamed into place, so a crash mid-write never leaves a half config.
 
         Raises:
-            ConfigurationError: If config directory cannot be created
+            ConfigurationError: If the file or its directory cannot be written.
         """
         config_dir = os.path.dirname(self.config_path)
         if config_dir:  # Only create directory if path contains a directory component
             os.makedirs(config_dir, exist_ok=True)
 
-        # Group keys by section, preserving insertion order
-        section_order = [
-            self.SECTION_PARAMETERS,
-            self.SECTION_RESOURCES,
-        ]
-        grouped: Dict[str, Dict[str, Any]] = {s: {} for s in section_order}
-
+        grouped: Dict[str, Dict[str, Any]] = {name: {} for name, _ in self.SECTIONS}
         for key, value in self.config.items():
-            section = self._sections.get(key, self.SECTION_PARAMETERS)
-            grouped[section][key] = value
+            section = self._sections.get(key, self.SECTION_RUN)
+            grouped.setdefault(section, {})[key] = value
 
+        tmp_path: Optional[str] = None
         try:
-            with open(self.config_path, "w") as f:
-                first = True
-                for section in section_order:
-                    items = grouped[section]
+            fd, tmp_path = tempfile.mkstemp(
+                dir=config_dir or ".", prefix=".config-", suffix=".tmp", text=True
+            )
+            with os.fdopen(fd, "w") as f:
+                f.write("# viralconseq run configuration. Generated by the CLI; the Snakemake\n")
+                f.write("# workflows read exactly these keys.\n")
+                for section, comment in self.SECTIONS:
+                    items = grouped.get(section)
                     if not items:
                         continue
-                    if not first:
-                        f.write("\n")
-                    f.write(f"# {section}\n")
-                    yaml.dump(
-                        items,
-                        f,
-                        default_flow_style=False,
-                        sort_keys=False,
-                    )
-                    first = False
+                    f.write(f"\n# --- {section} ---\n")
+                    for line in textwrap.wrap(comment, width=76):
+                        f.write(f"# {line}\n")
+                    yaml.dump(items, f, default_flow_style=False, sort_keys=False)
+            os.replace(tmp_path, self.config_path)
         except (OSError, IOError) as e:
+            if tmp_path is not None:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_path)
             raise ConfigurationError(
                 f"Failed to write config file to {self.config_path}: {e}"
             ) from e
