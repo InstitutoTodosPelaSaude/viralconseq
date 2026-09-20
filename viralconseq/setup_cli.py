@@ -414,7 +414,10 @@ def setup(
                 "[clair3-models] FAILED for "
                 + ", ".join(model_failures)
                 + " - rerun 'viralconseq setup --skip-viralqc-db --clair3-models "
-                + " ".join(model_failures)
+                # Comma-separated: --clair3-models is multiple=True, so a
+                # space-separated list is parsed as extra positional arguments
+                # and click rejects the command we just told the user to run.
+                + ",".join(model_failures)
                 + f" --clair3-model-dir {model_dir}' (see the network errors above), or copy "
                 "the model directories in from another machine",
                 err=True,

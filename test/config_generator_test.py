@@ -182,5 +182,34 @@ class Test_Save(unittest.TestCase):
         self.assertEqual(os.listdir(self.tmp), [])
 
 
+class Test_ConfigFilePermissions(unittest.TestCase):
+    """The config is the run's contract (rerun, snakemake -s) and often lives in
+    a group-readable results tree, so the atomic write must not leave it 0600."""
+
+    def _write(self, directory):
+        path = os.path.join(directory, "config.yml")
+        generator = ConfigGenerator(path)
+        generator.add_samples({"a": ["/x/a_R1.fq.gz", "/x/a_R2.fq.gz"]}, "illumina")
+        generator.add_output(directory, "run1")
+        generator.add_threads(2)
+        generator.save()
+        return path
+
+    def test_mode_follows_the_umask(self):
+        import stat
+
+        previous = os.umask(0o022)
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                path = self._write(directory)
+                self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o644)
+            os.umask(0o077)
+            with tempfile.TemporaryDirectory() as directory:
+                path = self._write(directory)
+                self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+        finally:
+            os.umask(previous)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -137,7 +137,11 @@ rule run_viralqc:
         extra_flags = config.get("viralqc_extra_flags", "") or "",
     threads: cpus("run_viralqc")
     resources:
-        mem_mb = ram_mb("run_viralqc")
+        # Evaluated per job rather than at parse time: viralqc.smk is included
+        # by all four workflows, but when run_viralqc is off the rule never
+        # runs and the config need not carry run_viralqc_ram (the key guard in
+        # common.smk requires it only when viralQC is on).
+        mem_mb = lambda wildcards, attempt: ram_mb("run_viralqc")
     log:
         LOG("run_viralqc", target="run_viralqc", per_segment=False)
     benchmark:

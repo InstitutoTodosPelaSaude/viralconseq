@@ -6,6 +6,10 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# The download script is stdlib-only and may not import this package, so the
+# checkpoint names are defined there and re-used here rather than repeated.
+from viralconseq.scripts.python.fetch_clair3_model import CHECKPOINTS as _CHECKPOINTS
+
 
 class DataType:
     """Sequencing data types supported by viralconseq."""
@@ -115,7 +119,8 @@ class Clair3Models:
     """
 
     ENV_VAR = "VIRALCONSEQ_CLAIR3_MODELS"
-    CHECKPOINTS = ("pileup.pt", "full_alignment.pt")
+    #: The two checkpoint file names, defined once in the download script.
+    CHECKPOINTS = _CHECKPOINTS
     PRIMARY_BASE = "https://www.bio8.cs.hku.hk/clair3"
     BACKUP_BASE = "https://artic-example-datasets.s3.climb.ac.uk/clair3-models"
     MANIFEST_SOURCE = "artic 1.11.2 (artic/utils.py CLAIR3_MANIFEST)"

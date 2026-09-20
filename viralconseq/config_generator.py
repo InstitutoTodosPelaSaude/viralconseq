@@ -613,6 +613,13 @@ class ConfigGenerator:
                     for line in textwrap.wrap(comment, width=76):
                         f.write(f"# {line}\n")
                     yaml.dump(items, f, default_flow_style=False, sort_keys=False)
+            # mkstemp creates the staging file 0600 and os.replace preserves
+            # that mode. The config is the run's contract (rerun, snakemake -s)
+            # and lives in a results tree that is often group-readable, so
+            # restore the mode a plain open() would have produced.
+            umask = os.umask(0o077)
+            os.umask(umask)
+            os.chmod(tmp_path, 0o666 & ~umask)
             os.replace(tmp_path, self.config_path)
         except (OSError, IOError) as e:
             if tmp_path is not None:

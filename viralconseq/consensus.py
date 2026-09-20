@@ -32,13 +32,6 @@ from viralconseq.validators import (
 logger = logging.getLogger(__name__)
 
 
-def rule_list_for(args: Dict[str, Any]) -> list:
-    """The ``ResourceDefaults`` rule list for the run's data type."""
-    if args.get("data_type") == DataType.NANOPORE:
-        return ResourceDefaults.CONSENSUS_NANOPORE_RULES
-    return ResourceDefaults.CONSENSUS_ILLUMINA_RULES
-
-
 def validate_args(args: Dict[str, Any]) -> Dict[str, list]:
     """Validate all pipeline arguments.
 
@@ -63,7 +56,9 @@ def validate_args(args: Dict[str, Any]) -> Dict[str, list]:
     # Extra tool flags are spliced unquoted into shell commands.
     validate_flag_strings(args)
     # Memory budget: explicit --max-memory, else detected from the machine.
-    args["memory_budget_source"] = resolve_resource_budget(args, rule_list_for(args))
+    args["memory_budget_source"] = resolve_resource_budget(
+        args, _orchestrator.rule_list_for_args(args)
+    )
 
     # Get and validate samples
     samples = get_samples_from_args(args)

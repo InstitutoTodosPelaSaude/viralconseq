@@ -149,15 +149,28 @@ def load_viralqc(path: Optional[str]) -> List[Dict[str, str]]:
 def best_viralqc_row(
     rows: List[Dict[str, str]], sample: str, segment: Optional[str]
 ) -> Optional[Dict[str, str]]:
-    """The viralQC row for a sample: ``seqName`` equals the key
-    (``sample`` or ``sample|segment``) or, for a multi-contig reference,
-    starts with ``key|``; several candidates -> the highest ``coverage``."""
-    key = sample if segment is None else f"{sample}|{segment}"
-    candidates = [
-        row
-        for row in rows
-        if row.get("seqName") == key or (row.get("seqName") or "").startswith(key + "|")
-    ]
+    """The viralQC row for a sample; several candidates -> the highest ``coverage``.
+
+    ``prepare_viralqc_input`` writes ``sample[|contig][|segment]``: the contig
+    appears only for a multi-contig reference and the segment is always last.
+    A segmented run therefore matches on both ends, not on a ``sample|segment``
+    prefix that a contig in between would defeat. ``build_report`` matches the
+    same way and the two tables have to agree.
+    """
+    if segment is None:
+        candidates = [
+            row
+            for row in rows
+            if (row.get("seqName") or "") == sample
+            or (row.get("seqName") or "").startswith(sample + "|")
+        ]
+    else:
+        candidates = [
+            row
+            for row in rows
+            if (row.get("seqName") or "").startswith(sample + "|")
+            and (row.get("seqName") or "").endswith("|" + segment)
+        ]
     if not candidates:
         return None
 

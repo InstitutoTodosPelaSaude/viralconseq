@@ -198,5 +198,19 @@ class Test_SampleFastqHeaders(unittest.TestCase):
             self.assertEqual(sample_fastq_headers(path, n=1), ["r1 a=b"])
 
 
+class Test_SingleCheckpointDefinition(unittest.TestCase):
+    """``viralconseq setup`` and the nanopore pre-flight check must never
+    disagree about what a complete Clair3 model is, so the predicate and the
+    checkpoint names have exactly one definition (in the download script, which
+    is stdlib-only and cannot import the package)."""
+
+    def test_the_validator_and_the_names_are_shared(self):
+        from viralconseq.constants import Clair3Models
+        from viralconseq.scripts.python import fetch_clair3_model
+
+        self.assertIs(clair3_models.checkpoint_is_valid, fetch_clair3_model.checkpoint_is_valid)
+        self.assertIs(Clair3Models.CHECKPOINTS, fetch_clair3_model.CHECKPOINTS)
+
+
 if __name__ == "__main__":
     unittest.main()

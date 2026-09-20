@@ -139,3 +139,64 @@ def test_unsafe_flag_string_is_rejected_at_parse_time(tmp_path):
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
     assert result.returncode != 0
     assert "viralqc_extra_flags contains a shell metacharacter" in result.stdout + result.stderr
+
+
+def test_optional_viralqc_does_not_require_its_memory_key(tmp_path):
+    """A config that turns viralQC off need not carry ``run_viralqc_ram``.
+
+    ``rules/viralqc.smk`` is included by all four workflows, so its rule body is
+    parsed even when the step is off. Reading the key there at parse time made
+    such a config die with a bare ``KeyError`` instead of planning the run; the
+    rule now resolves ``mem_mb`` per job.
+    """
+    import yaml
+
+    with open(os.path.join(CONFIG_DIR, "consensus_nanopore__primers.yaml")) as fh:
+        config = yaml.safe_load(fh)
+    assert config["run_viralqc"] is False
+    config.pop("run_viralqc_ram", None)
+    trimmed = tmp_path / "no_viralqc_ram.yaml"
+    trimmed.write_text(yaml.safe_dump(config))
+
+    cmd = [
+        "snakemake",
+        "-s",
+        get_workflow_file("consensus_nanopore.yaml"),
+        "--configfile",
+        str(trimmed),
+        "-n",
+        "--cores",
+        "1",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    combined = result.stdout + result.stderr
+    assert result.returncode == 0, combined
+    assert "KeyError" not in combined, combined
+
+
+def test_enabled_viralqc_still_requires_its_memory_key(tmp_path):
+    """With viralQC on, the key is still named by the guard, not by a KeyError."""
+    import yaml
+
+    with open(os.path.join(CONFIG_DIR, "consensus_illumina.yaml")) as fh:
+        config = yaml.safe_load(fh)
+    assert config.get("run_viralqc", True) is True
+    config.pop("run_viralqc_ram", None)
+    trimmed = tmp_path / "viralqc_on_no_ram.yaml"
+    trimmed.write_text(yaml.safe_dump(config))
+
+    cmd = [
+        "snakemake",
+        "-s",
+        get_workflow_file("consensus_illumina.yaml"),
+        "--configfile",
+        str(trimmed),
+        "-n",
+        "--cores",
+        "1",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "missing required key(s): run_viralqc_ram" in combined, combined
+    assert "KeyError" not in combined, combined

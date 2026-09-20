@@ -19,6 +19,7 @@ from viralconseq import _orchestrator
 from viralconseq.config_generator import ConfigGenerator
 from viralconseq.consensus import workflow_path_for
 from viralconseq.consensus_cli import _default_conda_prefix
+from viralconseq.constants import ResourceDefaults
 from viralconseq.exceptions import ConfigurationError, ViralConseqError
 from viralconseq.provenance import MANIFEST_FILENAME, record_run_completion
 from viralconseq.validators import validate_config_dict
@@ -62,7 +63,7 @@ def apply_overrides(config: Dict[str, Any], overrides: Sequence[str]) -> Dict[st
 def args_from_config(config: Dict[str, Any], config_file: str, conda_prefix: str) -> Dict[str, Any]:
     """The subset of the pipeline ``args`` dict ``run_workflow`` needs."""
     output = str(config["output"]).rstrip("/")
-    return {
+    args = {
         "config_file": os.path.abspath(config_file),
         "data_type": config["data"],
         "threads_total": int(config.get("threads_total") or 1),
@@ -75,6 +76,13 @@ def args_from_config(config: Dict[str, Any], config_file: str, conda_prefix: str
         "output": os.path.dirname(output),
         "run_name": os.path.basename(output),
     }
+    # describe_resources reads each memory-declaring rule's allowance from
+    # args; without these the line printed at start would quote the built-in
+    # default while the rule itself uses the saved <rule>_ram value.
+    for rule in ResourceDefaults.MEMORY_RULES:
+        if f"{rule}_ram" in config:
+            args[f"{rule}_ram"] = config[f"{rule}_ram"]
+    return args
 
 
 @click.command(name="rerun")

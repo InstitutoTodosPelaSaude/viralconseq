@@ -25,6 +25,12 @@ from viralconseq import integrity
 from viralconseq.constants import Clair3Models
 from viralconseq.exceptions import Clair3ModelMixedError, Clair3ModelUnresolvedError
 
+# Re-exported: the predicate that decides whether a checkpoint is loadable
+# lives with the downloader, which is stdlib-only and may not import this
+# package. Importing it the other way round keeps `viralconseq setup` and the
+# pre-flight check from ever disagreeing about what a complete model is.
+from viralconseq.scripts.python.fetch_clair3_model import checkpoint_is_valid
+
 _RG_MODEL_RE = re.compile(r"(?:dna|rna)\w*_[^@\s]+@v[\d.]+")
 
 HINT = "pass --clair3-model NAME (see 'viralconseq setup --help' for the model list)"
@@ -140,25 +146,6 @@ def resolve_model_from_fastq(path: str, n: int = 20) -> Optional[str]:
             f"{sorted(i for i in ids if i)}); split the sample, or {HINT} to force one."
         )
     return resolved.pop()
-
-
-def checkpoint_is_valid(path: str) -> bool:
-    """True if ``path`` is a PyTorch checkpoint Clair3 2.x can load: a zip
-    archive with a ``*/data.pkl`` member, a ``*/data/`` payload and no CRC
-    errors. Detects truncated downloads and TensorFlow-era leftovers without
-    unpickling anything."""
-    if not os.path.isfile(path):
-        return False
-    try:
-        with zipfile.ZipFile(path) as archive:
-            names = archive.namelist()
-            if not any(name.endswith("/data.pkl") for name in names):
-                return False
-            if not any("/data/" in name for name in names):
-                return False
-            return archive.testzip() is None
-    except (zipfile.BadZipFile, OSError):
-        return False
 
 
 def missing_checkpoints(model_dir: str, name: str) -> List[str]:

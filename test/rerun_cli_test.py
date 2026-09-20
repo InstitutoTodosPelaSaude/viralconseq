@@ -144,5 +144,42 @@ class Test_RerunCommand(unittest.TestCase):
         self.assertEqual(result.exit_code, 1)
 
 
+class Test_ArgsFromConfigResources(unittest.TestCase):
+    """``describe_resources`` reads the per-rule allowances out of ``args``, so a
+    rerun must carry the saved ``<rule>_ram`` keys or it reports the defaults."""
+
+    CONFIG = {
+        "output": "/runs/r1/",
+        "data": "nanopore",
+        "threads_total": 8,
+        "max_memory_mb": 24576,
+        "memory_detected_mb": 32768,
+        "infer_consensus_sequence_ram": 8,
+        "run_viralqc_ram": 1,
+    }
+
+    def _describe(self, config):
+        from viralconseq import _orchestrator
+
+        args = args_from_config(config, "/runs/r1/config.yml", "/tmp/envs")
+        return args, _orchestrator.describe_resources(args, _orchestrator.rule_list_for_args(args))
+
+    def test_saved_override_is_reported(self):
+        args, line = self._describe(dict(self.CONFIG))
+        self.assertEqual(args["infer_consensus_sequence_ram"], 8)
+        self.assertIn("infer_consensus_sequence 8 GB -> at most 3 at once", line)
+
+    def test_without_an_override_the_measured_default_is_reported(self):
+        config = dict(self.CONFIG)
+        del config["infer_consensus_sequence_ram"]
+        _, line = self._describe(config)
+        self.assertIn("infer_consensus_sequence 2 GB -> at most 12 at once", line)
+
+    def test_run_directory_split_is_unchanged(self):
+        args, _ = self._describe(dict(self.CONFIG))
+        self.assertEqual(args["output"], "/runs")
+        self.assertEqual(args["run_name"], "r1")
+
+
 if __name__ == "__main__":
     unittest.main()

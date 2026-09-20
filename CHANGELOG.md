@@ -7,6 +7,49 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
+## [Unreleased]
+
+### Fixed
+
+- A config with `run_viralqc: false` no longer needs a `run_viralqc_ram` key.
+  `rules/viralqc.smk` is included by all four workflows, so its rule body is
+  parsed even when the step is off, and reading the key there at parse time
+  made such a YAML fail with a bare `KeyError` instead of the named-key guard.
+  The rule now resolves `mem_mb` per job. With viralQC on the key is still
+  required, and still reported by name (`rules/common.smk`, `rules/viralqc.smk`).
+- `summary.tsv` no longer loses the viralQC columns for a segmented run whose
+  per-segment reference has more than one contig. `prepare_viralqc_input`
+  writes `sample[|contig][|segment]` with the segment last, so matching on a
+  `sample|segment` prefix failed whenever a contig sat in between: those
+  samples were reported `viralqc_missing` with `NA` virus, clade and grade,
+  while `report.html` matched the row and showed the grade. Both tables now
+  match the same way (`scripts/python/build_summary.py`).
+- The generated `config.yml` again follows the process umask (0644 under the
+  usual 022) instead of the 0600 that the atomic write inherited from
+  `mkstemp`. The config is the run's contract for `viralconseq rerun` and
+  `snakemake -s`, and a group-owned results tree made it unreadable to anyone
+  but the owner (`config_generator.py`).
+- The command `viralconseq setup` prints after a failed Clair3 model download
+  is runnable again: `--clair3-models` is repeatable, so two or more failures
+  joined with a space were parsed as extra positional arguments and rejected
+  by click. They are joined with a comma, which the option already splits
+  (`setup_cli.py`).
+- `viralconseq rerun` reports the memory allowance a saved `<rule>_ram`
+  override actually buys, instead of the built-in default. Only the printed
+  line was wrong; Snakemake always scheduled on the config value
+  (`rerun_cli.py`).
+
+### Changed
+
+- Single definitions for three things that were written twice: the `sample-`
+  prefix (`config_generator.sample_key`, now used by the run manifest), the
+  Clair3 checkpoint validator and checkpoint names (defined in
+  `scripts/python/fetch_clair3_model.py`, re-used by `clair3_models.py` and
+  `constants.Clair3Models`), and the data-type-to-rule-list helper
+  (`_orchestrator.rule_list_for_args`). No behaviour change; `viralconseq
+  setup` and the nanopore pre-flight check can no longer disagree about what
+  a complete model is.
+
 ## [0.2.0] - 2026-09-17
 
 ### Added

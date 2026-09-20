@@ -507,5 +507,49 @@ class Test_SetupThreadsRange(unittest.TestCase):
         self.assertIn("is not in the range", result.output)
 
 
+class Test_Clair3ModelFailureHint(unittest.TestCase):
+    """The command printed after a failed download has to be runnable:
+    ``--clair3-models`` is ``multiple=True``, so a space-separated list is
+    parsed as extra positional arguments and click refuses it."""
+
+    MODELS = ("r941_prom_hac_g360+g422", "r1041_e82_400bps_hac_v500")
+
+    def test_comma_separated_models_parse_and_space_separated_do_not(self):
+        from viralconseq.cli import cli
+
+        runner = CliRunner()
+        base = ["setup", "--skip-viralqc-db", "--clair3-model-dir", "/tmp/mm", "--dry-run"]
+        comma = runner.invoke(cli, base + ["--clair3-models", ",".join(self.MODELS)])
+        self.assertNotIn("unexpected extra argument", comma.output)
+        space = runner.invoke(cli, base + ["--clair3-models"] + list(self.MODELS))
+        self.assertIn("unexpected extra argument", space.output)
+
+    def test_the_hint_joins_the_failures_with_a_comma(self):
+        from viralconseq import setup_cli as module
+        from viralconseq.cli import cli
+
+        # --dry-run never reaches the download, so drive the real path with the
+        # env build stubbed out and every model reported as failed.
+        with (
+            patch.object(module, "snakemake", return_value=True),
+            patch.object(module, "_fetch_clair3_models", return_value=list(self.MODELS)),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "setup",
+                    "--skip-viralqc-db",
+                    "--pipelines",
+                    "consensus-illumina",
+                    "--clair3-model-dir",
+                    "/tmp/mm",
+                ],
+            )
+        self.assertIn("--clair3-models " + ",".join(self.MODELS), result.output)
+        # And what it printed is what click accepts.
+        self.assertNotIn("unexpected extra argument", result.output)
+
+
 if __name__ == "__main__":
     unittest.main()

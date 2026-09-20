@@ -23,6 +23,7 @@ import shutil
 from typing import Any, Dict, Optional
 
 from viralconseq import __version__
+from viralconseq.config_generator import sample_key
 from viralconseq.validators import _is_path_sentinel
 
 MANIFEST_FILENAME = "run_manifest.json"
@@ -69,7 +70,7 @@ def build_run_manifest(
     # Keyed ``sample-<id>`` like every other output (config, samples/ dirs,
     # FASTA headers, summary tables).
     sample_inputs = {
-        f"sample-{sample}": [_describe_input(p) for p in paths]
+        sample_key(sample): [_describe_input(p) for p in paths]
         for sample, paths in (samples or {}).items()
     }
 

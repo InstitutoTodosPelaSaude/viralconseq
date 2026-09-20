@@ -160,7 +160,12 @@ def cpus(rule):
 
 
 def ram_mb(rule):
-    """``mem_mb`` for a memory-declaring rule, from its required ``<rule>_ram`` (GB) key."""
+    """``mem_mb`` for a memory-declaring rule, from its ``<rule>_ram`` (GB) key.
+
+    The key is required exactly when the rule can run, so a rule whose whole
+    step is optional (``run_viralqc``) must call this from a ``resources:``
+    lambda, which Snakemake evaluates per job instead of at parse time.
+    """
     return int(config[f"{rule}_ram"]) * 1024
 
 

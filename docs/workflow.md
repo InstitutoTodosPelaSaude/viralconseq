@@ -301,6 +301,13 @@ Two helpers in `rules/common.smk` turn config keys into Snakemake directives:
   `_REQUIRED_KEYS`; `ConfigGenerator` always writes them). No other rule
   declares memory: the figures are only ever taken from a measured run.
 
+  A rule whose whole step is optional calls `ram_mb` from a lambda
+  (`mem_mb = lambda wildcards, attempt: ram_mb("run_viralqc")`) so Snakemake
+  resolves it per job. `viralqc.smk` is included by all four workflows and its
+  rule body is parsed even when `run_viralqc` is off, and `common.smk` requires
+  `run_viralqc_ram` only when viralQC is on; reading the key at parse time
+  instead turned such a config into a bare `KeyError`.
+
 How the CLI options combine (`consensus_cli.py`, `validators.resolve_resource_budget`,
 `_orchestrator.run_workflow`):
 

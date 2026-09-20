@@ -312,5 +312,51 @@ class Test_BuildSummary(unittest.TestCase):
         self.assertEqual(legacy_rows[1][2], "10")  # number_of_trim_paired_reads falls back to total
 
 
+class Test_BestViralQCRow(unittest.TestCase):
+    """``prepare_viralqc_input`` writes ``sample[|contig][|segment]``: the contig
+    appears only for a multi-contig reference and the segment is always last."""
+
+    ROWS = [
+        {"seqName": "sample-a|chrA|S1", "coverage": "91"},
+        {"seqName": "sample-a|chrB|S1", "coverage": "40"},
+        {"seqName": "sample-a|S2", "coverage": "80"},
+        {"seqName": "sample-b|chrA|S1", "coverage": "99"},
+    ]
+
+    def test_segment_with_a_multi_contig_reference_is_found(self):
+        row = build_summary.best_viralqc_row(self.ROWS, "sample-a", "S1")
+        self.assertIsNotNone(row)
+        self.assertEqual(row["seqName"], "sample-a|chrA|S1")  # best covered
+
+    def test_single_contig_segment_still_matches(self):
+        row = build_summary.best_viralqc_row(self.ROWS, "sample-a", "S2")
+        self.assertEqual(row["seqName"], "sample-a|S2")
+
+    def test_absent_segment_and_other_samples_do_not_match(self):
+        self.assertIsNone(build_summary.best_viralqc_row(self.ROWS, "sample-a", "S3"))
+        row = build_summary.best_viralqc_row(self.ROWS, "sample-b", "S1")
+        self.assertEqual(row["seqName"], "sample-b|chrA|S1")
+
+    def test_unsegmented_run_picks_the_best_contig(self):
+        rows = [
+            {"seqName": "sample-a", "coverage": "10"},
+            {"seqName": "sample-a|chrB", "coverage": "77"},
+        ]
+        row = build_summary.best_viralqc_row(rows, "sample-a", None)
+        self.assertEqual(row["seqName"], "sample-a|chrB")
+
+    def test_it_agrees_with_the_report_matcher(self):
+        """summary.tsv and report.html must not disagree about the same sample."""
+        from viralconseq.scripts.python import build_report
+
+        grouped = {}
+        for row in self.ROWS:
+            grouped.setdefault(row["seqName"].split("|")[0], []).append(row)
+        self.assertEqual(
+            build_report.pick_viralqc_row(grouped, "sample-a", "S1")["seqName"],
+            build_summary.best_viralqc_row(self.ROWS, "sample-a", "S1")["seqName"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
