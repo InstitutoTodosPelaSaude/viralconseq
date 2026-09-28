@@ -150,7 +150,14 @@ rule infer_consensus_sequence:
         cp {params.output_prefix_dir}/merge_output.vcf.gz.tbi {output.vcf_raw_index}
 
         bcftools norm -m - -f {input.reference} {output.vcf_raw} > {output.vcf_norm}
-        bcftools filter -i 'FILTER="PASS" && FORMAT/AF >= {params.af_threshold} && FORMAT/AD[0:1] >= {params.variant_depth}' {output.vcf_norm} -o {output.vcf} -O z
+        # Allele fraction = ALT / (REF + ALT) from FORMAT/AD, not Clair3's FORMAT/AF
+        # (ALT / DP): DP counts reads that carry a deletion at the site, and at a
+        # variant that creates a homopolymer half the ONT reads do, which pushed
+        # true variants under the threshold and reverted them to the reference.
+        # The denominator drops every read showing neither allele (deletion, third
+        # base, N), so this fraction is deliberately not relative to depth and
+        # variant_depth is the only absolute floor left on the ALT read count.
+        bcftools filter -i 'FILTER="PASS" && FORMAT/AD[0:1] >= {params.variant_depth} && FORMAT/AD[0:1] >= {params.af_threshold} * (FORMAT/AD[0:0] + FORMAT/AD[0:1])' {output.vcf_norm} -o {output.vcf} -O z
         tabix {output.vcf}
         
         samtools depth -J -a {input.bam} | \

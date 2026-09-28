@@ -152,7 +152,7 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--primer-scheme` | — | Primer scheme BED file (amplicon sequencing only). |
 | `--minimum-coverage` | `20` | Minimum depth for consensus base inclusion. |
 | `--minimum-read-length` | `50` | Minimum read length threshold. |
-| `--af-threshold` | `0.51` | Min allele frequency to call variant into consensus. |
+| `--af-threshold` | `0.51` Illumina, `0.6` Nanopore | Minimum allele fraction to call a variant into consensus. Illumina: the fraction of base counts (`samtools consensus -c`). Nanopore: ALT reads over REF plus ALT reads at the site from Clair3's `AD`; reads showing a deletion or a third base there do not count, so a variant that creates a homopolymer is not lost to the reads that collapse it. |
 | `--consensus-coverage-threshold` | `70` | Percent of reference positions at or above `--minimum-coverage` (`coverage_min_depth` in `summary.tsv`) a sample needs to enter `consensus/consensus.cov<T>.fasta`; 0–100. Every sample is always in `consensus/consensus.fasta`. |
 | `--run-name` | `undefined` | Name for the sequencing run. |
 | `--threads` | `1` | Threads per individual task (at least 1); the baseline every rule uses unless a `--<rule>-cpus` override is given. |
@@ -242,7 +242,7 @@ Note that the step needs outbound HTTPS even with the databases in place:
 | `--chunk-size` | `10000` | Chunk size for clair3 processing. |
 | `--clair3-model` | `auto` | Clair3 model for variant calling. `auto` reads the basecall model tag Dorado/MinKNOW write into every read header (`basecall_model_version_id=` or `RG:Z:`) from the first reads of each sample and picks the matching model per sample, the way ARTIC's `choose_model` does (a run whose samples were basecalled with different models gets a per-sample mapping in the config). Reads without a tag (Guppy-era, re-headered, SRA dumps) fail before any work starts with a message naming this option; pass the model yourself, e.g. `r941_prom_hac_g360+g422` for R9.4.1 Guppy hac reads. Move-table (`*_with_mv`) models are refused. |
 | `--clair3-model-dir` | `~/.cache/viralconseq/clair3-models` | Directory with one sub-directory per model (`pileup.pt` + `full_alignment.pt`). Picked up from `$VIRALCONSEQ_CLAIR3_MODELS` if set. Every model the run needs must be present and complete or the run stops before any work with the exact `viralconseq setup --clair3-models NAME` command to fetch it. |
-| `--variant-quality` | `20` | Minimum variant quality (clair3). |
+| `--variant-quality` | `15` | Minimum variant quality (clair3). Clair3 flags calls below it `LowQual` and the consensus ignores them. |
 | `--variant-depth` | `10` | Minimum alt allele depth (clair3). |
 | `--minimum-map-quality` | `30` | Minimum mapping quality (clair3). |
 | `--minimum-mapped-reads` | `10` | Samples with fewer primary mapped reads than this are not sent to Clair3: they get an all-N consensus, header-only VCFs and `status no_mapped_reads` in `assembly/status/<sample>.txt`, and the run continues (a barcode with zero reads is a warning, not an error, on nanopore). A crash guard for (near-)empty barcodes, not a QC threshold; `0` disables it. |

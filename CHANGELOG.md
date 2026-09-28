@@ -9,6 +9,33 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ## [Unreleased]
 
+### Changed
+
+- Nanopore consensus calling keeps more of the variants Clair3 finds. On the
+  CDC CoronaHiT benchmark sets (216 ONT libraries against the deposited
+  genomes) the consensus reverted 113 true variants to the reference while
+  Clair3 had called 110 of them: 82 failed on `--variant-quality 20` alone
+  (39 at QUAL 18 to 20, 58 at 15 or above; adjacent SNVs such as the
+  28881-28883 triplet depress the score), and 28 fell under
+  `--af-threshold 0.51` because Clair3's `FORMAT/AF` divides by `DP`, which
+  counts every read at the site: at a variant that creates a homopolymer
+  (19 of the 28, at 11083, 9634, 21575 and 21736) half or more of the reads
+  collapse it into a deletion, and at 4303 (the other 9) a strand-biased
+  error supplies a third base. Two changes: `--variant-quality` defaults to 15
+  (`consensus_cli.py`), and `infer_consensus_sequence` measures the allele
+  fraction as ALT over REF plus ALT reads from `FORMAT/AD`, with
+  `--af-threshold` defaulting to 0.6 on nanopore (`rules/consensus_nanopore.smk`).
+  Repeating the same 216 libraries with both in place: mismatches against the
+  deposited genomes fall from 114 to 35 and pooled SNV recall rises from 0.959
+  to 0.987, no sample gained a mismatch, SNV precision is 1.000 on all four
+  subsets, and the Illumina consensus of the same biosamples carries the
+  recovered allele at every one of those sites. The Illumina defaults are
+  unchanged. A config written by an earlier release keeps its own values and no
+  key is renamed, but on nanopore `af_threshold` is now measured over REF plus
+  ALT reads, so an old 0.51 is a looser cut than it was and `viralconseq rerun`
+  on a nanopore run made before this change will not reproduce its consensus
+  exactly.
+
 ### Fixed
 
 - A config with `run_viralqc: false` no longer needs a `run_viralqc_ram` key.

@@ -959,11 +959,12 @@ function renderDetail() {
         ]) : `<p class="note">No fastp report for this sample.</p>`}</div>`
     : `<div><h3 class="sub-h3">Variant calling</h3>
         <p class="note">Clair3 calls on reads passing the length and mapping-quality floors; the consensus
-          applies variants at or above the allele-frequency threshold and masks positions below ${P.min_depth}×.</p>
+          applies variants whose allele fraction, ALT over REF plus ALT reads, is at or above the
+          threshold below, and masks positions below ${P.min_depth}×.</p>
         ${statBlock([
           { k: "Clair3 model", v: `<small>${esc(d.clair3_model || P.clair3_model || "—")}</small>` },
           { k: "MAPQ floor", v: fmt(P.minimum_map_quality) },
-          { k: "AF threshold", v: P.af_threshold === null ? "—" : String(P.af_threshold) },
+          { k: "Allele fraction", v: P.af_threshold === null ? "—" : String(P.af_threshold) },
           { k: "Min read length", v: P.minimum_length === null ? "—" : fmt(P.minimum_length) + "<small> bp</small>" },
           { k: "Variant records", v: d.variants ? fmt(d.variants.records) : "—" },
         ])}</div>`;
@@ -1140,7 +1141,7 @@ document.getElementById("prov").innerHTML =
    ["minimum depth", `${P.min_depth}×`],
    ["consensus coverage threshold", `${T}% at ≥${P.min_depth}×`],
    ["primer scheme", P.primer_scheme],
-   ["allele-frequency threshold", P.af_threshold],
+   [IS_ILLUMINA ? "allele-frequency threshold" : "allele-fraction threshold (ALT / (REF + ALT))", P.af_threshold],
    ["minimum read length", P.minimum_length === null ? null : `${fmt(P.minimum_length)} bp`],
    ["MAPQ floor", P.minimum_map_quality],
    ["Clair3 model", IS_ILLUMINA ? null : P.clair3_model],

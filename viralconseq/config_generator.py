@@ -253,7 +253,8 @@ class ConfigGenerator:
 
         Args:
             minimum_read_length: Minimum read length threshold
-            af_threshold: Allele frequency threshold to call a variant into consensus
+            af_threshold: Allele fraction threshold to call a variant into consensus,
+                ALT reads over REF plus ALT reads at the site
             chunk_size: Size of chunks to process [clair3]
             clair3_model: Model for variant calling [clair3]: one name for every
                 sample, or ``{sample id: name}`` (re-keyed ``sample-<id>`` like
@@ -517,10 +518,10 @@ class ConfigGenerator:
             else:
                 gen.add_consensus_nanopore_settings(
                     minimum_read_length=50,
-                    af_threshold=0.51,
+                    af_threshold=0.6,
                     chunk_size=10000,
                     clair3_model=_SKELETON_CLAIR3_MODEL,
-                    variant_quality=20,
+                    variant_quality=15,
                     variant_depth=10,
                     minimum_map_quality=30,
                     clair3_model_dir=f"{root}/clair3_models",

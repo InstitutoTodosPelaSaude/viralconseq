@@ -414,10 +414,14 @@ def consensus_illumina(
 @_add_resource_options(ResourceDefaults.CONSENSUS_NANOPORE_RULES)
 @click.option(
     "--af-threshold",
-    default=0.51,
+    default=0.6,
     show_default=True,
     type=float,
-    help="Minimum allele frequency to call a variant into consensus.",
+    help=(
+        "Minimum allele fraction to call a variant into consensus: ALT reads over "
+        "REF plus ALT reads at the site (reads showing a deletion or a third base "
+        "there do not count)."
+    ),
 )
 @click.option(
     "--chunk-size",
@@ -455,7 +459,7 @@ def consensus_illumina(
 )
 @click.option(
     "--variant-quality",
-    default=20,
+    default=15,
     show_default=True,
     type=int,
     help="Minimum variant quality (clair3).",

@@ -380,7 +380,7 @@ class Test_ConsensusNanoporeCommand(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         args = mock_main.call_args[0][0]
         self.assertEqual(args["data_type"], "nanopore")
-        self.assertEqual(args["af_threshold"], 0.51)
+        self.assertEqual(args["af_threshold"], 0.6)
         self.assertEqual(args["chunk_size"], 10000)
         self.assertEqual(args["clair3_model"], "auto")
         self.assertTrue(
@@ -388,7 +388,7 @@ class Test_ConsensusNanoporeCommand(unittest.TestCase):
                 os.path.join(".cache", "viralconseq", "clair3-models")
             )
         )
-        self.assertEqual(args["variant_quality"], 20)
+        self.assertEqual(args["variant_quality"], 15)
         self.assertEqual(args["variant_depth"], 10)
         self.assertEqual(args["minimum_map_quality"], 30)
 

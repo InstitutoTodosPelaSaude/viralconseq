@@ -211,7 +211,7 @@ Most of the output layout matches the Illumina run, with a couple of additions a
 The headline `consensus.fasta` and `samples_alignment.fasta` files behave identically to the Illumina case.
 
 ```{tip}
-`--af-threshold` defaults to `0.51` on both platforms. On Nanopore, Clair3 additionally filters calls by its own quality score (`--variant-quality`, `--variant-depth`). If you see too many heterozygous-looking sites in your consensus, raise the threshold: `--af-threshold 0.7` or higher.
+`--af-threshold` means something slightly different on each platform. On Illumina it is the fraction of base counts at the position (`samtools consensus -c`) and defaults to `0.51`. On Nanopore it is ALT reads over REF plus ALT reads from Clair3's `AD` and defaults to `0.6`; reads showing a deletion at the site do not count, so a variant that creates a homopolymer is not lost to the reads that collapse it. Clair3 additionally filters calls by its own quality score (`--variant-quality`, `--variant-depth`). If you see too many heterozygous-looking sites in your consensus, raise the threshold: `--af-threshold 0.7` or higher.
 ```
 
 ## Segmented viruses
@@ -257,12 +257,12 @@ See [Notes — Segmented viruses](../notes.md#segmented-viruses) for the full di
 The three knobs you will reach for most often:
 
 - **`--minimum-coverage`** (default `20`) — any reference position with fewer than this many reads after primer clipping becomes `N`. Lower it (e.g. `10`) for low-depth samples where you would rather see a tentative base than a hole; raise it for high-confidence assemblies.
-- **`--af-threshold`** (default `0.51`) — minimum allele frequency to call a variant into the consensus. At `0.51` the consensus is the majority allele. Raise it (e.g. `0.7`) for noisier data; lower it to capture ambiguity codes.
+- **`--af-threshold`** (default `0.51` on Illumina, `0.6` on Nanopore) — minimum allele fraction to call a variant into the consensus. On Illumina it is a fraction of base counts, so `0.51` is the majority allele; on Nanopore it is ALT over REF plus ALT reads. Raise it (e.g. `0.7`) for noisier data; lower it to capture ambiguity codes.
 - **`--minimum-read-length`** (default `50`) — on Illumina, reads below this length are dropped by fastp at QC time and by `samtools ampliconclip --filter-len` after primer clipping; on Nanopore it is applied only by `samtools ampliconclip --filter-len`, i.e. only when a primer scheme is given.
 
 Nanopore has a few extra knobs:
 
-- **`--variant-quality`** (default `20`) — Clair3 minimum QUAL.
+- **`--variant-quality`** (default `15`) — Clair3 minimum QUAL. Calls below it are flagged `LowQual` and never reach the consensus.
 - **`--variant-depth`** (default `10`) — minimum alt-allele read support.
 - **`--chunk-size`** (default `10000`) — Clair3 chunk size; tune only if Clair3 runs out of memory on huge references.
 
