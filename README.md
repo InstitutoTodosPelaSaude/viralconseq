@@ -1,5 +1,6 @@
 # viralconseq
 
+[![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
 [![CI](https://github.com/filiperomero2/viralconseq/actions/workflows/ci.yaml/badge.svg)](https://github.com/filiperomero2/viralconseq/actions/workflows/ci.yaml)
 [![PyPI](https://img.shields.io/pypi/v/viralconseq.svg)](https://pypi.org/project/viralconseq/)
 [![Documentation](https://readthedocs.org/projects/viralconseq/badge/?version=latest)](https://viralconseq.readthedocs.io/en/latest/)
