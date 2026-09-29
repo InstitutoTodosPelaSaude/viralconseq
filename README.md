@@ -25,17 +25,19 @@ viralconseq infers consensus genome sequences from viral high-throughput sequenc
 
 ## Installation
 
-Install the CLI from PyPI:
+viralconseq is published on [PyPI](https://pypi.org/project/viralconseq/). It needs Python 3.10
+or 3.11 and conda at runtime (Snakemake builds the per-rule tool environments with
+`--use-conda`), so install it into a conda environment created from the project's
+`environment.yml`:
 
 ```bash
+conda env create -n viralconseq -f https://raw.githubusercontent.com/InstitutoTodosPelaSaude/viralconseq/main/environment.yml
+conda activate viralconseq
 pip install viralconseq
 ```
 
-> **conda/mamba is required at runtime.** viralconseq orchestrates Snakemake, which builds
-> the per-rule tool environments (aligner, variant callers, QC tools) via `--use-conda` on
-> first run. Make sure conda or mamba is installed and on your `PATH`; pre-build those
-> environments and download the viralQC databases (about 1 GB) up front with
-> `viralconseq setup --pipelines all`.
+Then run `viralconseq setup --pipelines all` once, as in the Quick start below: it pre-builds those
+environments and downloads the viralQC databases (about 1 GB).
 
 To install from source instead, `setup.sh` does the whole thing in one command: it
 finds conda/mamba/micromamba (even when they are not on `PATH`), creates or updates the
@@ -60,7 +62,7 @@ conda activate viralconseq
 pip install -e ".[dev]"
 ```
 
-Per-rule conda environments under `viralconseq/scripts/envs/` are managed automatically by Snakemake; the top-level `environment.yml` only installs viralconseq itself and its core runtime dependencies.
+Per-rule conda environments under `viralconseq/scripts/envs/` are managed automatically by Snakemake; the top-level `environment.yml` only holds the core runtime dependencies (Python, Snakemake, conda).
 
 ## Quick start
 
