@@ -7,7 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
-## [Unreleased]
+## [0.2.1] - 2026-09-29
+
+The `0.2.0` files on PyPI were built from this release's code by mistake,
+before the version bump; install `0.2.1`.
 
 ### Changed
 
