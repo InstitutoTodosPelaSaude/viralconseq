@@ -51,10 +51,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/filiperomero2/viralconseq"
+Homepage = "https://github.com/InstitutoTodosPelaSaude/viralconseq"
 Documentation = "https://viralconseq.readthedocs.io/en/latest/"
-Changelog = "https://github.com/filiperomero2/viralconseq/blob/main/CHANGELOG.md"
-Issues = "https://github.com/filiperomero2/viralconseq/issues"
+Changelog = "https://github.com/InstitutoTodosPelaSaude/viralconseq/blob/main/CHANGELOG.md"
+Issues = "https://github.com/InstitutoTodosPelaSaude/viralconseq/issues"
 
 [project.scripts]
 viralconseq = "viralconseq.cli:main"

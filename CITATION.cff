@@ -5,7 +5,7 @@ title: "viralconseq: reference-guided consensus sequence inference for viral hig
 version: 0.2.0
 date-released: 2026-09-17
 license: MIT
-repository-code: "https://github.com/filiperomero2/viralconseq"
+repository-code: "https://github.com/InstitutoTodosPelaSaude/viralconseq"
 url: "https://viralconseq.readthedocs.io/"
 authors:
   - family-names: Moreira

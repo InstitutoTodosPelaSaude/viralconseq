@@ -35,6 +35,6 @@ citation
 
 ## Quick links
 
-- [GitHub repository](https://github.com/filiperomero2/viralconseq)
-- [Issues / bugs](https://github.com/filiperomero2/viralconseq/issues)
+- [GitHub repository](https://github.com/InstitutoTodosPelaSaude/viralconseq)
+- [Issues / bugs](https://github.com/InstitutoTodosPelaSaude/viralconseq/issues)
 - **License:** MIT

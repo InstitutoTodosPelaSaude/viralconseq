@@ -14,7 +14,7 @@ on demand.
 
 ```bash
 # Clone and create the conda environment
-git clone https://github.com/filiperomero2/viralconseq.git
+git clone https://github.com/InstitutoTodosPelaSaude/viralconseq.git
 cd viralconseq
 conda env create -f environment.yml
 conda activate viralconseq

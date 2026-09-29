@@ -1,10 +1,10 @@
 # viralconseq
 
 [![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
-[![CI](https://github.com/filiperomero2/viralconseq/actions/workflows/ci.yaml/badge.svg)](https://github.com/filiperomero2/viralconseq/actions/workflows/ci.yaml)
+[![CI](https://github.com/InstitutoTodosPelaSaude/viralconseq/actions/workflows/ci.yaml/badge.svg)](https://github.com/InstitutoTodosPelaSaude/viralconseq/actions/workflows/ci.yaml)
 [![PyPI](https://img.shields.io/pypi/v/viralconseq.svg)](https://pypi.org/project/viralconseq/)
 [![Documentation](https://readthedocs.org/projects/viralconseq/badge/?version=latest)](https://viralconseq.readthedocs.io/en/latest/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/filiperomero2/viralconseq/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/InstitutoTodosPelaSaude/viralconseq/blob/main/LICENSE)
 
 viralconseq infers consensus genome sequences from viral high-throughput sequencing data. It is a Python package that validates inputs, writes a Snakemake configuration and launches one of four reference-guided consensus workflows: Illumina paired-end or Nanopore reads, against a single or a segmented reference. viralconseq runs on *nix systems and processes entire sequencing runs in minimal time on a regular computer.
 
@@ -43,7 +43,7 @@ finds conda/mamba/micromamba (even when they are not on `PATH`), creates or upda
 `viralconseq setup --pipelines all` (per-rule envs, viralQC databases, Clair3 models):
 
 ```bash
-git clone https://github.com/filiperomero2/viralconseq.git
+git clone https://github.com/InstitutoTodosPelaSaude/viralconseq.git
 cd viralconseq
 bash setup.sh                        # everything; re-running is a no-op for what is already there
 bash setup.sh --no-setup             # environment + package only
@@ -99,4 +99,4 @@ viralconseq is the consensus-inference half of [ViralUnity](https://github.com/I
 
 ## License
 
-MIT — see [`LICENSE`](https://github.com/filiperomero2/viralconseq/blob/main/LICENSE).
+MIT — see [`LICENSE`](https://github.com/InstitutoTodosPelaSaude/viralconseq/blob/main/LICENSE).

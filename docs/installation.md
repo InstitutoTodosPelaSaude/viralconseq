@@ -28,7 +28,7 @@ from `environment.yml`, runs `pip install -e ".[dev]"` inside it and then `viral
 present are skipped.
 
 ```bash
-git clone https://github.com/filiperomero2/viralconseq.git
+git clone https://github.com/InstitutoTodosPelaSaude/viralconseq.git
 cd viralconseq/
 bash setup.sh                        # environment + package + per-rule envs, viralQC databases, Clair3 models
 bash setup.sh --no-setup             # environment + package only
@@ -114,4 +114,4 @@ To work on viralconseq itself, install the optional `dev` extras (linters and te
 pip install -e ".[dev]"
 ```
 
-See [CONTRIBUTING.md](https://github.com/filiperomero2/viralconseq/blob/main/CONTRIBUTING.md) for the full development workflow.
+See [CONTRIBUTING.md](https://github.com/InstitutoTodosPelaSaude/viralconseq/blob/main/CONTRIBUTING.md) for the full development workflow.

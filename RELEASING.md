@@ -75,7 +75,7 @@ both indexes and create the matching GitHub deployment environments:
 
 1. On <https://test.pypi.org> and <https://pypi.org>, add a *pending publisher*
    under the account/project publishing settings:
-   - Owner: `filiperomero2`, repo: `viralconseq`
+   - Owner: `InstitutoTodosPelaSaude`, repo: `viralconseq`
    - Workflow: `release.yaml`
    - Environment: `testpypi` (on test.pypi.org) / `pypi` (on pypi.org)
 2. In GitHub → Settings → Environments, create environments named `testpypi`
