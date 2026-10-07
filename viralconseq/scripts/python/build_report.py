@@ -6,11 +6,11 @@ sortable table of every sample (or sample-segment) row, and a per-sample detail 
 with the depth trace. The page's shell is the template passed as ``--template``; this
 script only produces the JSON document. It writes the document to ``data.json`` beside
 the page and splices it in at the template's ``/*{{DATA}}*/`` marker. The template's
-``<link rel="stylesheet" href=...>`` is replaced by the stylesheet it names, and every
-path in its import map (the page's ES modules: ``report/*.js`` and ``vendor/*.mjs``) by
-a ``data:`` URL holding that file, so the page is one file that runs with no network.
-The raw template, served over HTTP from its own directory, loads the same modules by
-path and renders a ``data.json`` copied next to it: that is the loop for work on the page.
+``<link rel="stylesheet" href=...>`` and ``<script src=...></script>`` tags (the page's
+scripts: ``report/*.js`` and ``vendor/alpine.min.js``) are replaced by the files they
+name, so the page is one file that runs with no network. The raw template, served over
+HTTP from its own directory, loads the same files by path and renders a ``data.json``
+copied next to it: that is the loop for work on the page.
 
 ``summary.tsv`` is the spine. Every other artefact is joined onto it and is optional,
 so a run that is missing one still produces a page rather than a traceback:
@@ -39,7 +39,6 @@ not installed, so it must stay on the standard library.
 """
 
 import argparse
-import base64
 import csv
 import gzip
 import json
@@ -682,13 +681,12 @@ def self_check(document, run_dir, rows, threshold):
 #: Where the document goes in the template.
 DATA_MARKER = "/*{{DATA}}*/"
 
-#: What the page is assembled from: the template's stylesheet tag, its import map and
-#: the document marker.
+#: What the page is assembled from: the template's stylesheet and script tags, each
+#: naming a file beside the template or one directory below it, and the document marker.
 SPLICE = re.compile(
-    r'<link rel="stylesheet" href="(?P<css>[\w.-]+\.css)">'
-    r'|<script type="importmap">(?P<importmap>.*?)</script>'
-    r"|(?P<data>" + re.escape(DATA_MARKER) + ")",
-    re.DOTALL,
+    r'<link rel="stylesheet" href="(?P<css>(?:[\w-]+/)?[\w.-]+\.css)">'
+    r'|<script src="(?P<js>(?:[\w-]+/)?[\w.-]+\.js)"></script>'
+    r"|(?P<data>" + re.escape(DATA_MARKER) + ")"
 )
 
 #: The document's file name, beside the page.
@@ -703,7 +701,7 @@ def build_parser():
     parser.add_argument(
         "--template",
         required=True,
-        help="The HTML shell to fill in; the stylesheet and modules it loads are inlined.",
+        help="The HTML shell to fill in; the stylesheet and scripts it loads are inlined.",
     )
     parser.add_argument("--output", required=True, help="HTML file to write.")
     parser.add_argument("--data-type", required=True, choices=["illumina", "nanopore"])
@@ -793,39 +791,19 @@ def collect(args):
     return document
 
 
-def inline_stylesheet(template_path, name):
-    """The ``<style>`` element holding the stylesheet ``name`` from beside the template."""
+def inline(template_path, name, tag):
+    """The ``<tag>`` element holding the file ``name`` from beside the template."""
     path = template_path.parent / name
     if not path.is_file():
         raise SystemExit(f"{path}: not found (the template {template_path.name} loads it)")
     content = path.read_text(encoding="utf-8")
-    if "</style" in content.lower():
-        raise SystemExit(f"{path}: must not contain </style>")
-    return f"<style>\n{content}</style>"
-
-
-def inline_modules(template_path, text):
-    """The template's import map with every module path replaced by a ``data:`` URL of
-    the file, so the modules load from the page itself."""
-    try:
-        imports = json.loads(text)["imports"]
-    except (ValueError, KeyError, TypeError) as exc:
-        raise SystemExit(f"{template_path}: unreadable import map ({exc})")
-    root = template_path.parent.resolve()
-    for name, target in imports.items():
-        path = (root / str(target)).resolve()
-        if not str(target).startswith("./") or root not in path.parents or not path.is_file():
-            raise SystemExit(
-                f"{template_path}: import map entry {name!r} -> {target!r} is not a file "
-                "beside the template"
-            )
-        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        imports[name] = "data:text/javascript;base64," + encoded
-    return '<script type="importmap">' + json.dumps({"imports": imports}) + "</script>"
+    if f"</{tag}" in content.lower() or DATA_MARKER in content:
+        raise SystemExit(f"{path}: must not contain </{tag}> or {DATA_MARKER}")
+    return f"<{tag}>\n{content}</{tag}>"
 
 
 def render(template_path, payload):
-    """The page: the template with its stylesheet, its modules and the document inlined."""
+    """The page: the template with its stylesheet, its scripts and the document inlined."""
     template = template_path.read_text(encoding="utf-8")
     if template.count(DATA_MARKER) != 1:
         raise SystemExit(f"{template_path}: needs exactly one {DATA_MARKER} marker")
@@ -835,8 +813,8 @@ def render(template_path, payload):
             # A literal </script> inside a JSON string would close the host element early.
             return payload.replace("</", "<\\/")
         if match.group("css"):
-            return inline_stylesheet(template_path, match.group("css"))
-        return inline_modules(template_path, match.group("importmap"))
+            return inline(template_path, match.group("css"), "style")
+        return inline(template_path, match.group("js"), "script")
 
     # One pass, so nothing spliced in is itself scanned.
     page = SPLICE.sub(splice, template)
@@ -851,7 +829,7 @@ def render(template_path, payload):
     if local:
         raise SystemExit(
             f"{template_path}: {len(local)} <script src> or <link href> left on the page; "
-            "load modules through the import map and the stylesheet through its <link>"
+            "only a file beside the template, or one directory below it, can be inlined"
         )
     return page
 

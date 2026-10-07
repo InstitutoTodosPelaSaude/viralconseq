@@ -1,8 +1,8 @@
 # Run report: one self-contained HTML page (<run>/report.html) built from
 # summary.tsv and the artefacts around it by scripts/python/build_report.py
 # with the shell in scripts/templates/report.html: it inlines report.css and the
-# Preact components (templates/report/*.js, templates/vendor/*.mjs) the template's
-# import map names. No external resources. The JSON document the page renders is
+# scripts the template loads (templates/report/*.js, templates/vendor/alpine.min.js).
+# No external resources. The JSON document the page renders is
 # also written beside it as <run>/data.json.
 #
 # Included by the four entry-point workflows after rules/collect.smk (it uses
@@ -24,7 +24,7 @@ REPORT_TEMPLATE = os.path.join(workflow.basedir, "templates", "report.html")
 REPORT_ASSETS = sorted(
     glob.glob(os.path.join(workflow.basedir, "templates", "report.css"))
     + glob.glob(os.path.join(workflow.basedir, "templates", "report", "*.js"))
-    + glob.glob(os.path.join(workflow.basedir, "templates", "vendor", "*.mjs"))
+    + glob.glob(os.path.join(workflow.basedir, "templates", "vendor", "*.js"))
 )
 REPORT_LABEL = os.path.basename(os.path.normpath(config["output"]))
 
