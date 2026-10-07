@@ -77,3 +77,6 @@ test/empirical/.cache/
 
 # Documentation builds
 docs/_build/
+
+# Report template work: a run's data.json copied beside the template
+viralconseq/scripts/templates/data.json

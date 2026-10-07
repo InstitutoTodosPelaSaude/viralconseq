@@ -3,9 +3,14 @@
 
 Reads a finished run directory and writes a single HTML file: run-level figures, a
 sortable table of every sample (or sample-segment) row, and a per-sample detail panel
-with the depth trace. The page's shell -- CSS, JS, layout -- is the template passed as
-``--template``; this script only produces the JSON document and splices it in at the
-template's ``/*{{DATA}}*/`` marker.
+with the depth trace. The page's shell is the template passed as ``--template``; this
+script only produces the JSON document. It writes the document to ``data.json`` beside
+the page and splices it in at the template's ``/*{{DATA}}*/`` marker. The template's
+``<link rel="stylesheet" href=...>`` is replaced by the stylesheet it names, and every
+path in its import map (the page's ES modules: ``report/*.js`` and ``vendor/*.mjs``) by
+a ``data:`` URL holding that file, so the page is one file that runs with no network.
+The raw template, served over HTTP from its own directory, loads the same modules by
+path and renders a ``data.json`` copied next to it: that is the loop for work on the page.
 
 ``summary.tsv`` is the spine. Every other artefact is joined onto it and is optional,
 so a run that is missing one still produces a page rather than a traceback:
@@ -34,6 +39,7 @@ not installed, so it must stay on the standard library.
 """
 
 import argparse
+import base64
 import csv
 import gzip
 import json
@@ -673,12 +679,32 @@ def self_check(document, run_dir, rows, threshold):
 # ----------------------------------------------------------------------------------- CLI
 
 
+#: Where the document goes in the template.
+DATA_MARKER = "/*{{DATA}}*/"
+
+#: What the page is assembled from: the template's stylesheet tag, its import map and
+#: the document marker.
+SPLICE = re.compile(
+    r'<link rel="stylesheet" href="(?P<css>[\w.-]+\.css)">'
+    r'|<script type="importmap">(?P<importmap>.*?)</script>'
+    r"|(?P<data>" + re.escape(DATA_MARKER) + ")",
+    re.DOTALL,
+)
+
+#: The document's file name, beside the page.
+DATA_FILENAME = "data.json"
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--run-dir", required=True, help="A finished viralconseq run directory.")
-    parser.add_argument("--template", required=True, help="The HTML shell to fill in.")
+    parser.add_argument(
+        "--template",
+        required=True,
+        help="The HTML shell to fill in; the stylesheet and modules it loads are inlined.",
+    )
     parser.add_argument("--output", required=True, help="HTML file to write.")
     parser.add_argument("--data-type", required=True, choices=["illumina", "nanopore"])
     parser.add_argument(
@@ -714,9 +740,8 @@ def build_parser():
     return parser
 
 
-def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
-
+def collect(args):
+    """The JSON document for the run directory named in ``args``."""
     run_dir = Path(args.run_dir)
     summary = run_dir / "summary.tsv"
     if not summary.is_file():
@@ -724,12 +749,6 @@ def main(argv=None) -> int:
     rows = read_tsv(summary)
     if rows and "sample_id" not in rows[0]:
         raise SystemExit(f"{summary}: no 'sample_id' column")
-
-    template_path = Path(args.template)
-    template = template_path.read_text(encoding="utf-8")
-    marker = "/*{{DATA}}*/"
-    if marker not in template:
-        raise SystemExit(f"{template_path}: no {marker} marker")
 
     versions_path = run_dir / "versions.tsv"
     versions = read_versions(versions_path) if versions_path.is_file() else []
@@ -771,10 +790,56 @@ def main(argv=None) -> int:
 
     if not args.no_self_check:
         self_check(document, run_dir, rows, args.consensus_coverage_threshold)
+    return document
 
-    payload = json.dumps(document, separators=(",", ":"))
-    # A literal </script> inside a JSON string would close the host element early.
-    page = template.replace(marker, payload.replace("</", "<\\/"))
+
+def inline_stylesheet(template_path, name):
+    """The ``<style>`` element holding the stylesheet ``name`` from beside the template."""
+    path = template_path.parent / name
+    if not path.is_file():
+        raise SystemExit(f"{path}: not found (the template {template_path.name} loads it)")
+    content = path.read_text(encoding="utf-8")
+    if "</style" in content.lower():
+        raise SystemExit(f"{path}: must not contain </style>")
+    return f"<style>\n{content}</style>"
+
+
+def inline_modules(template_path, text):
+    """The template's import map with every module path replaced by a ``data:`` URL of
+    the file, so the modules load from the page itself."""
+    try:
+        imports = json.loads(text)["imports"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise SystemExit(f"{template_path}: unreadable import map ({exc})")
+    root = template_path.parent.resolve()
+    for name, target in imports.items():
+        path = (root / str(target)).resolve()
+        if not str(target).startswith("./") or root not in path.parents or not path.is_file():
+            raise SystemExit(
+                f"{template_path}: import map entry {name!r} -> {target!r} is not a file "
+                "beside the template"
+            )
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        imports[name] = "data:text/javascript;base64," + encoded
+    return '<script type="importmap">' + json.dumps({"imports": imports}) + "</script>"
+
+
+def render(template_path, payload):
+    """The page: the template with its stylesheet, its modules and the document inlined."""
+    template = template_path.read_text(encoding="utf-8")
+    if template.count(DATA_MARKER) != 1:
+        raise SystemExit(f"{template_path}: needs exactly one {DATA_MARKER} marker")
+
+    def splice(match):
+        if match.group("data"):
+            # A literal </script> inside a JSON string would close the host element early.
+            return payload.replace("</", "<\\/")
+        if match.group("css"):
+            return inline_stylesheet(template_path, match.group("css"))
+        return inline_modules(template_path, match.group("importmap"))
+
+    # One pass, so nothing spliced in is itself scanned.
+    page = SPLICE.sub(splice, template)
 
     external = re.findall(r"(?:src|href)\s*=\s*[\"']https?:", page)
     if external:
@@ -782,21 +847,37 @@ def main(argv=None) -> int:
             f"{template_path}: the page would load {len(external)} external "
             "resource(s); the report must render with no network"
         )
+    local = re.findall(r"<(?:script|link)\b[^>]*\b(?:src|href)\s*=", page)
+    if local:
+        raise SystemExit(
+            f"{template_path}: {len(local)} <script src> or <link href> left on the page; "
+            "load modules through the import map and the stylesheet through its <link>"
+        )
+    return page
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    document = collect(args)
+
+    payload = json.dumps(document, separators=(",", ":"))
+    page = render(Path(args.template), payload)
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page, encoding="utf-8")
+    data = out.with_name(DATA_FILENAME)
+    data.write_text(payload + "\n", encoding="utf-8")
 
+    threshold = document["run"]["params"]["consensus_coverage_threshold"]
     ids = {s["id"] for s in document["samples"]}
     complete = sum(
-        1
-        for s in document["samples"]
-        if s["cov_min"] is not None and s["cov_min"] >= args.consensus_coverage_threshold
+        1 for s in document["samples"] if s["cov_min"] is not None and s["cov_min"] >= threshold
     )
     print(
         f"{len(ids)} samples ({len(document['samples'])} rows, {complete} at "
-        f">={args.consensus_coverage_threshold:g}% covered), "
-        f"{len(document['coverage'])} depth traces -> {out} [{len(page) / 1024:.0f} kB]"
+        f">={threshold:g}% covered), "
+        f"{len(document['coverage'])} depth traces -> {out} [{len(page) / 1024:.0f} kB], {data}"
     )
     return 0
 

@@ -7,6 +7,33 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
+## [Unreleased]
+
+### Added
+
+- The report rule also writes the page's JSON document as `<run>/data.json`
+  (`viralconseq create-report` writes it beside the page), for reuse outside
+  the browser. `report.html` still carries everything inline.
+
+### Changed
+
+- The report page is rebuilt on Preact 11 + htm (vendored under
+  `templates/vendor/`, no build step): one component module per section under
+  `templates/report/`, a stylesheet in `templates/report.css`, and a shell
+  whose import map names them. `build_report.py` inlines all of it as `data:`
+  URLs, so `report.html` is still one file that opens offline; the page looks
+  and behaves as before. It now needs a browser from 2023 or later (import
+  maps: Chrome 89, Firefox 108, Safari 16.4) and says so otherwise. Served over
+  HTTP with a `data.json` beside it, the raw template renders on its own, for
+  work on the page.
+
+### Fixed
+
+- Report: after filtering or sorting the sample table, the detail panel's
+  Previous/Next walked the list as it was at the last selection; they now
+  follow the table. Keyboard focus stays on Previous/Next and on a focused
+  chart mark across redraws, and the charts follow an OS light/dark switch.
+
 ## [0.2.1] - 2026-09-29
 
 The `0.2.0` files on PyPI were built from this release's code by mistake,

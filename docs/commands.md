@@ -398,7 +398,7 @@ viralconseq create-report results/run1 -o /tmp/run1_report.html --label "Run 1, 
 | Option | Description |
 |--------|-------------|
 | `RUN_DIR` | The run directory; must contain `summary.tsv`. |
-| `-o`, `--output` | Where to write the page (default `RUN_DIR/report.html`). |
+| `-o`, `--output` | Where to write the page (default `RUN_DIR/report.html`). The page's JSON document is written beside it as `data.json`. |
 | `--label` | Run name shown in the page header (default: the directory's name). |
 
 The parameters (data type, minimum depth, coverage threshold, segments, primer

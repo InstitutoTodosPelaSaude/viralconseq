@@ -136,13 +136,15 @@ jobs:
 
           checkout = pathlib.Path(sys.argv[1]).resolve()
           src = checkout / "viralconseq" / "scripts"
-          patterns = ("*.smk", "rules/*.smk", "envs/clair3.yaml", "templates/report.html", "python/*.py")
+          patterns = ("*.smk", "rules/*.smk", "envs/clair3.yaml", "templates/report.*", "templates/report/*.js", "templates/vendor/*", "python/*.py")
           expected = sorted(
               p.relative_to(src).as_posix() for pat in patterns for p in src.glob(pat)
           )
           assert expected, f"no assets matched under {src}"
           assert any(f.endswith(".smk") for f in expected)
           assert "envs/clair3.yaml" in expected and "templates/report.html" in expected
+          assert {"templates/report.css", "templates/report/app.js", "templates/vendor/preact.mjs",
+                  "templates/vendor/LICENSE-preact"} <= set(expected)
 
           spec = importlib.util.find_spec("viralconseq")
           installed = pathlib.Path(spec.origin).resolve().parent

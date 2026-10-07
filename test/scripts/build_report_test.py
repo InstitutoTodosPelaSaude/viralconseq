@@ -1,10 +1,12 @@
 """Tests for scripts/python/build_report.py: the data document, the optional joins and
 the self-check, driven as the workflow runs it (``main(argv)``) over a fake run dir."""
 
+import base64
 import csv
 import gzip
 import json
 import os
+import re
 import tempfile
 import unittest
 
@@ -126,6 +128,16 @@ def status_row(sample, status="no_mapped_reads", segment=None, virus=NA):
     return row
 
 
+#: The smallest template build_report accepts: a stylesheet, the marker and an import map
+#: naming one module.
+SHELL = (
+    '<link rel="stylesheet" href="t.css">'
+    "<script>/*{{DATA}}*/</script>"
+    '<script type="importmap">{"imports": {"t": "./t.js"}}</script>'
+    '<script type="module">import "t";</script>'
+)
+
+
 def document(page):
     """The JSON the page carries, which is everything the template renders."""
     with open(page, encoding="utf-8") as handle:
@@ -174,6 +186,34 @@ class _RunDir(unittest.TestCase):
 
     def doc(self, *extra, **kwargs):
         return document(self.run_report(*extra, **kwargs))
+
+    def template(self, html, css="body {}", js="void 0;"):
+        """A template t.html in the temp dir, with its t.css and t.js (a module) siblings."""
+        for suffix, content in ((".css", css), (".js", js)):
+            if content is not None:
+                write_text(os.path.join(self._tmp.name, "t" + suffix), content)
+        return write_text(os.path.join(self._tmp.name, "t.html"), html)
+
+    def run_template(self, template):
+        """Build the page against another template; returns the SystemExit message."""
+        with self.assertRaises(SystemExit) as ctx:
+            build_report.main(
+                [
+                    "--run-dir",
+                    self.run_dir,
+                    "--template",
+                    template,
+                    "--output",
+                    self.page,
+                    "--data-type",
+                    "illumina",
+                    "--min-depth",
+                    "20",
+                    "--consensus-coverage-threshold",
+                    "70",
+                ]
+            )
+        return str(ctx.exception)
 
 
 class Test_Spine(_RunDir):
@@ -783,55 +823,85 @@ class Test_Page(_RunDir):
         self.assertEqual(
             self.doc("--label", "</script><b>x</b>")["run"]["label"], "</script><b>x</b>"
         )
+        closers = build_report.TEMPLATE_PATH.read_text(encoding="utf-8").count("</script>")
         with open(self.page, encoding="utf-8") as handle:
-            self.assertEqual(handle.read().count("</script>"), 2)
+            self.assertEqual(handle.read().count("</script>"), closers)
+
+    def test_the_stylesheet_and_modules_are_inlined(self):
+        """Every module the template's import map names travels inside the page as a
+        data: URL holding exactly that file, so the page needs nothing beside it."""
+        self.spine([ok_row("sample-a")])
+        with open(self.run_report(), encoding="utf-8") as handle:
+            page = handle.read()
+        templates = build_report.TEMPLATE_PATH.parent
+        self.assertIn((templates / "report.css").read_text(encoding="utf-8").strip(), page)
+        self.assertNotIn('href="report.css"', page)
+        imports = json.loads(
+            re.search(r'<script type="importmap">(.*?)</script>', page, re.S).group(1)
+        )["imports"]
+        self.assertIn("preact", imports)
+        self.assertIn("report/app", imports)
+        source = json.loads(
+            re.search(
+                r'<script type="importmap">(.*?)</script>',
+                build_report.TEMPLATE_PATH.read_text(encoding="utf-8"),
+                re.S,
+            ).group(1)
+        )["imports"]
+        self.assertEqual(set(imports), set(source))
+        for name, url in imports.items():
+            prefix = "data:text/javascript;base64,"
+            self.assertTrue(url.startswith(prefix), name)
+            self.assertEqual(
+                base64.b64decode(url[len(prefix) :]), (templates / source[name]).read_bytes()
+            )
+
+    def test_the_document_is_also_written_as_data_json(self):
+        self.spine([ok_row("sample-a"), ok_row("sample-b", cov_min=40.0)])
+        self.run_report()
+        with open(os.path.join(self._tmp.name, "data.json"), encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle), document(self.page))
 
     def test_a_template_without_the_marker_is_refused(self):
         self.spine([ok_row("sample-a")])
-        template = write_text(os.path.join(self._tmp.name, "t.html"), "<html></html>")
-        with self.assertRaises(SystemExit) as ctx:
-            build_report.main(
-                [
-                    "--run-dir",
-                    self.run_dir,
-                    "--template",
-                    template,
-                    "--output",
-                    self.page,
-                    "--data-type",
-                    "illumina",
-                    "--min-depth",
-                    "20",
-                    "--consensus-coverage-threshold",
-                    "70",
-                ]
-            )
-        self.assertIn("marker", str(ctx.exception))
+        self.assertIn("marker", self.run_template(self.template("<html></html>")))
+
+    def test_a_missing_module_is_named(self):
+        self.spine([ok_row("sample-a")])
+        template = self.template(SHELL, js=None)
+        self.assertIn("'t' -> './t.js' is not a file", self.run_template(template))
+
+    def test_a_module_outside_the_template_directory_is_refused(self):
+        self.spine([ok_row("sample-a")])
+        write_text(os.path.join(self._tmp.name, "outside.js"), "void 0;")
+        inner = os.path.join(self._tmp.name, "templates")
+        os.makedirs(inner)
+        write_text(os.path.join(inner, "t.css"), "body {}")
+        template = write_text(
+            os.path.join(inner, "t.html"), SHELL.replace("./t.js", "./../outside.js")
+        )
+        self.assertIn("is not a file beside the template", self.run_template(template))
+
+    def test_an_unreadable_import_map_is_refused(self):
+        self.spine([ok_row("sample-a")])
+        template = self.template(SHELL.replace('{"imports": {"t": "./t.js"}}', "{not json"))
+        self.assertIn("unreadable import map", self.run_template(template))
+
+    def test_a_stylesheet_that_closes_its_element_is_refused(self):
+        self.spine([ok_row("sample-a")])
+        template = self.template(SHELL, css="a::after { content: '</STYLE>'; }")
+        self.assertIn("must not contain </style>", self.run_template(template))
+
+    def test_a_script_loaded_by_path_is_refused(self):
+        """A <script src> would make the page depend on a file beside it."""
+        self.spine([ok_row("sample-a")])
+        template = self.template(SHELL + '<script src="t.js"></script>')
+        self.assertIn("<script src> or <link href> left on the page", self.run_template(template))
 
     def test_an_external_resource_in_the_template_is_refused(self):
         self.spine([ok_row("sample-a")])
-        template = write_text(
-            os.path.join(self._tmp.name, "t.html"),
-            '<script src="https://cdn.example/x.js"></script><script>/*{{DATA}}*/</script>',
-        )
-        with self.assertRaises(SystemExit) as ctx:
-            build_report.main(
-                [
-                    "--run-dir",
-                    self.run_dir,
-                    "--template",
-                    template,
-                    "--output",
-                    self.page,
-                    "--data-type",
-                    "illumina",
-                    "--min-depth",
-                    "20",
-                    "--consensus-coverage-threshold",
-                    "70",
-                ]
-            )
-        self.assertIn("external", str(ctx.exception))
+        template = self.template('<script src="https://cdn.example/x.js"></script>' + SHELL)
+        self.assertIn("external", self.run_template(template))
 
 
 class Test_Provenance(_RunDir):

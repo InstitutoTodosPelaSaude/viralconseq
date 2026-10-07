@@ -1,6 +1,9 @@
 # Run report: one self-contained HTML page (<run>/report.html) built from
 # summary.tsv and the artefacts around it by scripts/python/build_report.py
-# with the shell in scripts/templates/report.html. No external resources.
+# with the shell in scripts/templates/report.html: it inlines report.css and the
+# Preact components (templates/report/*.js, templates/vendor/*.mjs) the template's
+# import map names. No external resources. The JSON document the page renders is
+# also written beside it as <run>/data.json.
 #
 # Included by the four entry-point workflows after rules/collect.smk (it uses
 # its helpers and rules.summary / rules.collect_consensus) and before
@@ -9,6 +12,7 @@
 # files' TERMINAL_INPUTS; run_manifest.json is read when present but not
 # declared (absent under a bare snakemake invocation).
 
+import glob
 import os
 
 REPORT_DATA = str(config.get("data", "illumina"))
@@ -16,6 +20,12 @@ REPORT_RUN_VIRALQC = bool(config.get("run_viralqc", True))
 REPORT_RUN_ISNV = REPORT_DATA == "illumina" and bool(config.get("run_isnv", False))
 REPORT_SCHEME = str(config.get("scheme", "NA"))
 REPORT_TEMPLATE = os.path.join(workflow.basedir, "templates", "report.html")
+# Everything build_report.py inlines into the page, declared so an edit reruns the rule.
+REPORT_ASSETS = sorted(
+    glob.glob(os.path.join(workflow.basedir, "templates", "report.css"))
+    + glob.glob(os.path.join(workflow.basedir, "templates", "report", "*.js"))
+    + glob.glob(os.path.join(workflow.basedir, "templates", "vendor", "*.mjs"))
+)
 REPORT_LABEL = os.path.basename(os.path.normpath(config["output"]))
 
 if REPORT_DATA == "illumina":
@@ -45,6 +55,7 @@ rule report:
     input:
         script = os.path.join(PY, "build_report.py"),
         template = REPORT_TEMPLATE,
+        assets = REPORT_ASSETS,
         summary = rules.summary.output.summary,
         # Literal paths: rules/provenance.smk is included after this module.
         versions = config["output"] + "versions.tsv",
@@ -72,6 +83,8 @@ rule report:
         scheme = REPORT_SCHEME if REPORT_SCHEME != "NA" else [],
     output:
         report = config["output"] + "report.html",
+        # Written by build_report.py beside the page; the name is fixed there.
+        document = config["output"] + "data.json",
     params:
         run_dir = config["output"],
         data_type = REPORT_DATA,
