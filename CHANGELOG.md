@@ -17,12 +17,18 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ### Changed
 
-- The report page is rebuilt on Alpine.js (vendored under `templates/vendor/`,
-  no build step): `templates/report.html` holds the whole page's markup with
-  Alpine directives, `templates/report/*.js` the data, view figures, charts
-  and shared state, and `templates/report.css` the stylesheet.
+- The report page is rebuilt on Alpine.js and Chart.js (vendored under
+  `templates/vendor/` with the annotation and zoom plugins, no build step):
+  `templates/report.html` holds the whole page's markup with Alpine
+  directives, `templates/report/*.js` the data, view figures, chart
+  configurations and shared state, and `templates/report.css` the stylesheet.
+  The depth trace now zooms (mouse wheel or pinch) and pans (drag);
+  double-click shows the whole genome again. Chart marks are no longer
+  keyboard-focusable (the charts are canvas); rows are still selected from the
+  keyboard through the sample table.
   `build_report.py` inlines every file the template loads, so `report.html`
-  is still one file that opens offline; the page looks and behaves as before.
+  is still one file that opens offline; the rest of the page looks and
+  behaves as before.
   Served over HTTP with a `data.json` beside it, the raw template renders on
   its own, for work on the page.
 

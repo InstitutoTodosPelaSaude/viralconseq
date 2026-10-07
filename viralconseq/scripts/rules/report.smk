@@ -1,7 +1,7 @@
 # Run report: one self-contained HTML page (<run>/report.html) built from
 # summary.tsv and the artefacts around it by scripts/python/build_report.py
 # with the shell in scripts/templates/report.html: it inlines report.css and the
-# scripts the template loads (templates/report/*.js, templates/vendor/alpine.min.js).
+# scripts the template loads (templates/report/*.js, templates/vendor/*.js).
 # No external resources. The JSON document the page renders is
 # also written beside it as <run>/data.json.
 #

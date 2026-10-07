@@ -9,7 +9,7 @@
 <!-- The page's structure, with Alpine.js directives: x-text/x-html fill an element,
      x-for and x-if repeat or include it, @click handles events, $store.ui is the shared
      state (report/app.js). Names such as DATA, KPI_TILES or COLS come from report/*.js.
-     The charts are hand-drawn SVG (report/charts.js), mounted with x-init. -->
+     The charts are Chart.js specs (report/charts.js), mounted with x-init. -->
 <body x-data>
 
 <header class="masthead">
@@ -56,12 +56,14 @@
         <p class="note" id="funnel-note" x-text="FK === 'segment'
           ? 'Each stage counts unique samples. A sample with several segments contributes once here and one row per segment in the table.'
           : 'Each stage counts unique samples.'"></p>
-        <div id="funnel" x-init="mount($el, drawFunnel)"></div>
+        <div id="funnel" x-init="mount($el, FUNNEL_CHART)"></div>
       </div>
       <div class="card">
         <h3>Genome completeness, ranked</h3>
         <p class="note" id="ranked-note" x-text="`Percent of reference positions with depth ≥${P.min_depth}×. Masking and variant filters also affect the consensus.`"></p>
-        <div id="ranked" x-init="mount($el, drawRanked)"></div>
+        <div id="ranked" x-init="mount($el, RANKED_CHART)"></div>
+        <div class="chart-foot"><span x-text="`${ranked.length} rows with coverage, best first`"></span><span
+          x-text="`${complete.length} clear the threshold`"></span></div>
         <div class="legend" id="ranked-legend">
           <template x-for="[f, n] in facetCount">
             <span class="chip"><i class="sw" :style="{ background: facetColor(f) }"></i><span x-text="f"></span> <span style="color:var(--muted);font-weight:500" x-text="n"></span></span>
@@ -72,7 +74,7 @@
         <h3>Depth against completeness</h3>
         <p class="note">Median depth over every reference position, zeros included.
           The relationship shown is descriptive and does not establish the cause of low coverage.</p>
-        <div id="scatter" x-init="mount($el, drawScatter)"></div>
+        <div id="scatter" x-init="mount($el, SCATTER_CHART)"></div>
         <div class="legend" id="scatter-legend">
           <template x-for="[f, n] in facetCount">
             <span class="chip"><i class="sw" :style="{ background: facetColor(f) }"></i><span x-text="f"></span> <span style="color:var(--muted);font-weight:500" x-text="n"></span></span>
@@ -207,12 +209,12 @@
               <h3 class="sub-h3">Depth along the genome</h3>
               <template x-if="DATA.coverage[d.key]">
                 <p class="note">Mean depth in <span x-text="fmt(DATA.coverage[d.key].bin_bp)"></span> bp windows from <code>table_cov_basewise.txt</code>.
-                  Grey bands are ranges below <span x-text="P.min_depth"></span>× and masked to <code>N</code><span
+                  Wheel to zoom, drag to pan, double-click for the whole genome. Grey bands are ranges below <span x-text="P.min_depth"></span>× and masked to <code>N</code><span
                   x-text="(DATA.coverage[d.key].contigs || []).length > 1 ? `; dashed lines separate the ${DATA.coverage[d.key].contigs.length} reference contigs` : ''"></span><span
                   x-text="extentOf(d) ? `; the pale bands at each end lie outside the primer extent (${fmt(extentOf(d).outside_bp)} bp) and describe scheme geometry, not a measured coverage limit` : ''"></span>.</p>
               </template>
               <template x-if="DATA.coverage[d.key]">
-                <div id="covtrace" x-init="mount($el, (host, W) => drawTrace(host, W, d))"></div>
+                <div id="covtrace" x-init="mount($el, traceChart(d))"></div>
               </template>
               <template x-if="!DATA.coverage[d.key]">
                 <p class="note">No per-position depth table for this row.</p>
@@ -226,7 +228,8 @@
               <p class="note">Mean depth over each amplicon of <code x-text="P.primer_scheme || 'the primer scheme'"></code>,
                 from the same per-position table. A mean above <span x-text="P.min_depth"></span>× does not guarantee every position
                 in the amplicon met the masking threshold; use the trace for that.</p>
-              <div id="sampleamp" x-init="mount($el, (host, W) => drawAmplicons(host, W, d))"></div>
+              <div id="sampleamp" x-init="mount($el, ampliconChart(d))"></div>
+              <div class="chart-foot"><span x-text="`${DATA.amplicons[d.key].filter((v) => v < P.min_depth).length} of ${DATA.amplicons[d.key].length} amplicons below ${P.min_depth}×`"></span></div>
               <div class="legend">
                 <span class="chip"><i class="sw" :style="{ background: facetColor(d.facet) }"></i><span x-text="`at or above ${P.min_depth}×`"></span></span>
                 <span class="chip"><i class="sw" style="background:var(--accent)"></i><span x-text="`mean below ${P.min_depth}×`"></span></span>
@@ -279,9 +282,11 @@
 
 </div>
 
-<div id="tip" role="tooltip" aria-hidden="true"></div>
-
 <script id="run-data" type="application/json">/*{{DATA}}*/</script>
+<script src="vendor/chart.umd.min.js"></script>
+<script src="vendor/hammer.min.js"></script>
+<script src="vendor/chartjs-plugin-zoom.min.js"></script>
+<script src="vendor/chartjs-plugin-annotation.min.js"></script>
 <script src="report/core.js"></script>
 <script src="report/views.js"></script>
 <script src="report/charts.js"></script>
