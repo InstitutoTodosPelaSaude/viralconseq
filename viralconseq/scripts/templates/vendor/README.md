@@ -19,7 +19,7 @@ All are classic scripts. Load order in the template matters: Chart.js defines
 `window.Chart`; hammer.js defines `window.Hammer`, which the zoom plugin reads for
 drag-to-pan; both plugins register themselves with `window.Chart` as they load; the
 report's own scripts follow; Alpine comes last, because it starts on the next microtask
-and its `alpine:init` handlers live in `report/app.js`.
+and its `alpine:init` handler lives in `report/store.js`.
 
 To update: `npm pack <package>@<version>` into an empty directory, extract it, copy
 the file above, strip the sourceMappingURL line, take the licence from the package (or,

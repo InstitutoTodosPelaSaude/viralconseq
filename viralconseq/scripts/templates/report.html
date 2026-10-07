@@ -6,28 +6,24 @@
 <title>viralconseq run report</title>
 <link rel="stylesheet" href="report.css">
 </head>
-<!-- The page's structure, with Alpine.js directives: x-text/x-html fill an element,
-     x-for and x-if repeat or include it, @click handles events, $store.ui is the shared
-     state (report/app.js). Names such as DATA, KPI_TILES or COLS come from report/*.js.
-     The charts are Chart.js specs (report/charts.js), mounted with x-init. -->
+<!-- Alpine.js markup: $store.ui is report/store.js; every other name comes from report/*.js. -->
 <body x-data>
 
 <header class="masthead">
   <div class="wrap">
     <div>
-      <!-- the label is a bare text node: the stylesheet dims every <span> in the title -->
+      <!-- the run label is a bare text node: the stylesheet dims every <span> in the title -->
       <h1 id="run-title" x-init="$el.prepend(DATA.run.label + ' ')"><span>run report</span></h1>
       <p class="sub" id="run-sub" x-text="`viralconseq consensus genomes · ${PLATFORM} · generated ${DATA.run.generated}`"></p>
     </div>
     <div class="mast-meta" id="mast-meta">
       <div>Platform<b><span class="platform" x-text="PLATFORM"></span></b></div>
-      <div>Samples<b x-text="IDS.length"></b></div>
-      <div><span x-text="`Genomes ≥${T}%`"></span><b x-text="complete.length"></b></div>
-      <div>Pipeline<b x-text="'viralconseq ' + version"></b></div>
+      <div>Samples<b x-text="SAMPLE_IDS.length"></b></div>
+      <div><span x-text="`Genomes ≥${COVERAGE_THRESHOLD}%`"></span><b x-text="COMPLETE_ROWS.length"></b></div>
+      <div>Pipeline<b x-text="'viralconseq ' + PIPELINE_VERSION"></b></div>
     </div>
     <button class="theme-toggle" type="button" id="theme" aria-label="Switch colour theme"
-      @click="$store.ui.toggleTheme()"
-      x-text="$store.ui.colours >= 0 && isDark() ? 'Light theme' : 'Dark theme'"></button>
+      @click="$store.ui.toggleTheme()" x-text="$store.ui.dark ? 'Light theme' : 'Dark theme'"></button>
   </div>
 </header>
 
@@ -35,11 +31,11 @@
 
   <section id="kpi-section">
     <div class="kpis" id="kpis" :data-n="KPI_TILES.length">
-      <template x-for="k in KPI_TILES">
+      <template x-for="tile in KPI_TILES">
         <div class="kpi">
-          <div class="label" x-text="k.label"></div>
-          <div class="value"><span x-text="k.value"></span><template x-if="k.unit"><span class="unit" x-text="k.unit"></span></template></div>
-          <div class="foot" x-text="k.foot"></div>
+          <div class="label" x-text="tile.label"></div>
+          <div class="value"><span x-text="tile.value"></span><template x-if="tile.unit"><span class="unit" x-text="tile.unit"></span></template></div>
+          <div class="foot" x-text="tile.foot"></div>
         </div>
       </template>
     </div>
@@ -53,20 +49,18 @@
     <div class="grid-3">
       <div class="card">
         <h3>From sample to genome</h3>
-        <p class="note" id="funnel-note" x-text="FK === 'segment'
-          ? 'Each stage counts unique samples. A sample with several segments contributes once here and one row per segment in the table.'
-          : 'Each stage counts unique samples.'"></p>
-        <div id="funnel" x-init="mount($el, FUNNEL_CHART)"></div>
+        <p class="note" id="funnel-note" x-text="FUNNEL_NOTE"></p>
+        <div id="funnel" x-init="mountChart($el, FUNNEL_CHART)"></div>
       </div>
       <div class="card">
         <h3>Genome completeness, ranked</h3>
-        <p class="note" id="ranked-note" x-text="`Percent of reference positions with depth ≥${P.min_depth}×. Masking and variant filters also affect the consensus.`"></p>
-        <div id="ranked" x-init="mount($el, RANKED_CHART)"></div>
-        <div class="chart-foot"><span x-text="`${ranked.length} rows with coverage, best first`"></span><span
-          x-text="`${complete.length} clear the threshold`"></span></div>
+        <p class="note" id="ranked-note" x-text="`Percent of reference positions with depth ≥${MIN_DEPTH}×. Masking and variant filters also affect the consensus.`"></p>
+        <div id="ranked" x-init="mountChart($el, RANKED_CHART)"></div>
+        <div class="chart-foot"><span x-text="`${RANKED_ROWS.length} rows with coverage, best first`"></span><span
+          x-text="`${COMPLETE_ROWS.length} clear the threshold`"></span></div>
         <div class="legend" id="ranked-legend">
-          <template x-for="[f, n] in facetCount">
-            <span class="chip"><i class="sw" :style="{ background: facetColor(f) }"></i><span x-text="f"></span> <span style="color:var(--muted);font-weight:500" x-text="n"></span></span>
+          <template x-for="[facet, count] in FACET_COUNTS">
+            <span class="chip"><i class="sw" :style="{ background: facetColor(facet) }"></i><span x-text="facet"></span> <span style="color:var(--muted);font-weight:500" x-text="count"></span></span>
           </template>
         </div>
       </div>
@@ -74,10 +68,10 @@
         <h3>Depth against completeness</h3>
         <p class="note">Median depth over every reference position, zeros included.
           The relationship shown is descriptive and does not establish the cause of low coverage.</p>
-        <div id="scatter" x-init="mount($el, SCATTER_CHART)"></div>
+        <div id="scatter" x-init="mountChart($el, SCATTER_CHART)"></div>
         <div class="legend" id="scatter-legend">
-          <template x-for="[f, n] in facetCount">
-            <span class="chip"><i class="sw" :style="{ background: facetColor(f) }"></i><span x-text="f"></span> <span style="color:var(--muted);font-weight:500" x-text="n"></span></span>
+          <template x-for="[facet, count] in FACET_COUNTS">
+            <span class="chip"><i class="sw" :style="{ background: facetColor(facet) }"></i><span x-text="facet"></span> <span style="color:var(--muted);font-weight:500" x-text="count"></span></span>
           </template>
         </div>
       </div>
@@ -87,39 +81,40 @@
   <section>
     <div class="sec-head">
       <h2>Samples</h2>
-      <p id="table-caption" x-text="`${$store.ui.rows.length} of ${S.length} ${ROWS_NOUN}. Click a row for its detail.`"></p>
+      <p id="table-caption" x-text="`${$store.ui.visibleRows.length} of ${ROWS.length} ${ROWS_NOUN}. Click a row for its detail.`"></p>
     </div>
     <div class="filters" id="filters">
-      <template x-for="f in FILTERS">
-        <button class="fbtn" type="button" :data-f="f.k" :aria-pressed="String(f.k === $store.ui.filter)"
-          @click="$store.ui.filter = f.k"><span x-text="f.t"></span><span class="n" x-text="f.n"></span></button>
+      <template x-for="filter in TABLE_FILTERS">
+        <button class="fbtn" type="button" :data-f="filter.key" :aria-pressed="String(filter.key === $store.ui.filter)"
+          @click="$store.ui.filter = filter.key"><span x-text="filter.title"></span><span class="n" x-text="filter.count"></span></button>
       </template>
-      <input type="search" id="q" :placeholder="FILTER_PLACEHOLDER" aria-label="Filter samples" x-model="$store.ui.query">
+      <input type="search" id="q" :placeholder="SEARCH_PLACEHOLDER" aria-label="Filter samples" x-model="$store.ui.query">
     </div>
     <div class="tablewrap">
       <table class="data" id="table">
         <thead><tr id="thead-row">
-          <template x-for="c in COLS">
-            <th :data-k="c.k" :class="c.num ? 'num' : ''" scope="col" @click="$store.ui.sortBy(c.k)"
-              :aria-sort="c.k === $store.ui.sortKey ? ($store.ui.sortDir === 1 ? 'ascending' : 'descending') : null"
-              ><span x-text="c.t"></span><span class="arrow" x-text="c.k === $store.ui.sortKey && $store.ui.sortDir !== 1 ? '▼' : '▲'"></span></th>
+          <template x-for="column in TABLE_COLUMNS">
+            <th :data-k="column.key" :class="column.numeric ? 'num' : ''" scope="col" @click="$store.ui.sortBy(column.key)"
+              :aria-sort="column.key === $store.ui.sortKey ? ($store.ui.sortDirection === 1 ? 'ascending' : 'descending') : null"
+              ><span x-text="column.title"></span><span class="arrow"
+              x-text="column.key === $store.ui.sortKey && $store.ui.sortDirection !== 1 ? '▼' : '▲'"></span></th>
           </template>
         </tr></thead>
         <tbody id="tbody">
-          <template x-for="d in $store.ui.rows" :key="d.key">
-            <tr :data-id="d.key" :aria-selected="String(d.key === $store.ui.selected)" tabindex="0"
-              @click="$store.ui.select(d.key)" @keydown.enter.prevent="$store.ui.select(d.key)" @keydown.space.prevent="$store.ui.select(d.key)">
-              <template x-for="c in COLS"><td :class="c.cell(d).cls" x-html="c.cell(d).html"></td></template>
+          <template x-for="row in $store.ui.visibleRows" :key="row.key">
+            <tr :data-id="row.key" :aria-selected="String(row.key === $store.ui.selectedKey)" tabindex="0"
+              @click="$store.ui.select(row.key)" @keydown.enter.prevent="$store.ui.select(row.key)" @keydown.space.prevent="$store.ui.select(row.key)">
+              <template x-for="column in TABLE_COLUMNS"><td :class="column.cell(row).className" x-html="column.cell(row).html"></td></template>
             </tr>
           </template>
         </tbody>
       </table>
     </div>
     <p class="note" style="margin-top:8px" id="table-foot">
-      <b x-text="`Cov ≥${P.min_depth}×`"></b> is the share of reference positions at or above the masking depth;
+      <b x-text="`Cov ≥${MIN_DEPTH}×`"></b> is the share of reference positions at or above the masking depth;
       positions below it are <code>N</code> in the consensus. A row enters the filtered multi-FASTA at
-      <span x-text="`≥${T}%.`"></span>
-      <template x-if="HAS_VQC"><span> <b>Grade</b> is viralQC's A–D genome quality.</span></template>
+      <span x-text="`≥${COVERAGE_THRESHOLD}%.`"></span>
+      <template x-if="HAS_VIRALQC"><span> <b>Grade</b> is viralQC's A–D genome quality.</span></template>
       <template x-if="IS_ILLUMINA"><span> <b>QC-passed</b> counts reads surviving fastp.</span></template>
     </p>
   </section>
@@ -130,49 +125,47 @@
       <p>Select any row above.</p>
     </div>
     <div class="card" id="detail">
-      <template x-if="!$store.ui.current"><p class="note">Select a sample from the table above.</p></template>
-      <!-- keyed on the row, so the charts below are mounted afresh for each selection -->
-      <template x-for="d in $store.ui.current ? [$store.ui.current] : []" :key="d.key">
+      <template x-if="!$store.ui.selectedRow"><p class="note">Select a sample from the table above.</p></template>
+      <!-- keyed on the row, so its charts are mounted afresh for each selection -->
+      <template x-for="row in $store.ui.selectedRow ? [$store.ui.selectedRow] : []" :key="row.key">
         <div style="display: contents">
 
           <div class="detail-head">
-            <h3 x-text="d.id"></h3>
-            <span x-html="pill(d.status)"></span>
-            <span x-html="facetChip(d.facet)"></span>
-            <template x-if="gradeOf(d)"><span x-html="gradePill(gradeOf(d), scoreNote(d.viralqc))"></span></template>
+            <h3 x-text="row.id"></h3>
+            <span x-html="statusPillHtml(row.status)"></span>
+            <span x-html="facetChipHtml(row.facet)"></span>
+            <template x-if="gradeOf(row)"><span x-html="gradePillHtml(gradeOf(row), gradeScoreSuffix(row.viralqc))"></span></template>
             <div class="detail-nav">
-              <button type="button" id="prev" :disabled="$store.ui.index <= 0" @click="$store.ui.step(-1)">← Previous</button>
-              <button type="button" id="next" :disabled="$store.ui.index < 0 || $store.ui.index >= $store.ui.rows.length - 1"
-                @click="$store.ui.step(1)">Next →</button>
+              <button type="button" id="prev" :disabled="!$store.ui.hasPrevious" @click="$store.ui.selectNeighbour(-1)">← Previous</button>
+              <button type="button" id="next" :disabled="!$store.ui.hasNext" @click="$store.ui.selectNeighbour(1)">Next →</button>
             </div>
           </div>
 
           <div class="statstrip">
-            <template x-for="i in headlineStats(d)">
-              <div class="s"><div class="k" x-text="i.k"></div><div class="v" x-html="i.v"></div><template x-if="i.n"><div class="n" x-text="i.n"></div></template></div>
+            <template x-for="figure in headlineFigures(row)">
+              <div class="s"><div class="k" x-text="figure.label"></div><div class="v" x-html="figure.value"></div><template x-if="figure.note"><div class="n" x-text="figure.note"></div></template></div>
             </template>
           </div>
 
-          <!-- why a row is not plain "ok", in words -->
-          <template x-if="d.status === 'no_mapped_reads'">
-            <p class="callout">Assembly was not attempted: <b x-text="fmt(d.gate?.mapped_reads ?? d.mapped_reads)"></b> reads mapped to
-              the reference<span x-text="d.gate?.minimum_mapped_reads != null ? `, below the ${fmt(d.gate.minimum_mapped_reads)}-read floor` : ''"></span>.
+          <template x-if="row.status === 'no_mapped_reads'">
+            <p class="callout">Assembly was not attempted: <b x-text="formatNumber(row.gate?.mapped_reads ?? row.mapped_reads)"></b> reads mapped to
+              the reference<span x-text="mappedReadsFloorNote(row)"></span>.
               This gate alone does not establish absence of the target or explain the low mapped-read count.</p>
           </template>
-          <template x-if="d.status === 'empty_consensus'">
+          <template x-if="row.status === 'empty_consensus'">
             <p class="callout flag">The consensus for this row contains no called bases; every position fell
-              below <span x-text="P.min_depth"></span>× or the alignment produced nothing to call.</p>
+              below <span x-text="MIN_DEPTH"></span>× or the alignment produced nothing to call.</p>
           </template>
-          <template x-if="VIRALQC_STATUSES.includes(d.status)">
-            <p class="callout">viralQC did not grade this genome (<b x-text="statusMeta(d.status).text"></b>).
+          <template x-if="VIRALQC_FAILURE_STATUSES.includes(row.status)">
+            <p class="callout">viralQC did not grade this genome (<b x-text="statusDisplay(row.status).text"></b>).
               Coverage and depth below are unaffected; clade, lineage and grade are unavailable.</p>
           </template>
-          <template x-if="d.status === 'missing_stats'">
+          <template x-if="row.status === 'missing_stats'">
             <p class="callout flag">Assembly statistics are missing for this row; the figures shown come only from
               the artefacts that were present.</p>
           </template>
-          <template x-if="!EXPLAINED_STATUSES.includes(d.status)">
-            <p class="callout">Status <b x-text="d.status"></b>.</p>
+          <template x-if="!EXPLAINED_STATUSES.includes(row.status)">
+            <p class="callout">Status <b x-text="row.status"></b>.</p>
           </template>
 
           <div class="grid-2">
@@ -181,14 +174,14 @@
                 <h3 class="sub-h3">Read QC (fastp)</h3>
                 <p class="note">Paired reads before and after adapter and quality trimming; the mapped and
                   depth figures above are computed from the reads that passed.</p>
-                <template x-if="d.fastp">
+                <template x-if="row.fastp">
                   <div class="statstrip">
-                    <template x-for="i in fastpStats(d.fastp)">
-                      <div class="s"><div class="k" x-text="i.k"></div><div class="v" x-html="i.v"></div><template x-if="i.n"><div class="n" x-text="i.n"></div></template></div>
+                    <template x-for="figure in readQcFigures(row.fastp)">
+                      <div class="s"><div class="k" x-text="figure.label"></div><div class="v" x-html="figure.value"></div><template x-if="figure.note"><div class="n" x-text="figure.note"></div></template></div>
                     </template>
                   </div>
                 </template>
-                <template x-if="!d.fastp"><p class="note">No fastp report for this sample.</p></template>
+                <template x-if="!row.fastp"><p class="note">No fastp report for this sample.</p></template>
               </div>
             </template>
             <template x-if="!IS_ILLUMINA">
@@ -196,10 +189,10 @@
                 <h3 class="sub-h3">Variant calling</h3>
                 <p class="note">Clair3 calls on reads passing the length and mapping-quality floors; the consensus
                   applies variants whose allele fraction, ALT over REF plus ALT reads, is at or above the
-                  threshold below, and masks positions below <span x-text="P.min_depth"></span>×.</p>
+                  threshold below, and masks positions below <span x-text="MIN_DEPTH"></span>×.</p>
                 <div class="statstrip">
-                  <template x-for="i in variantCallingStats(d)">
-                    <div class="s"><div class="k" x-text="i.k"></div><div class="v" x-html="i.v"></div><template x-if="i.n"><div class="n" x-text="i.n"></div></template></div>
+                  <template x-for="figure in variantCallingFigures(row)">
+                    <div class="s"><div class="k" x-text="figure.label"></div><div class="v" x-html="figure.value"></div><template x-if="figure.note"><div class="n" x-text="figure.note"></div></template></div>
                   </template>
                 </div>
               </div>
@@ -207,53 +200,52 @@
 
             <div>
               <h3 class="sub-h3">Depth along the genome</h3>
-              <template x-if="DATA.coverage[d.key]">
-                <p class="note">Mean depth in <span x-text="fmt(DATA.coverage[d.key].bin_bp)"></span> bp windows from <code>table_cov_basewise.txt</code>.
-                  Wheel to zoom, drag to pan, double-click for the whole genome. Grey bands are ranges below <span x-text="P.min_depth"></span>× and masked to <code>N</code><span
-                  x-text="(DATA.coverage[d.key].contigs || []).length > 1 ? `; dashed lines separate the ${DATA.coverage[d.key].contigs.length} reference contigs` : ''"></span><span
-                  x-text="extentOf(d) ? `; the pale bands at each end lie outside the primer extent (${fmt(extentOf(d).outside_bp)} bp) and describe scheme geometry, not a measured coverage limit` : ''"></span>.</p>
+              <template x-if="coverageOf(row)">
+                <p class="note">Mean depth in <span x-text="formatNumber(coverageOf(row).bin_bp)"></span> bp windows from <code>table_cov_basewise.txt</code>.
+                  Wheel to zoom, drag to pan, double-click for the whole genome. Grey bands are ranges below <span x-text="MIN_DEPTH"></span>× and masked to <code>N</code><span
+                  x-text="depthTraceNotes(row)"></span>.</p>
               </template>
-              <template x-if="DATA.coverage[d.key]">
-                <div id="covtrace" x-init="mount($el, traceChart(d))"></div>
+              <template x-if="coverageOf(row)">
+                <div id="covtrace" x-init="mountChart($el, depthTraceChart(row))"></div>
               </template>
-              <template x-if="!DATA.coverage[d.key]">
+              <template x-if="!coverageOf(row)">
                 <p class="note">No per-position depth table for this row.</p>
               </template>
             </div>
           </div>
 
-          <template x-if="DATA.amplicons[d.key]">
+          <template x-if="ampliconDepthsOf(row)">
             <div style="margin-top:18px">
               <h3 class="sub-h3">Amplicon coverage</h3>
-              <p class="note">Mean depth over each amplicon of <code x-text="P.primer_scheme || 'the primer scheme'"></code>,
-                from the same per-position table. A mean above <span x-text="P.min_depth"></span>× does not guarantee every position
+              <p class="note">Mean depth over each amplicon of <code x-text="PARAMS.primer_scheme || 'the primer scheme'"></code>,
+                from the same per-position table. A mean above <span x-text="MIN_DEPTH"></span>× does not guarantee every position
                 in the amplicon met the masking threshold; use the trace for that.</p>
-              <div id="sampleamp" x-init="mount($el, ampliconChart(d))"></div>
-              <div class="chart-foot"><span x-text="`${DATA.amplicons[d.key].filter((v) => v < P.min_depth).length} of ${DATA.amplicons[d.key].length} amplicons below ${P.min_depth}×`"></span></div>
+              <div id="sampleamp" x-init="mountChart($el, ampliconDepthChart(row))"></div>
+              <div class="chart-foot"><span x-text="ampliconCaption(row)"></span></div>
               <div class="legend">
-                <span class="chip"><i class="sw" :style="{ background: facetColor(d.facet) }"></i><span x-text="`at or above ${P.min_depth}×`"></span></span>
-                <span class="chip"><i class="sw" style="background:var(--accent)"></i><span x-text="`mean below ${P.min_depth}×`"></span></span>
+                <span class="chip"><i class="sw" :style="{ background: facetColor(row.facet) }"></i><span x-text="`at or above ${MIN_DEPTH}×`"></span></span>
+                <span class="chip"><i class="sw" style="background:var(--accent)"></i><span x-text="`mean below ${MIN_DEPTH}×`"></span></span>
               </div>
             </div>
           </template>
 
-          <template x-if="d.viralqc">
+          <template x-if="row.viralqc">
             <div style="margin-top:18px">
               <h3 class="sub-h3">viralQC</h3>
-              <p class="note">Virus <b x-text="d.viralqc.virus || '—'"></b><span x-text="d.viralqc.species ? ` (${d.viralqc.species})` : ''"></span> ·
-                clade <b x-text="d.viralqc.clade || '—'"></b> · lineage <b x-text="d.viralqc.lineage || '—'"></b>.</p>
+              <p class="note">Virus <b x-text="row.viralqc.virus || MISSING"></b><span x-text="row.viralqc.species ? ` (${row.viralqc.species})` : ''"></span> ·
+                clade <b x-text="row.viralqc.clade || MISSING"></b> · lineage <b x-text="row.viralqc.lineage || MISSING"></b>.</p>
               <div class="legend" style="margin-top:8px">
-                <span class="chip">Grade <span x-html="gradePill(gradeOf(d), scoreNote(d.viralqc))"></span></span>
-                <span class="chip">Overall <span x-html="qcPill(d.viralqc.overall)"></span></span>
-                <template x-for="[name, verdict] in viralqcChecks(d.viralqc)">
-                  <span class="chip"><span x-text="name"></span> <span x-html="qcPill(verdict)"></span></span>
+                <span class="chip">Grade <span x-html="gradePillHtml(gradeOf(row), gradeScoreSuffix(row.viralqc))"></span></span>
+                <span class="chip">Overall <span x-html="verdictPillHtml(row.viralqc.overall)"></span></span>
+                <template x-for="[check, verdict] in viralqcCheckVerdicts(row.viralqc)">
+                  <span class="chip"><span x-text="check"></span> <span x-html="verdictPillHtml(verdict)"></span></span>
                 </template>
               </div>
-              <p class="note" style="margin-top:8px">Alignment coverage <span x-text="d.viralqc.coverage !== null ? (100 * d.viralqc.coverage).toFixed(1) + '%' : '—'"></span> ·
-                <span x-text="fmt(d.viralqc.substitutions)"></span> substitutions · <span x-text="fmt(d.viralqc.deletions)"></span> deletions ·
-                <span x-text="fmt(d.viralqc.missing)"></span> missing sites ·
-                dataset <b x-text="d.viralqc.dataset || '—'"></b><template x-if="d.viralqc.dataset_version"><span> <b x-text="d.viralqc.dataset_version"></b></span></template>.<template
-                x-if="d.viralqc.input_status"><span> Input sequence status: <b x-text="d.viralqc.input_status"></b>.</span></template></p>
+              <p class="note" style="margin-top:8px">Alignment coverage <span x-text="alignmentCoverage(row.viralqc)"></span> ·
+                <span x-text="formatNumber(row.viralqc.substitutions)"></span> substitutions · <span x-text="formatNumber(row.viralqc.deletions)"></span> deletions ·
+                <span x-text="formatNumber(row.viralqc.missing)"></span> missing sites ·
+                dataset <b x-text="row.viralqc.dataset || MISSING"></b><template x-if="row.viralqc.dataset_version"><span> <b x-text="row.viralqc.dataset_version"></b></span></template>.<template
+                x-if="row.viralqc.input_status"><span> Input sequence status: <b x-text="row.viralqc.input_status"></b>.</span></template></p>
               <p class="note" style="margin-top:8px">Grades and QC statuses are reported from the selected viralQC
                 dataset. Inspect the individual checks alongside coverage and missing sites; coverage alone does
                 not replace the other quality checks.</p>
@@ -268,16 +260,16 @@
   <footer>
     <div class="sec-head"><h2>Provenance</h2><p>Everything the page reports comes from these versions and settings.</p></div>
     <div class="prov" id="prov">
-      <template x-for="[k, v] in PROVENANCE_ROWS">
-        <div class="row"><span x-text="k"></span><b x-text="v"></b></div>
+      <template x-for="[name, value] in PROVENANCE_ROWS">
+        <div class="row"><span x-text="name"></span><b x-text="value"></b></div>
       </template>
     </div>
     <p class="fine" id="fine">Read counts and coverage come from <code>summary.tsv</code>; the depth trace from each row's
       <code>table_cov_basewise.txt</code>; variant counts are VCF records; the N mask is derived from
-      depth &lt; <span x-text="P.min_depth"></span>×. Clade, lineage and grade are viralQC's. Source: <code x-text="DATA.run.output_dir"></code>.<template
-      x-for="[k, v] in LONG_VERSIONS"><span><br><code x-text="k"></code>: <span x-text="v"></span></span></template><template
-      x-if="INPUT_LINES.length"><span><br>Inputs:</span></template><template
-      x-for="i in INPUT_LINES"><span><br><code x-text="i.sample"></code> <span x-text="i.file"></span><span x-text="i.rest"></span></span></template></p>
+      depth &lt; <span x-text="MIN_DEPTH"></span>×. Clade, lineage and grade are viralQC's. Source: <code x-text="DATA.run.output_dir"></code>.<template
+      x-for="[tool, version] in LONG_VERSIONS"><span><br><code x-text="tool"></code>: <span x-text="version"></span></span></template><template
+      x-if="INPUT_FILES.length"><span><br>Inputs:</span></template><template
+      x-for="input in INPUT_FILES"><span><br><code x-text="input.sample"></code> <span x-text="input.file"></span><span x-text="input.details"></span></span></template></p>
   </footer>
 
 </div>
@@ -287,10 +279,11 @@
 <script src="vendor/hammer.min.js"></script>
 <script src="vendor/chartjs-plugin-zoom.min.js"></script>
 <script src="vendor/chartjs-plugin-annotation.min.js"></script>
-<script src="report/core.js"></script>
+<script src="report/run.js"></script>
+<script src="report/format.js"></script>
 <script src="report/views.js"></script>
 <script src="report/charts.js"></script>
-<script src="report/app.js"></script>
+<script src="report/store.js"></script>
 <script src="vendor/alpine.min.js"></script>
 </body>
 </html>

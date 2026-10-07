@@ -143,7 +143,7 @@ jobs:
           assert expected, f"no assets matched under {src}"
           assert any(f.endswith(".smk") for f in expected)
           assert "envs/clair3.yaml" in expected and "templates/report.html" in expected
-          assert {"templates/report.css", "templates/report/app.js", "templates/vendor/alpine.min.js",
+          assert {"templates/report.css", "templates/report/store.js", "templates/vendor/alpine.min.js",
                   "templates/vendor/chart.umd.min.js", "templates/vendor/LICENSE-chartjs"} <= set(expected)
 
           spec = importlib.util.find_spec("viralconseq")

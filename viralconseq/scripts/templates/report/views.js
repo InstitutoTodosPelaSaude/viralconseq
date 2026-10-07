@@ -1,177 +1,378 @@
 "use strict";
-/* What each part of report.html shows, worked out once from the document: the template
-   reads these by name and keeps only the markup. */
 
-/* ---------- KPI tiles ---------- */
 const KPI_TILES = [
-  { label: "Samples processed", value: IDS.length, foot: `${fmt(totalReads)} reads sequenced` },
-  { label: `≥${T}% covered at ≥${P.min_depth}×`, value: complete.length,
-    foot: `${(100 * complete.length / (S.length || 1)).toFixed(0)}% of ${S.length} ${ROWS_NOUN}` },
-  HAS_VQC ? { label: "viralQC grade A or B", value: goodGrade.length,
-    foot: `${S.filter((d) => gradeOf(d)).length} graded genomes` } : null,
-  { label: "Median depth", value: fmt1(medDepth), unit: "×", foot: "across rows with depth" },
-  FK !== "none" ? { label: `${FACET_PLURAL} detected`, value: facetCount.length,
-    foot: facetCount.map(([f, n]) => `${f} ${n}`).join(" · ") || "none" } : null,
-  { label: "Median % mapped", value: fmt1(medMapped), unit: "%", foot: "of reads, per row" },
+  {
+    label: "Samples processed",
+    value: SAMPLE_IDS.length,
+    foot: `${formatNumber(TOTAL_READS)} reads sequenced`,
+  },
+  {
+    label: `≥${COVERAGE_THRESHOLD}% covered at ≥${MIN_DEPTH}×`,
+    value: COMPLETE_ROWS.length,
+    foot: `${(100 * COMPLETE_ROWS.length / (ROWS.length || 1)).toFixed(0)}% of ${ROWS.length} ${ROWS_NOUN}`,
+  },
+  HAS_VIRALQC && {
+    label: "viralQC grade A or B",
+    value: GOOD_GRADE_ROWS.length,
+    foot: `${ROWS.filter(gradeOf).length} graded genomes`,
+  },
+  {
+    label: "Median depth",
+    value: formatDecimal(MEDIAN_DEPTH),
+    unit: "×",
+    foot: "across rows with depth",
+  },
+  FACET_KIND !== "none" && {
+    label: `${FACET_PLURAL} detected`,
+    value: FACET_COUNTS.length,
+    foot: FACET_COUNTS.map(([facet, count]) => `${facet} ${count}`).join(" · ") || "none",
+  },
+  {
+    label: "Median % mapped",
+    value: formatDecimal(MEDIAN_PCT_MAPPED),
+    unit: "%",
+    foot: "of reads, per row",
+  },
 ].filter(Boolean);
 
-/* ---------- funnel stages: unique samples surviving each step ---------- */
 const FUNNEL_STAGES = [
-  { label: "Samples with reads", n: IDS.filter((id) => anyRow(id, (d) => (d.total_reads || 0) > 0)).length,
-    note: `${fmt(totalReads)} reads`, share: false },
-  IS_ILLUMINA ? { label: "QC-passed", n: IDS.filter((id) => anyRow(id, (d) => (d.qc_passed_reads || 0) > 0)).length,
-    note: "reads surviving fastp", share: true } : null,
-  { label: "Mapped", n: IDS.filter((id) => anyRow(id, (d) => (d.mapped_reads || 0) > 0)).length,
-    note: "at least one read on the reference", share: true },
-  { label: `Covered ≥${T}% at ≥${P.min_depth}×`, n: new Set(complete.map((d) => d.id)).size,
-    note: FK === "segment" ? "samples with at least one qualifying segment" : "in the filtered multi-FASTA", share: true },
-  HAS_VQC ? { label: "viralQC grade A or B", n: new Set(goodGrade.map((d) => d.id)).size,
-    note: "samples with at least one A/B genome", share: true } : null,
+  {
+    label: "Samples with reads",
+    count: countSamplesWithAnyRow((row) => row.total_reads > 0),
+    note: `${formatNumber(TOTAL_READS)} reads`,
+    showsShare: false,
+  },
+  IS_ILLUMINA && {
+    label: "QC-passed",
+    count: countSamplesWithAnyRow((row) => row.qc_passed_reads > 0),
+    note: "reads surviving fastp",
+    showsShare: true,
+  },
+  {
+    label: "Mapped",
+    count: countSamplesWithAnyRow((row) => row.mapped_reads > 0),
+    note: "at least one read on the reference",
+    showsShare: true,
+  },
+  {
+    label: `Covered ≥${COVERAGE_THRESHOLD}% at ≥${MIN_DEPTH}×`,
+    count: countSamples(COMPLETE_ROWS),
+    note: IS_SEGMENTED ? "samples with at least one qualifying segment" : "in the filtered multi-FASTA",
+    showsShare: true,
+  },
+  HAS_VIRALQC && {
+    label: "viralQC grade A or B",
+    count: countSamples(GOOD_GRADE_ROWS),
+    note: "samples with at least one A/B genome",
+    showsShare: true,
+  },
 ].filter(Boolean);
 
-/* ---------- sample table ---------- */
-const cladeText = (d) => d.viralqc ? [d.viralqc.clade, d.viralqc.lineage].filter(Boolean).join(" · ") : "";
-const dash = `<span class="dim">—</span>`;
-/* a numeric cell, dimmed when the value is missing */
-const numCell = (v, text) => ({ cls: v === null ? "num dim" : "num", html: esc(text) });
-function coverageCell(d) {
-  if (d.cov_min === null) return { cls: "num", html: dash };
-  const fill = `<span class="track"><i class="fill" style="width:${Math.max(2, d.cov_min)}%;background:${
-    isComplete(d) ? "var(--ord-3)" : "var(--seq-mid)"}"></i></span>`;
-  return { cls: "num", html: `<span class="meter">${fill}<span class="val">${d.cov_min.toFixed(1)}%</span></span>` };
+const FUNNEL_NOTE = IS_SEGMENTED
+  ? "Each stage counts unique samples. A sample with several segments contributes once here and one row per segment in the table."
+  : "Each stage counts unique samples.";
+
+const DIM_DASH_HTML = `<span class="dim">${MISSING}</span>`;
+
+function pillHtml(tone, text) {
+  return `<span class="pill ${tone}"><i class="dot"></i>${escapeHtml(text)}</span>`;
 }
-/* k: sort key and column id; t: header; num: numeric sort (missing values last); get: the
-   value sorted on; cell(d): the <td>'s class and inner HTML */
-const COLS = [
-  { k: "id", t: "Sample", num: false, get: (d) => d.id, cell: (d) => ({ cls: "id", html: esc(d.id) }) },
-  { k: "status", t: "Status", num: false, get: (d) => d.status, cell: (d) => ({ cls: "", html: pill(d.status) }) },
-  FACET_LABEL ? { k: "facet", t: FACET_LABEL, num: false, get: (d) => d.facet || "",
-    cell: (d) => ({ cls: "", html: d.facet ? facetChip(d.facet) : dash }) } : null,
-  { k: "total_reads", t: "Reads", num: true, get: (d) => d.total_reads, cell: (d) => numCell(d.total_reads, fmt(d.total_reads)) },
-  IS_ILLUMINA ? { k: "qc_passed_reads", t: "QC-passed", num: true, get: (d) => d.qc_passed_reads,
-    cell: (d) => numCell(d.qc_passed_reads, fmt(d.qc_passed_reads)) } : null,
-  { k: "mapped_reads", t: "Mapped", num: true, get: (d) => d.mapped_reads, cell: (d) => numCell(d.mapped_reads, fmt(d.mapped_reads)) },
-  { k: "pct_mapped", t: "% mapped", num: true, get: (d) => d.pct_mapped, cell: (d) => numCell(d.pct_mapped, pct(d.pct_mapped)) },
-  { k: "median_depth", t: "Median depth", num: true, get: (d) => d.median_depth,
-    cell: (d) => numCell(d.median_depth, d.median_depth === null ? "—" : fmt1(d.median_depth) + "×") },
-  { k: "cov_min", t: `Cov ≥${P.min_depth}×`, num: true, get: (d) => d.cov_min, cell: coverageCell },
-  { k: "n_pct", t: "N %", num: true, get: (d) => d.consensus ? d.consensus.n_pct : null,
-    cell: (d) => numCell(d.consensus ? d.consensus.n_pct : null, d.consensus ? pct(d.consensus.n_pct) : "—") },
-  HAS_VQC ? { k: "grade", t: "Grade", num: false, get: (d) => gradeOf(d) || "",
-    cell: (d) => ({ cls: "", html: gradePill(gradeOf(d)) }) } : null,
-  HAS_VQC ? { k: "clade", t: "Clade / lineage", num: false, get: (d) => cladeText(d),
-    cell: (d) => ({ cls: cladeText(d) ? "" : "dim", html: esc(cladeText(d) || "—") }) } : null,
+
+function statusPillHtml(status) {
+  const { tone, text } = statusDisplay(status);
+  return pillHtml(tone, text);
+}
+
+function gradePillHtml(grade, suffix = "") {
+  if (!grade) return DIM_DASH_HTML;
+  return `<span class="pill grade grade-${escapeHtml(grade.toLowerCase())}"><i class="dot"></i>${escapeHtml(grade)}${suffix}</span>`;
+}
+
+const VERDICT_TONES = { good: "good", pass: "good", mediocre: "warning", warn: "warning", bad: "critical", fail: "critical" };
+
+function verdictPillHtml(verdict) {
+  const tone = VERDICT_TONES[(verdict || "").toLowerCase()] || "neutral";
+  return pillHtml(tone, verdict || MISSING);
+}
+
+function facetChipHtml(facet) {
+  if (!facet) return "";
+  return `<span class="chip"><i class="sw" style="background:${facetColor(facet)}"></i>${escapeHtml(facet)}</span>`;
+}
+
+function cladeText(row) {
+  if (!row.viralqc) return "";
+  return [row.viralqc.clade, row.viralqc.lineage].filter(Boolean).join(" · ");
+}
+
+function numericCell(value, text) {
+  return { className: value === null ? "num dim" : "num", html: escapeHtml(text) };
+}
+
+function coverageCell(row) {
+  if (row.cov_min === null) return { className: "num", html: DIM_DASH_HTML };
+  const width = Math.max(2, row.cov_min);
+  const colour = isComplete(row) ? "var(--ord-3)" : "var(--seq-mid)";
+  const meter = `<span class="track"><i class="fill" style="width:${width}%;background:${colour}"></i></span>`;
+  return { className: "num", html: `<span class="meter">${meter}<span class="val">${row.cov_min.toFixed(1)}%</span></span>` };
+}
+
+const TABLE_COLUMNS = [
+  {
+    key: "id", title: "Sample", numeric: false,
+    sortValue: (row) => row.id,
+    cell: (row) => ({ className: "id", html: escapeHtml(row.id) }),
+  },
+  {
+    key: "status", title: "Status", numeric: false,
+    sortValue: (row) => row.status,
+    cell: (row) => ({ className: "", html: statusPillHtml(row.status) }),
+  },
+  FACET_LABEL && {
+    key: "facet", title: FACET_LABEL, numeric: false,
+    sortValue: (row) => row.facet || "",
+    cell: (row) => ({ className: "", html: row.facet ? facetChipHtml(row.facet) : DIM_DASH_HTML }),
+  },
+  {
+    key: "total_reads", title: "Reads", numeric: true,
+    sortValue: (row) => row.total_reads,
+    cell: (row) => numericCell(row.total_reads, formatNumber(row.total_reads)),
+  },
+  IS_ILLUMINA && {
+    key: "qc_passed_reads", title: "QC-passed", numeric: true,
+    sortValue: (row) => row.qc_passed_reads,
+    cell: (row) => numericCell(row.qc_passed_reads, formatNumber(row.qc_passed_reads)),
+  },
+  {
+    key: "mapped_reads", title: "Mapped", numeric: true,
+    sortValue: (row) => row.mapped_reads,
+    cell: (row) => numericCell(row.mapped_reads, formatNumber(row.mapped_reads)),
+  },
+  {
+    key: "pct_mapped", title: "% mapped", numeric: true,
+    sortValue: (row) => row.pct_mapped,
+    cell: (row) => numericCell(row.pct_mapped, formatPercent(row.pct_mapped)),
+  },
+  {
+    key: "median_depth", title: "Median depth", numeric: true,
+    sortValue: (row) => row.median_depth,
+    cell: (row) => numericCell(row.median_depth, row.median_depth === null ? MISSING : formatDecimal(row.median_depth) + "×"),
+  },
+  {
+    key: "cov_min", title: `Cov ≥${MIN_DEPTH}×`, numeric: true,
+    sortValue: (row) => row.cov_min,
+    cell: coverageCell,
+  },
+  {
+    key: "n_pct", title: "N %", numeric: true,
+    sortValue: (row) => (row.consensus ? row.consensus.n_pct : null),
+    cell: (row) => numericCell(row.consensus ? row.consensus.n_pct : null,
+                               row.consensus ? formatPercent(row.consensus.n_pct) : MISSING),
+  },
+  HAS_VIRALQC && {
+    key: "grade", title: "Grade", numeric: false,
+    sortValue: (row) => gradeOf(row) || "",
+    cell: (row) => ({ className: "", html: gradePillHtml(gradeOf(row)) }),
+  },
+  HAS_VIRALQC && {
+    key: "clade", title: "Clade / lineage", numeric: false,
+    sortValue: cladeText,
+    cell: (row) => ({ className: cladeText(row) ? "" : "dim", html: escapeHtml(cladeText(row) || MISSING) }),
+  },
 ].filter(Boolean);
 
-const FILTERS = [
-  { k: "all", t: "All", match: () => true },
-  { k: "complete", t: `≥${T}% covered`, match: isComplete },
-  HAS_VQC ? { k: "grade", t: "Grade A/B", match: isGoodGrade } : null,
-  { k: "flagged", t: "Flagged", match: (d) => d.status !== "ok" },
-].filter(Boolean).map((f) => ({ ...f, n: S.filter(f.match).length }));
+const TABLE_FILTERS = [
+  { key: "all", title: "All", matches: () => true },
+  { key: "complete", title: `≥${COVERAGE_THRESHOLD}% covered`, matches: isComplete },
+  HAS_VIRALQC && { key: "grade", title: "Grade A/B", matches: isGoodGrade },
+  { key: "flagged", title: "Flagged", matches: (row) => row.status !== "ok" },
+].filter(Boolean).map((filter) => ({ ...filter, count: ROWS.filter(filter.matches).length }));
 
-const FILTER_PLACEHOLDER = `Filter by sample, ${FACET_LABEL ? FACET_LABEL.toLowerCase() + ", " : ""}virus, clade or status`;
+const SEARCH_PLACEHOLDER =
+  `Filter by sample, ${FACET_LABEL ? FACET_LABEL.toLowerCase() + ", " : ""}virus, clade or status`;
 
-/* What the table shows for a view ({ filter, query, sortKey, sortDir }), in order. The
-   detail panel's Previous/Next walk the same list. */
-function visibleRows(view) {
-  const f = FILTERS.find((x) => x.k === view.filter);
-  const q = view.query.trim().toLowerCase();
-  const rows = S.filter((d) => f.match(d) &&
-    (!q || [d.id, d.facet, d.viralqc && d.viralqc.virus, d.viralqc && d.viralqc.clade,
-            d.viralqc && d.viralqc.lineage, d.status, statusMeta(d.status).text]
-      .some((v) => v && String(v).toLowerCase().includes(q))));
-  const col = COLS.find((c) => c.k === view.sortKey) || COLS[0];
-  return rows.sort((a, b) => {
-    let x = col.get(a), y = col.get(b);
-    if (x === null || x === undefined || x === "") x = col.num ? -Infinity : "￿";
-    if (y === null || y === undefined || y === "") y = col.num ? -Infinity : "￿";
-    if (x < y) return -view.sortDir;
-    if (x > y) return view.sortDir;
-    return a.key < b.key ? -1 : 1;
-  });
+function rowsInView({ filter, query, sortKey, sortDirection }) {
+  const { matches } = TABLE_FILTERS.find((candidate) => candidate.key === filter);
+  const search = query.trim().toLowerCase();
+  const column = TABLE_COLUMNS.find((candidate) => candidate.key === sortKey) || TABLE_COLUMNS[0];
+  return ROWS
+    .filter((row) => matches(row) && matchesSearch(row, search))
+    .sort((a, b) => compareRows(a, b, column, sortDirection));
 }
 
-/* ---------- sample detail ---------- */
-const extentOf = (d) => DATA.run.extents[d.facet || "*"] || null;
-const scoreNote = (vq) => vq && vq.score !== null ? ` · ${fmt1(vq.score)}/24` : "";
-/* statuses the detail panel explains in words; anything else is shown verbatim */
-const VIRALQC_STATUSES = ["viralqc_failed", "viralqc_partial", "viralqc_skipped", "viralqc_missing"];
-const EXPLAINED_STATUSES = ["ok", "no_mapped_reads", "empty_consensus", "missing_stats", ...VIRALQC_STATUSES];
-
-/* Stat strips: k is the label, v the value (HTML, escaped), n an optional note. */
-function headlineStats(d) {
-  const items = [{ k: "Reads", v: fmt(d.total_reads) }];
-  if (IS_ILLUMINA) items.push({ k: "QC-passed", v: fmt(d.qc_passed_reads),
-    n: d.total_reads ? `${pctOf(d.qc_passed_reads, d.total_reads)} of reads` : "" });
-  items.push({ k: "Mapped", v: fmt(d.mapped_reads), n: `${pct(d.pct_mapped)} of reads` });
-  items.push({ k: "Depth", v: fmt1(d.median_depth) + "<small>× median</small>",
-    n: `mean ${fmt1(d.mean_depth)}×, zeros included` });
-  items.push({ k: `Covered at ≥${P.min_depth}×`, v: pct(d.cov_min), n: `10×: ${pct(d.cov10)} · 100×: ${pct(d.cov100)}` });
-  if (d.consensus) items.push({ k: "Consensus", v: fmt(d.consensus.length) + "<small> bp</small>",
-    n: `${fmt(d.consensus.n)} N (${pct(d.consensus.n_pct)})` });
-  if (d.variants) items.push({ k: "Variant records", v: fmt(d.variants.records), n: "lines in the final VCF" });
-  if (d.isnv_count !== null) items.push({ k: "iSNVs", v: fmt(d.isnv_count),
-    n: P.af_threshold !== null ? `AF ≥ ${P.af_threshold}` : "" });
-  if (d.clair3_model) items.push({ k: "Clair3 model", v: `<small>${esc(d.clair3_model)}</small>` });
-  return items;
+function matchesSearch(row, search) {
+  if (!search) return true;
+  const viralqc = row.viralqc || {};
+  const searchable = [row.id, row.facet, viralqc.virus, viralqc.clade, viralqc.lineage, row.status, statusDisplay(row.status).text];
+  return searchable.some((value) => value && String(value).toLowerCase().includes(search));
 }
 
-function fastpStats(f) {
+const SORTS_LAST_AS_TEXT = "￿";
+
+function compareRows(a, b, column, direction) {
+  const first = sortableValue(column.sortValue(a), column);
+  const second = sortableValue(column.sortValue(b), column);
+  if (first < second) return -direction;
+  if (first > second) return direction;
+  return a.key < b.key ? -1 : 1;
+}
+
+function sortableValue(value, column) {
+  const isEmpty = value === null || value === undefined || value === "";
+  if (!isEmpty) return value;
+  return column.numeric ? -Infinity : SORTS_LAST_AS_TEXT;
+}
+
+const VIRALQC_FAILURE_STATUSES = ["viralqc_failed", "viralqc_partial", "viralqc_skipped", "viralqc_missing"];
+const EXPLAINED_STATUSES = ["ok", "no_mapped_reads", "empty_consensus", "missing_stats", ...VIRALQC_FAILURE_STATUSES];
+
+function gradeScoreSuffix(viralqc) {
+  return viralqc && viralqc.score !== null ? ` · ${formatDecimal(viralqc.score)}/24` : "";
+}
+
+function headlineFigures(row) {
   return [
-    { k: "Reads in", v: fmt(f.total_reads_before) },
-    { k: "Reads out", v: fmt(f.total_reads_after), n: `${pctOf(f.total_reads_after, f.total_reads_before)} kept` },
-    { k: "Q30 rate", v: frac(f.q30_after), n: f.q30_before === null || f.q30_before === undefined ? "" : `before: ${frac(f.q30_before)}` },
-    { k: "Duplication", v: frac(f.duplication) },
-    { k: "Mean length", v: `${fmt(f.read1_mean_length)}<small> / ${fmt(f.read2_mean_length)} bp</small>`, n: "R1 / R2 after trimming" },
-    { k: "Low quality", v: fmt(f.low_quality), n: "reads removed" },
-    { k: "Too short", v: fmt(f.too_short), n: "reads removed" },
-    { k: "Adapter trimmed", v: fmt(f.adapter_trimmed), n: "reads" },
+    { label: "Reads", value: formatNumber(row.total_reads) },
+    IS_ILLUMINA && {
+      label: "QC-passed",
+      value: formatNumber(row.qc_passed_reads),
+      note: row.total_reads ? `${formatShare(row.qc_passed_reads, row.total_reads)} of reads` : "",
+    },
+    { label: "Mapped", value: formatNumber(row.mapped_reads), note: `${formatPercent(row.pct_mapped)} of reads` },
+    {
+      label: "Depth",
+      value: formatDecimal(row.median_depth) + "<small>× median</small>",
+      note: `mean ${formatDecimal(row.mean_depth)}×, zeros included`,
+    },
+    {
+      label: `Covered at ≥${MIN_DEPTH}×`,
+      value: formatPercent(row.cov_min),
+      note: `10×: ${formatPercent(row.cov10)} · 100×: ${formatPercent(row.cov100)}`,
+    },
+    row.consensus && {
+      label: "Consensus",
+      value: formatNumber(row.consensus.length) + "<small> bp</small>",
+      note: `${formatNumber(row.consensus.n)} N (${formatPercent(row.consensus.n_pct)})`,
+    },
+    row.variants && { label: "Variant records", value: formatNumber(row.variants.records), note: "lines in the final VCF" },
+    row.isnv_count !== null && {
+      label: "iSNVs",
+      value: formatNumber(row.isnv_count),
+      note: PARAMS.af_threshold !== null ? `AF ≥ ${PARAMS.af_threshold}` : "",
+    },
+    row.clair3_model && { label: "Clair3 model", value: `<small>${escapeHtml(row.clair3_model)}</small>` },
+  ].filter(Boolean);
+}
+
+function readQcFigures(fastp) {
+  return [
+    { label: "Reads in", value: formatNumber(fastp.total_reads_before) },
+    {
+      label: "Reads out",
+      value: formatNumber(fastp.total_reads_after),
+      note: `${formatShare(fastp.total_reads_after, fastp.total_reads_before)} kept`,
+    },
+    {
+      label: "Q30 rate",
+      value: formatFraction(fastp.q30_after),
+      note: isMissing(fastp.q30_before) ? "" : `before: ${formatFraction(fastp.q30_before)}`,
+    },
+    { label: "Duplication", value: formatFraction(fastp.duplication) },
+    {
+      label: "Mean length",
+      value: `${formatNumber(fastp.read1_mean_length)}<small> / ${formatNumber(fastp.read2_mean_length)} bp</small>`,
+      note: "R1 / R2 after trimming",
+    },
+    { label: "Low quality", value: formatNumber(fastp.low_quality), note: "reads removed" },
+    { label: "Too short", value: formatNumber(fastp.too_short), note: "reads removed" },
+    { label: "Adapter trimmed", value: formatNumber(fastp.adapter_trimmed), note: "reads" },
   ];
 }
 
-function variantCallingStats(d) {
+function variantCallingFigures(row) {
   return [
-    { k: "Clair3 model", v: `<small>${esc(d.clair3_model || P.clair3_model || "—")}</small>` },
-    { k: "MAPQ floor", v: fmt(P.minimum_map_quality) },
-    { k: "Allele fraction", v: P.af_threshold === null ? "—" : String(P.af_threshold) },
-    { k: "Min read length", v: P.minimum_length === null ? "—" : fmt(P.minimum_length) + "<small> bp</small>" },
-    { k: "Variant records", v: d.variants ? fmt(d.variants.records) : "—" },
+    { label: "Clair3 model", value: `<small>${escapeHtml(row.clair3_model || PARAMS.clair3_model || MISSING)}</small>` },
+    { label: "MAPQ floor", value: formatNumber(PARAMS.minimum_map_quality) },
+    { label: "Allele fraction", value: PARAMS.af_threshold === null ? MISSING : String(PARAMS.af_threshold) },
+    {
+      label: "Min read length",
+      value: PARAMS.minimum_length === null ? MISSING : formatNumber(PARAMS.minimum_length) + "<small> bp</small>",
+    },
+    { label: "Variant records", value: row.variants ? formatNumber(row.variants.records) : MISSING },
   ];
 }
 
-/* viralQC's per-check verdicts that are present, with readable names */
-const viralqcChecks = (vq) => Object.entries(vq.checks || {}).filter(([, v]) => v)
-  .map(([k, v]) => [k.replace(/([A-Z])/g, " $1").toLowerCase(), v]);
-
-/* ---------- provenance ---------- */
-/* versions longer than this go to the fine print instead of the grid */
-const LONG = 26;
-const MANIFEST = DATA.run.manifest;
-function viralqcLine(vs) {
-  if (!vs) return null;
-  return [vs.status, vs.exit_code !== undefined ? `exit ${vs.exit_code}` : null,
-    vs.result_rows !== undefined && vs.input_records !== undefined ? `${vs.result_rows}/${vs.input_records} records` : null]
-    .filter((v) => v !== null && v !== undefined).join(", ");
+function mappedReadsFloorNote(row) {
+  const floor = row.gate ? row.gate.minimum_mapped_reads : null;
+  return isMissing(floor) ? "" : `, below the ${formatNumber(floor)}-read floor`;
 }
+
+function depthTraceNotes(row) {
+  const contigs = coverageOf(row).contigs || [];
+  const extent = primerExtentOf(row);
+  const contigNote = contigs.length > 1 ? `; dashed lines separate the ${contigs.length} reference contigs` : "";
+  const extentNote = extent
+    ? `; the pale bands at each end lie outside the primer extent (${formatNumber(extent.outside_bp)} bp) `
+      + "and describe scheme geometry, not a measured coverage limit"
+    : "";
+  return contigNote + extentNote;
+}
+
+function ampliconCaption(row) {
+  const depths = ampliconDepthsOf(row);
+  const below = depths.filter((depth) => depth < MIN_DEPTH).length;
+  return `${below} of ${depths.length} amplicons below ${MIN_DEPTH}×`;
+}
+
+function alignmentCoverage(viralqc) {
+  return viralqc.coverage !== null ? (100 * viralqc.coverage).toFixed(1) + "%" : MISSING;
+}
+
+function viralqcCheckVerdicts(viralqc) {
+  const humanName = (check) => check.replace(/([A-Z])/g, " $1").toLowerCase();
+  return Object.entries(viralqc.checks || {})
+    .filter(([, verdict]) => verdict)
+    .map(([check, verdict]) => [humanName(check), verdict]);
+}
+
+const MAX_GRID_VERSION_LENGTH = 26;
+const MANIFEST = DATA.run.manifest || {};
+
+function viralqcRunSummary(status) {
+  if (!status) return null;
+  const parts = [
+    status.status,
+    status.exit_code !== undefined ? `exit ${status.exit_code}` : null,
+    status.result_rows !== undefined && status.input_records !== undefined
+      ? `${status.result_rows}/${status.input_records} records`
+      : null,
+  ];
+  return parts.filter((part) => !isMissing(part)).join(", ");
+}
+
 const PROVENANCE_ROWS = [
-  ...DATA.run.versions.filter(([, v]) => v.length <= LONG),
+  ...DATA.run.versions.filter(([, version]) => version.length <= MAX_GRID_VERSION_LENGTH),
   ["platform", PLATFORM],
-  ["minimum depth", `${P.min_depth}×`],
-  ["consensus coverage threshold", `${T}% at ≥${P.min_depth}×`],
-  ["primer scheme", P.primer_scheme],
-  [IS_ILLUMINA ? "allele-frequency threshold" : "allele-fraction threshold (ALT / (REF + ALT))", P.af_threshold],
-  ["minimum read length", P.minimum_length === null ? null : `${fmt(P.minimum_length)} bp`],
-  ["MAPQ floor", P.minimum_map_quality],
-  ["Clair3 model", IS_ILLUMINA ? null : P.clair3_model],
-  ["viralQC", viralqcLine(DATA.run.viralqc_status)],
-  ["run created (UTC)", MANIFEST ? MANIFEST.created_utc : null],
-  ["run finished (UTC)", MANIFEST ? MANIFEST.finished_utc : null],
-  ["run status", MANIFEST ? MANIFEST.status : null],
-  ["config sha256", MANIFEST && MANIFEST.config_sha256 ? MANIFEST.config_sha256.slice(0, 12) : null],
-].filter(([, v]) => v !== null && v !== undefined && v !== "").map(([k, v]) => [k, String(v)]);
-const LONG_VERSIONS = DATA.run.versions.filter(([, v]) => v.length > LONG);
-const INPUT_LINES = (MANIFEST && MANIFEST.inputs || []).map((i) => ({
-  sample: i.sample, file: i.path ? String(i.path).split("/").pop() : "—",
-  rest: ` · sha256 ${i.sha256 || "—"}${i.size_bytes != null ? ` · ${compact(i.size_bytes)} B` : ""}`,
+  ["minimum depth", `${MIN_DEPTH}×`],
+  ["consensus coverage threshold", `${COVERAGE_THRESHOLD}% at ≥${MIN_DEPTH}×`],
+  ["primer scheme", PARAMS.primer_scheme],
+  [IS_ILLUMINA ? "allele-frequency threshold" : "allele-fraction threshold (ALT / (REF + ALT))", PARAMS.af_threshold],
+  ["minimum read length", PARAMS.minimum_length === null ? null : `${formatNumber(PARAMS.minimum_length)} bp`],
+  ["MAPQ floor", PARAMS.minimum_map_quality],
+  ["Clair3 model", IS_ILLUMINA ? null : PARAMS.clair3_model],
+  ["viralQC", viralqcRunSummary(DATA.run.viralqc_status)],
+  ["run created (UTC)", MANIFEST.created_utc],
+  ["run finished (UTC)", MANIFEST.finished_utc],
+  ["run status", MANIFEST.status],
+  ["config sha256", MANIFEST.config_sha256 ? MANIFEST.config_sha256.slice(0, 12) : null],
+]
+  .filter(([, value]) => !isMissing(value) && value !== "")
+  .map(([name, value]) => [name, String(value)]);
+
+const LONG_VERSIONS = DATA.run.versions.filter(([, version]) => version.length > MAX_GRID_VERSION_LENGTH);
+
+const INPUT_FILES = (MANIFEST.inputs || []).map((input) => ({
+  sample: input.sample,
+  file: input.path ? String(input.path).split("/").pop() : MISSING,
+  details: ` · sha256 ${input.sha256 || MISSING}${isMissing(input.size_bytes) ? "" : ` · ${formatCompact(input.size_bytes)} B`}`,
 }));
