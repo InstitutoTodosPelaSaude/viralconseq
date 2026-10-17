@@ -62,15 +62,15 @@ def sort_records(records):
 
 class TestCigar(unittest.TestCase):
     def test_match_deletion_cover_insertion_clips_do_not(self):
-        self.assertEqual(nd.cigar_intervals(10, "5M2D3M"), ([(10, 20)], 8))
-        self.assertEqual(nd.cigar_intervals(10, "5S5M2I5M5H"), ([(10, 20)], 12))
-        self.assertEqual(nd.cigar_intervals(0, "4=1X5M"), ([(0, 10)], 10))
+        self.assertEqual(nd.cigar_intervals(10, "5M2D3M"), [(10, 20)])
+        self.assertEqual(nd.cigar_intervals(10, "5S5M2I5M5H"), [(10, 20)])
+        self.assertEqual(nd.cigar_intervals(0, "4=1X5M"), [(0, 10)])
 
     def test_skip_splits_coverage(self):
-        self.assertEqual(nd.cigar_intervals(0, "5M10N5M"), ([(0, 5), (15, 20)], 10))
+        self.assertEqual(nd.cigar_intervals(0, "5M10N5M"), [(0, 5), (15, 20)])
 
     def test_star_gives_nothing(self):
-        self.assertEqual(nd.cigar_intervals(0, "*"), ([], 0))
+        self.assertEqual(nd.cigar_intervals(0, "*"), [])
 
 
 class TestSplitTarget(unittest.TestCase):
@@ -191,8 +191,9 @@ class TestIndelNeutrality(unittest.TestCase):
         # Same start, same read length; half carry a 30 bp deletion, so they reach
         # 30 bp further on the reference. Ranking by reference end kept all 20
         # from the deletion half (benchmark v4/v5 wrote 28-31 bp deletions into
-        # consensuses at >1000x); ranking by aligned query bases is neutral. A
-        # third set covers the deletion reads' tail so nothing is topped up there.
+        # consensuses at >1000x); latest-start-first with input order within a
+        # start is neutral. A third set covers the deletion reads' tail so
+        # nothing is topped up there.
         records = []
         for i in range(100):
             records.append(rec(f"n{i}", 0, 150))
@@ -206,19 +207,20 @@ class TestIndelNeutrality(unittest.TestCase):
         self.assertTrue(all(after[p] >= min(20, before[p]) for p in range(400)))
 
     def test_insertion_reads_are_not_disfavoured(self):
+        # Insertion reads cover 10 bp less reference; a third set covers the
+        # tail of the normal reads so nothing is topped up there.
         records = []
         for i in range(100):
             records.append(rec(f"n{i}", 0, 150))
-            records.append(
-                rec(f"i{i}", 0, 140, cigar="70M10I70M")
-            )  # 150 query bases, 140 on the reference
-        recs, _, _, _ = run(header(400) + records, 20)
-        kept_ins = sum(1 for i in range(recs.n) if recs.kept[i] and i % 2 == 1)
+            records.append(rec(f"i{i}", 0, 140, cigar="70M10I70M"))
+        tail = [rec(f"m{i}", 30, 150) for i in range(100)]
+        recs, _, _, _ = run(header(400) + records + tail, 20)
+        kept_ins = sum(1 for i in range(200) if recs.kept[i] and i % 2 == 1)
         self.assertEqual(kept_ins, 10)
 
     def test_expiry_uses_the_true_coverage_end(self):
-        # A deletion read reaches 220 on the reference though its rank is 190;
-        # at 200 it is the only coverage and must still be selectable.
+        # A deletion read reaches 220 on the reference; at 210 it is the only
+        # coverage and must still be selectable although its start has passed.
         lines = (
             header(400)
             + [rec("d", 0, 220, cigar="100M30D90M")]
@@ -468,24 +470,12 @@ class TestDeterminismAndEmission(unittest.TestCase):
         recs2, *_ = run(lines, 30)
         self.assertEqual(bytes(recs1.kept), bytes(recs2.kept))
 
-    def test_permuting_same_start_records_keeps_the_same_depth_profile(self):
-        # The tiebreak among units with the same end is input order, so a
-        # permutation may swap which of two identical-shaped reads is kept; the
-        # depth profile and the kept count must not move.
-        records = sort_records(self._records(5))
-        _, results1, values1, _ = run(header(500) + records, 30)
-        rng = random.Random(11)
-        groups = {}
-        for line in records:
-            groups.setdefault(line.split("\t")[3], []).append(line)
-        permuted = []
-        for key in sorted(groups, key=int):
-            group = groups[key][:]
-            rng.shuffle(group)
-            permuted += group
-        _, results2, values2, _ = run(header(500) + permuted, 30)
-        self.assertEqual(depths(results1[0]), depths(results2[0]))
-        self.assertEqual(values1["records_kept"], values2["records_kept"])
+    def test_same_start_tiebreak_is_input_order(self):
+        # Within a start, units are taken in file order; the file order of a
+        # coordinate-sorted BAM is sequencing order, which is blind to content.
+        records = [rec(f"r{i}", 0, 100) for i in range(30)]
+        recs, *_ = run(header(300) + records, 10)
+        self.assertEqual([i for i in range(30) if recs.kept[i]], list(range(10)))
 
     def test_emit_writes_header_with_pg_and_kept_lines_in_order(self):
         lines = header(300) + [rec(f"a{i}", 0, 100) for i in range(5)]

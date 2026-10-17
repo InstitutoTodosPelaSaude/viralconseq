@@ -186,11 +186,13 @@ CIGAR, pairs proper-pair mates **by QNAME** (ampliconclip moves POS without
 rewriting the mate's PNEXT), assigns each record to the amplicon whose outer
 span contains it (10 bp tolerance) and sweeps every position left to right:
 units (a record, or both mates) starting there join their stratum's pending
-set, ranked by reach (start plus aligned query bases, so an indel does not
-change a read's rank; ranking by the reference end made deletion-bearing reads
-reach further and enriched deletions six-fold in benchmark v5), and while a
-stratum is below its share of `min(target, original depth)` its
-furthest-reaching pending unit is kept whole. Pass 2 re-emits the kept records in input order, so the output is
+set, ordered by latest start first and then input order (the only reach proxy
+that ignores read content: ranking by the reference end enriched
+deletion-bearing reads six-fold and ranking by aligned length enriched
+insertion-bearing reads as much, benchmark v4-v6; first-come order is neutral
+but overshoots the target twelve-fold), and while a stratum is below its share
+of `min(target, original depth)` its latest-starting pending unit is kept
+whole. Pass 2 re-emits the kept records in input order, so the output is
 coordinate-sorted and two runs over the same input are byte-identical (the
 `@PG` line carries no paths or timestamps). Secondary records are dropped and
 counted; supplementary records are single-record units. A record that fits
