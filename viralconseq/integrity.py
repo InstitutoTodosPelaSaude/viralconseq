@@ -6,9 +6,10 @@ upload, a corrupt gzip, a protein FASTA, or a primer BED whose chrom names don't
 match the reference all pass an existence check and then fail deep inside
 Snakemake -- or, worse, silently produce wrong results (``samtools ampliconclip``
 clips nothing when no BED chrom matches a mapped contig). This module adds
-streaming, dependency-free validators for the three consensus input formats
-(FASTQ, FASTA, BED) so bad inputs are rejected up front with clear, structured
-errors.
+streaming validators for the three consensus input formats (FASTQ, FASTA, BED)
+so bad inputs are rejected up front with clear, structured errors. FASTA and
+BED are pure stdlib; FASTQ detection is delegated to ``seqkit`` (see
+:func:`validate_fastq`), with the stdlib scanner as the diagnoser.
 
 Each validator returns an :class:`IntegrityReport` that *collects*
 :class:`IntegrityIssue` objects rather than raising, so the orchestration layer
@@ -18,11 +19,17 @@ enough that hand-rolled streaming parsers are both easy and give full control ov
 error codes and messages.
 """
 
+import concurrent.futures
 import gzip
+import logging
 import re
 import zlib
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set
+
+from viralconseq import seqkit
+
+logger = logging.getLogger(__name__)
 
 # Cap the number of issues recorded per file. A file with more than this many
 # problems is clearly broken; reporting the first N keeps error payloads bounded
@@ -303,15 +310,17 @@ def _check_fastq_record(record: List[str], start_line: int, add: _Adder) -> None
         )
 
 
-def validate_fastq(path: str) -> IntegrityReport:
-    """Full streaming integrity scan of a (optionally gzipped) FASTQ file.
+def scan_fastq(path: str) -> IntegrityReport:
+    """Full streaming integrity scan of a (optionally gzipped) FASTQ file in
+    pure Python: the diagnoser behind :func:`validate_fastq`.
 
     Reads the whole file once, verifying 4-line record structure, the ``@``/``+``
     marker lines, matching sequence/quality lengths, and valid sequence and
     quality characters. Blank lines (a common, benign artifact) are tolerated so
     they do not desynchronize record grouping. A trailing partial record is
     reported as truncation; a read/decode error (truncated or corrupt gzip,
-    non-text bytes) is reported as unreadable.
+    non-text bytes) is reported as unreadable. About 1 s per 10 MB of gzip, so
+    :func:`validate_fastq` only calls it on a file seqkit did not pass.
     """
     report = IntegrityReport(path=path, kind="fastq")
     add = _make_adder(report)
@@ -360,6 +369,85 @@ def validate_fastq(path: str) -> IntegrityReport:
             )
         )
     return report
+
+
+def validate_fastq(path: str) -> IntegrityReport:
+    """Integrity report for one FASTQ: seqkit as the detector, Python as the
+    diagnoser.
+
+    ``seqkit seq --validate-seq`` (:mod:`viralconseq.seqkit`) reads the file
+    about four times faster than :func:`scan_fastq`; when it finds nothing
+    the report is empty and the file is not read again. ``empty`` and
+    ``unreadable`` verdicts map straight onto ``fastq_empty`` and
+    ``fastq_unreadable``; anything else seqkit flags (a truncated record, a
+    length mismatch, a bad marker line, a non-DNA letter, a zero-length read
+    at the end) is handed to :func:`scan_fastq`, which names the exact issue
+    code with its line number. The issue codes, messages and severities are
+    therefore the same as the pure-Python scanner's; a file seqkit flags but
+    the scanner clears gets a ``fastq_seqkit_flagged`` warning. A quality character
+    outside ASCII 33-126 or whitespace inside a sequence line is invisible to
+    seqkit and only reported when the file is diagnosed for another reason.
+
+    Raises :class:`~viralconseq.seqkit.SeqkitMissingError` when seqkit is not
+    on ``PATH``; it is a required dependency of the CLI environment.
+    """
+    report = IntegrityReport(path=path, kind="fastq")
+    add = _make_adder(report)
+    result = seqkit.detect(path)
+    if result.verdict == seqkit.VERDICT_CLEAN:
+        return report
+    if result.verdict == seqkit.VERDICT_EMPTY:
+        add("fastq_empty", "FASTQ file is empty.")
+        return report
+    if result.verdict == seqkit.VERDICT_UNREADABLE:
+        add(
+            "fastq_unreadable",
+            f"Could not read FASTQ (possibly a truncated or corrupt gzip): {result.message}",
+        )
+        return report
+    logger.debug("seqkit flagged %s (%s); scanning it in Python", path, result.message or "rc")
+    report = scan_fastq(path)
+    if not report.errors:
+        # seqkit saw something the scanner did not name: do not let the file
+        # through silently, and keep seqkit's own words.
+        if result.message:
+            cause = result.message
+        elif result.returncode == 0:
+            cause = "a zero-length read"
+        else:
+            cause = "no error message"
+        _make_adder(report, "warning")(
+            "fastq_seqkit_flagged",
+            f"seqkit flagged this file (exit status {result.returncode}: {cause}) but the "
+            "record scan found no problem; check the file by hand.",
+        )
+    return report
+
+
+def validate_fastq_files(paths: Sequence[str], workers: int = 1) -> List[IntegrityReport]:
+    """One :func:`validate_fastq` report per path, in input order.
+
+    Every file is independent, so they are checked in a process pool of
+    ``workers`` (capped at the number of distinct files; serial for one file
+    or one worker). A file listed twice is scanned once. A worker exception
+    propagates; a pool that dies (a worker killed by the OOM killer) is logged
+    and the files are rescanned serially rather than reported as broken.
+    """
+    unique = list(dict.fromkeys(paths))
+    count = min(max(1, int(workers)), len(unique))
+    by_path: Dict[str, IntegrityReport] = {}
+    if count > 1:
+        try:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=count) as pool:
+                by_path = dict(zip(unique, pool.map(validate_fastq, unique)))
+        except concurrent.futures.process.BrokenProcessPool:
+            logger.warning(
+                "The FASTQ check's process pool died (out of memory?); rescanning serially"
+            )
+            by_path = {}
+    if not by_path:
+        by_path = {path: validate_fastq(path) for path in unique}
+    return [by_path[path] for path in paths]
 
 
 # ---------------------------------------------------------------------------

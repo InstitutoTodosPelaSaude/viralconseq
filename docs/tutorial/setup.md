@@ -20,7 +20,11 @@ conda activate viralconseq
 pip install -e .
 ```
 
-Either way, conda (or mamba/micromamba) must be available on your `PATH` at runtime.
+Either way, conda (or mamba/micromamba) and [seqkit](https://bioinf.shenwei.me/seqkit/) must be
+available on your `PATH` at runtime: Snakemake builds the per-rule tool environments, and the
+input integrity check runs seqkit over every FASTQ. `environment.yml` installs seqkit; with a
+pip-only install get it from bioconda (`conda install -c bioconda seqkit`) or drop the static
+binary into a directory on `PATH` (see [Installation](../installation.md)).
 
 Verify:
 

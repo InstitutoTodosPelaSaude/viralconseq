@@ -33,6 +33,7 @@ from viralconseq.exceptions import (
     ViralQCDatabaseNotFoundError,
 )
 from viralconseq.reference_splitter import count_records, split_multifasta
+from viralconseq.seqkit import SeqkitMissingError
 
 logger = logging.getLogger(__name__)
 
@@ -692,13 +693,21 @@ def validate_consensus_input_integrity(args: Dict[str, Any], samples: Dict[str, 
         logger.info("Input integrity validation skipped (--skip-input-validation).")
         return
 
-    logger.info("Running input integrity checks")
+    fastq_paths = [path for file_paths in samples.values() for path in file_paths]
+    workers = min(int(args.get("threads_total") or 1), len(fastq_paths)) or 1
+    logger.info(
+        "Running input integrity checks (%d FASTQ file(s), %d worker(s))",
+        len(fastq_paths),
+        workers,
+    )
     reports: List[integrity.IntegrityReport] = []
 
-    # FASTQ: every read file of every sample.
-    for file_paths in samples.values():
-        for file_path in file_paths:
-            reports.append(integrity.validate_fastq(file_path))
+    # FASTQ: every read file of every sample, seqkit-detected in a process
+    # pool sized to the thread budget (integrity.validate_fastq_files).
+    try:
+        reports.extend(integrity.validate_fastq_files(fastq_paths, workers=workers))
+    except SeqkitMissingError as e:
+        raise ValidationError(str(e)) from e
 
     # Reference FASTA(s): collect the headers so we can derive the exact contig
     # names the pipeline will map against.

@@ -46,7 +46,8 @@ per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
 | `clair3_models.py` | Basecall-tag parsing and the Clair3 model resolver behind `--clair3-model auto` (a port of artic's `choose_model` over `constants.Clair3Models.MANIFEST`), plus checkpoint validation. |
 | `_orchestrator.py` | Shared `run_pipeline` skeleton (resolve → validate → config → manifest → run) with structured error handling. |
 | `validators.py` | File existence, sample-sheet parsing, reference/primer checks, the viralQC database check (`validate_viralqc_database`), input sanitization, and content-level input-integrity orchestration (`validate_consensus_input_integrity`). |
-| `integrity.py` | Streaming, pure-stdlib content validators for FASTQ / FASTA / BED; collect `IntegrityIssue`s rather than raising. |
+| `integrity.py` | Content validators for FASTQ / FASTA / BED; collect `IntegrityIssue`s rather than raising. FASTQs go through `seqkit` first (`seqkit.py`) in a process pool, with the pure-Python scanner as the diagnoser for a flagged file. |
+| `seqkit.py` | Runs `seqkit seq --validate-seq` as the FASTQ detector and maps its exit status, stdout and stderr onto `clean` / `empty` / `unreadable` / `suspect`. |
 | `reference_splitter.py` | Splits a multi-record `--reference` FASTA into the per-segment `{segment: path}` dict the segmented workflows consume. |
 | `config_generator.py` | Writes the YAML config (the contract with the `.smk` files). |
 | `constants.py` | `ConfigKeys`, `DataType`, `ResourceDefaults` (threaded and memory rules, detection of cores and memory), `Clair3Models` (manifest, model directory, URLs), `ViralQCDatabase` (the database directory layout contract), `SampleSheetJunk`, `ReportDefaults`. |

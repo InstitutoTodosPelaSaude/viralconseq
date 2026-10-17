@@ -46,6 +46,26 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   16x that cannot reach `--variant-depth` is masked, not written as the
   reference. `coverage_min_depth` and `consensus/*.cov<T>.fasta` follow the
   new threshold.
+- Input validation no longer runs on one core, and no longer reads every FASTQ
+  line by line in Python. The FASTQ integrity check now runs `seqkit seq
+  --validate-seq` as the detector (about four times faster per file on one
+  core) in a process pool sized to `--threads-total`, and re-reads only the
+  files seqkit flags with the Python scanner so the issue codes, messages and
+  severities are unchanged (`integrity.validate_fastq_files`,
+  `viralconseq/seqkit.py`). Measured on sixteen 128 MB nanopore FASTQs (2 GB):
+  151 s with the old scanner, 35 s with seqkit on one core, 3 s with 16
+  workers. Before this change the phase took 2 h 12 m of the 3 h 06 m wall
+  time of the benchmark's 113-sample dengue run. Two inputs the old scanner
+  rejected are now accepted because every downstream tool reads them: a
+  multi-line (wrapped) FASTQ and a read holding `U`; a quality character
+  outside ASCII 33-126 is only reported when a file is diagnosed for another
+  reason. seqkit is a required dependency of the CLI environment
+  (`environment.yml`, the Docker image, CI) and its version is recorded in
+  `versions.tsv`. An existing conda environment gets it with `conda env update
+  -f environment.yml` (or `bash setup.sh`); a pip-only install needs it on
+  `PATH` (bioconda or the static binary) or must pass
+  `--skip-input-validation`, otherwise the run stops with a validation error
+  naming it.
 
 ### Added
 

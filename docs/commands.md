@@ -159,7 +159,7 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--threads-total` | cores available minus one | Total cores Snakemake may use at once across all running jobs (at least 1). Detected from the CPUs available to the process (affinity, so container and cgroup limits are honoured), leaving one core free. |
 | `--max-memory` | detected | Memory budget in GB for the rules that declare memory (Clair3 and viralQC): they run concurrently only while their declared RAM fits it. Detected as `MemTotal` capped by the cgroup limit, minus 10 % headroom; `0` disables the budget. Refused when positive but below the largest per-rule figure. |
 | `--create-config-only` | off | Only generate the config file; do not run the workflow. |
-| `--skip-input-validation` | off | Skip content-level integrity checks of the input files (FASTQ/FASTA/BED). Existence checks still run. |
+| `--skip-input-validation` | off | Skip content-level integrity checks of the input files (FASTQ/FASTA/BED). Existence checks still run. Also the only way to run without `seqkit` on `PATH`. |
 | `--conda-prefix` | `~/.cache/viralconseq/conda-envs` | Cache directory for per-rule conda envs. Picked up from `$VIRALCONSEQ_CONDA_PREFIX` if set. Pre-warm with `viralconseq setup`. |
 | `--run-viralqc` / `--no-run-viralqc` | on | Run viralQC on the final consensus sequences (virus and clade assignment plus genome-quality scoring via Nextclade + BLAST). |
 | `--report` / `--no-report` | on | Write `<run>/report.html`, a self-contained interactive page built from `summary.tsv`: run-level figures, a sortable and filterable sample table, per-sample depth traces with the masked regions, primer extents when a scheme was given, viralQC verdicts, tool versions. Opens offline in any browser. |
@@ -171,10 +171,15 @@ Before writing the config, the consensus pipeline validates the *content* (not
 just the existence) of its critical inputs and refuses to start on a file that
 would break the run or silently produce wrong results:
 
-- **FASTQ** (sample reads) — streamed end to end: 4-line record structure, the
-  `@`/`+` marker lines, matching sequence/quality lengths, valid sequence and
-  quality characters, and gzip integrity. Catches truncated uploads and corrupt
-  archives.
+- **FASTQ** (sample reads) — read end to end by `seqkit seq --validate-seq`
+  (a required dependency of the CLI environment): 4-line record structure, the
+  `@`/`+` marker lines, matching sequence/quality lengths, the DNA alphabet and
+  gzip integrity. A file seqkit flags is re-read by the Python scanner, which
+  names the exact problem and line (`fastq_truncated`, `fastq_length_mismatch`,
+  ...); a file seqkit flags but the scanner clears gets a `fastq_seqkit_flagged`
+  warning. The files are checked in parallel, up to `--threads-total` processes.
+  Catches truncated uploads and corrupt archives. Quality characters outside
+  ASCII 33-126 are only reported when a file is diagnosed for another reason.
 - **Reference FASTA** — at least one record, unique contig ids, non-empty
   sequences, and a nucleotide-only (IUPAC) alphabet — so a protein FASTA or a
   mislabeled file is rejected up front.

@@ -16,6 +16,12 @@ Snakemake, which builds the per-rule tool environments (aligner, variant callers
 via `--use-conda` on first run — so conda/mamba must be installed and on your `PATH`. Pre-build
 those environments once with `viralconseq setup --pipelines all` (see [First-time environment
 setup](#first-time-environment-setup) below).
+
+[seqkit](https://bioinf.shenwei.me/seqkit/) must be on `PATH` as well: the input integrity
+check runs it over every FASTQ before Snakemake starts. The conda environment file installs
+it; with a pip-only install, get it from bioconda (`conda install -c bioconda seqkit`) or
+drop the static binary from its GitHub releases into a directory on `PATH`.
+`--skip-input-validation` is the only way to run without it.
 ```
 
 ## Clone and create the environment

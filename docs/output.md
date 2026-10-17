@@ -115,7 +115,7 @@ deleted once the run is finished.
 | `qc/viralqc/outputs/results.tsv` | viralQC table: virus, clade and genome-quality score per consensus sequence (see below) |
 | `samples/sample-{id}/viralqc.tsv` | The rows of `results.tsv` belonging to one sample |
 | `run_manifest.json` | Provenance: version, timestamp, config path and hash, input SHA-256 checksums, outcome, paths of `logs/snakemake.log`, `versions.tsv` and `config.yml` |
-| `versions.tsv` | `component<TAB>version`: viralconseq, Snakemake, every tool probed inside its conda environment at run time (minimap2, samtools, bedtools, GSAlign, gofasta, fastp, MultiQC, LoFreq, bcftools, Clair3, Python, seqtk, viralQC, Nextclade, BLAST as applicable) and, when viralQC ran, the database directory and dataset download date |
+| `versions.tsv` | `component<TAB>version`: viralconseq, Snakemake, seqkit (the CLI environment's FASTQ checker, when on `PATH`), every tool probed inside its conda environment at run time (minimap2, samtools, bedtools, GSAlign, gofasta, fastp, MultiQC, LoFreq, bcftools, Clair3, Python, seqtk, viralQC, Nextclade, BLAST as applicable) and, when viralQC ran, the database directory and dataset download date |
 | `config.yml` | The resolved configuration this run used (a copy of the file `--config-file` pointed at) |
 | `logs/run.log` | One line per run start and end, written by the workflow (survives a `.snakemake/` clean-up) |
 | `logs/snakemake.log` | Copy of the newest Snakemake transcript for this run directory |

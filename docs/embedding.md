@@ -70,10 +70,14 @@ the same arguments.
   counts, and missing files all raise `SampleSheetError` / `ViralConseqFileNotFoundError`.
 - **Inputs are content-validated, not just existence-checked**, in
   `validate_args` before any workflow runs (and under `create_config_only`, so a
-  bad upload is caught in a config-only preflight). Every sample FASTQ is streamed
-  (record structure, seq/quality lengths, gzip integrity, truncation); the
-  reference FASTA must be nucleotide-only with unique contig ids; a primer BED's
-  chrom names must match the reference contigs. Blocking problems raise
+  bad upload is caught in a config-only preflight). Every sample FASTQ is read by
+  `seqkit` (record structure, seq/quality lengths, gzip integrity, truncation; a
+  flagged file is re-read in Python for the exact issue code) in a
+  `ProcessPoolExecutor` of `args["threads_total"]` workers (serial when the key
+  is absent, so a service that wants parallelism must set it); `seqkit` must be
+  on `PATH` or a `ValidationError` names it. The reference FASTA must be
+  nucleotide-only with unique contig ids; a primer BED's chrom names must match
+  the reference contigs. Blocking problems raise
   `InputIntegrityError`. Pass `skip_input_validation=True` in `args` to bypass.
 - **Not yet covered:** the FASTQ scan streams each file fully with no size or
   time budget — enforce your own upload-size limit upstream before validation.

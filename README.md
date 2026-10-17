@@ -26,9 +26,10 @@ viralconseq infers consensus genome sequences from viral high-throughput sequenc
 ## Installation
 
 viralconseq is published on [PyPI](https://pypi.org/project/viralconseq/). It needs Python 3.10
-or 3.11 and conda at runtime (Snakemake builds the per-rule tool environments with
-`--use-conda`), so install it into a conda environment created from the project's
-`environment.yml`:
+or 3.11, conda and [seqkit](https://bioinf.shenwei.me/seqkit/) at runtime (Snakemake
+builds the per-rule tool environments with `--use-conda`; the input integrity check runs
+seqkit over every FASTQ), so install it into a conda environment created from the project's
+`environment.yml`, which provides both:
 
 ```bash
 conda env create -n viralconseq -f https://raw.githubusercontent.com/InstitutoTodosPelaSaude/viralconseq/main/environment.yml
@@ -37,7 +38,9 @@ pip install viralconseq
 ```
 
 Then run `viralconseq setup --pipelines all` once, as in the Quick start below: it pre-builds those
-environments and downloads the viralQC databases (about 1 GB).
+environments and downloads the viralQC databases (about 1 GB). With a pip-only install, put
+seqkit on `PATH` yourself (`conda install -c bioconda seqkit`, or the static binary from its
+GitHub releases); `--skip-input-validation` is the only way to run without it.
 
 To install from source instead, `setup.sh` does the whole thing in one command: it
 finds conda/mamba/micromamba (even when they are not on `PATH`), creates or updates the
@@ -62,7 +65,7 @@ conda activate viralconseq
 pip install -e ".[dev]"
 ```
 
-Per-rule conda environments under `viralconseq/scripts/envs/` are managed automatically by Snakemake; the top-level `environment.yml` only holds the core runtime dependencies (Python, Snakemake, conda).
+Per-rule conda environments under `viralconseq/scripts/envs/` are managed automatically by Snakemake; the top-level `environment.yml` only holds the core runtime dependencies (Python, Snakemake, conda and seqkit, which the input integrity check runs).
 
 ## Quick start
 

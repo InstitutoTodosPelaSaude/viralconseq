@@ -14,7 +14,7 @@ COPY . /app/viralconseq
 
 WORKDIR /app/viralconseq
 RUN pip install . && rm -rf /root/.cache/pip
-RUN viralconseq --version > /app/viralconseq-version.txt
+RUN viralconseq --version > /app/viralconseq-version.txt && seqkit version
 
 # Run as an unprivileged user rather than root.
 RUN useradd --create-home --uid 1000 viralconseq \
