@@ -201,6 +201,34 @@ def bin_depths(depths, target_points):
     return bins, bin_bp
 
 
+def bed_mask(path, contigs):
+    """[[start, end], ...] (1-based, inclusive, concatenated coordinates) from a BED
+    of masked intervals; ``contigs`` is ``read_basewise``'s contig list with offsets."""
+    offsets = {c["name"]: c["offset"] for c in contigs}
+    ranges = []
+    with open(path) as handle:
+        for line in handle:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 3 or parts[0] not in offsets:
+                continue
+            start, end = int(parts[1]), int(parts[2])
+            if end > start:
+                ranges.append([offsets[parts[0]] + start + 1, offsets[parts[0]] + end])
+    return ranges
+
+
+def merge_ranges(*range_lists):
+    """Union of 1-based inclusive ranges, sorted and coalesced (adjacent runs join)."""
+    ranges = sorted(r for ranges in range_lists for r in ranges)
+    merged = []
+    for start, end in ranges:
+        if merged and start <= merged[-1][1] + 1:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+
 def depth_mask(depths, min_depth):
     """[[start, end], ...] (1-based, inclusive) runs of positions below ``min_depth``."""
     ranges = []
@@ -430,6 +458,11 @@ def sample_paths(run_dir, sample, segment, data_type):
         "fastp": run_dir / "qc" / "reports" / f"trim.{sample}_fastp.json",
         "gate": run_dir / "assembly" / "status" / f"{stem}.txt",
         "clair3": assembly / "clair3" / sample / "model.txt",
+        # Nanopore: the calls the filter masked (N) on top of the depth mask.
+        "masked_variants": assembly
+        / "consensus"
+        / "final_consensus"
+        / f"{sample}.masked_variants.bed",
     }
 
 
@@ -515,11 +548,14 @@ def build(run_dir, rows, data_type, segments, params, label, versions, manifest,
             depths, contigs = read_basewise(paths["basewise"])
             if depths:
                 bins, bin_bp = bin_depths(depths, target_points)
+                mask = depth_mask(depths, min_depth)
+                if paths["masked_variants"].is_file():
+                    mask = merge_ranges(mask, bed_mask(paths["masked_variants"], contigs))
                 coverage[key] = {
                     "bins": bins,
                     "bin_bp": bin_bp,
                     "genome_length": len(depths),
-                    "mask": depth_mask(depths, min_depth),
+                    "mask": mask,
                     "contigs": contigs,
                 }
                 raw_depths[key] = depths

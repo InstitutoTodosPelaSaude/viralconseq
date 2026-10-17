@@ -119,6 +119,7 @@ _NUMERIC_BOUNDS = {
     "consensus_coverage_threshold": (0.0, 100.0),
     "minimum_coverage": (1, None),
     "minimum_depth": (1, None),
+    "frameshift_variant_quality": (0, None),
     "minimum_length": (0, None),
     "minimum_read_length": (0, None),
     "af_threshold": (0.0, 1.0),
@@ -190,6 +191,7 @@ CONFIG_REQUIRED_NANOPORE = (
     "chunk_size",
     "clair3_model",
     "variant_quality",
+    "frameshift_variant_quality",
     "variant_depth",
     "minimum_map_quality",
     "minimum_mapped_reads",
@@ -211,12 +213,28 @@ _CONFIG_NUMERIC = {
     "cut_right_mean_quality": (0, None, True),
     "chunk_size": (1, None, True),
     "variant_quality": (0, None, True),
+    "frameshift_variant_quality": (0, None, True),
     "variant_depth": (0, None, True),
     "minimum_map_quality": (0, None, True),
     "minimum_mapped_reads": (0, None, True),
     "max_memory_mb": (0, None, True),
     "memory_detected_mb": (0, None, True),
 }
+
+
+def required_config_keys(config: Dict[str, Any]) -> List[str]:
+    """The keys a config of this ``data`` type must carry (the parse-time list in
+    ``rules/common.smk`` plus the CLI-side ones). Shared with ``rerun --set`` so a
+    config written by an older release can be completed with a key this release
+    requires."""
+    data = config.get("data")
+    required = list(CONFIG_REQUIRED_COMMON)
+    required += CONFIG_REQUIRED_ILLUMINA if data == DataType.ILLUMINA else CONFIG_REQUIRED_NANOPORE
+    if data == DataType.NANOPORE:
+        required.extend(["infer_consensus_sequence_ram", "clair3_model_dir"])
+    if config.get("run_viralqc", True):
+        required.extend(["viralqc_db", "run_viralqc_ram"])
+    return required
 
 
 def validate_config_dict(config: Any) -> None:
@@ -240,12 +258,7 @@ def validate_config_dict(config: Any) -> None:
     if data not in (DataType.ILLUMINA, DataType.NANOPORE):
         fail(f"data must be 'illumina' or 'nanopore', got {data!r}")
 
-    required = list(CONFIG_REQUIRED_COMMON)
-    required += CONFIG_REQUIRED_ILLUMINA if data == DataType.ILLUMINA else CONFIG_REQUIRED_NANOPORE
-    if data == DataType.NANOPORE:
-        required.extend(["infer_consensus_sequence_ram", "clair3_model_dir"])
-    if config.get("run_viralqc", True):
-        required.extend(["viralqc_db", "run_viralqc_ram"])
+    required = required_config_keys(config)
     missing = [key for key in required if key not in config]
     if missing:
         fail(

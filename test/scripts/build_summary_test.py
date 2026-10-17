@@ -251,6 +251,49 @@ class Test_BuildSummary(unittest.TestCase):
         self.assertEqual(rows[1]["status"], "empty_consensus")
         self.assertEqual(rows[1]["clair3_model"], "fallback_model")
 
+    def test_masked_variant_sites_from_filter_files(self):
+        fc = os.path.join(self.tmp, "assembly", "consensus", "final_consensus")
+        os.makedirs(fc)
+        header = "chrom\tpos\tref\talt\tqual\tfilter\tad_ref\tad_alt\tratio\tframeshift\tverdict\treason\n"
+        with open(os.path.join(fc, "sample-a.variant_filter.tsv"), "w") as fh:
+            fh.write(header)
+            fh.write("ref\t10\tA\tG\t30\tPASS\t1\t50\t0.9804\t0\tpass\t\n")
+            fh.write("ref\t20\tA\tG\t8\tLowQual\t2\t40\t0.9524\t0\tmask\tquality\n")
+            fh.write("ref\t30\tAC\tA\t20\tPASS\t0\t30\t1.0000\t1\tmask\tframeshift_quality\n")
+            fh.write("ref\t40\tA\tG\t50\tPASS\t20\t10\t0.3333\t0\tdiscard\tallele_ratio\n")
+        with open(os.path.join(fc, "sample-b.variant_filter.tsv"), "w") as fh:
+            fh.write(header)
+        _, rows = self._run(
+            "--stats",
+            self._stats("sample-a"),
+            self._stats("sample-b"),
+            "--samples",
+            "sample-a",
+            "sample-b",
+            "--min-depth",
+            "10",
+            "--data-type",
+            "nanopore",
+            "--variant-filter-files",
+            os.path.join(fc, "sample-a.variant_filter.tsv"),
+            os.path.join(fc, "sample-b.variant_filter.tsv"),
+        )
+        self.assertEqual(rows[0]["masked_variant_sites"], "2")
+        self.assertEqual(rows[1]["masked_variant_sites"], "0")
+        # Illumina has no Clair3 filter: NA, like clair3_model.
+        _, rows = self._run(
+            "--stats",
+            self._stats("sample-a"),
+            "--samples",
+            "sample-a",
+            "--min-depth",
+            "10",
+            "--data-type",
+            "illumina",
+        )
+        self.assertEqual(rows[0]["masked_variant_sites"], "NA")
+        self.assertEqual(build_summary.COLUMNS[-1], "masked_variant_sites")
+
     def test_segmented_rows_isnvs_and_legacy_csv(self):
         stats = [
             self._stats("sample-a", segment="S"),

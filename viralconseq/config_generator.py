@@ -60,6 +60,7 @@ _KEY_SECTIONS: Dict[str, str] = {
     ConfigKeys.CLAIR3_MODEL_DIR: "clair3",
     ConfigKeys.MINIMUM_MAPPED_READS: "clair3",
     ConfigKeys.VARIANT_QUALITY: "clair3",
+    ConfigKeys.FRAMESHIFT_VARIANT_QUALITY: "clair3",
     ConfigKeys.VARIANT_DEPTH: "clair3",
     ConfigKeys.MINIMUM_MAP_QUALITY: "clair3",
     ConfigKeys.RUN_VIRALQC: "viralqc",
@@ -248,6 +249,7 @@ class ConfigGenerator:
         minimum_map_quality: int,
         clair3_model_dir: str = "",
         minimum_mapped_reads: int = 10,
+        frameshift_variant_quality: int = 50,
     ) -> None:
         """Add Nanopore consensus-specific settings to configuration.
 
@@ -265,6 +267,9 @@ class ConfigGenerator:
                 is not sent to Clair3 but gets an all-N consensus and a
                 ``no_mapped_reads`` status (0 disables the floor)
             variant_quality: Minimum variant quality to call a variant into consensus [clair3]
+            frameshift_variant_quality: Minimum variant quality for an indel whose
+                length change is not a multiple of 3 (frameshift); below it the
+                call is masked (N) instead of written [clair3]
             variant_depth: Minimum alt allele depth to call a variant into consensus [clair3]
             minimum_map_quality: Minimum map quality to call a variant into consensus [clair3]
         """
@@ -279,6 +284,7 @@ class ConfigGenerator:
             self._set(ConfigKeys.CLAIR3_MODEL_DIR, clair3_model_dir, C)
         self._set(ConfigKeys.MINIMUM_MAPPED_READS, int(minimum_mapped_reads), C)
         self._set(ConfigKeys.VARIANT_QUALITY, variant_quality, C)
+        self._set(ConfigKeys.FRAMESHIFT_VARIANT_QUALITY, frameshift_variant_quality, C)
         self._set(ConfigKeys.VARIANT_DEPTH, variant_depth, C)
         self._set(ConfigKeys.MINIMUM_MAP_QUALITY, minimum_map_quality, C)
 
@@ -521,7 +527,8 @@ class ConfigGenerator:
                     af_threshold=0.6,
                     chunk_size=10000,
                     clair3_model=_SKELETON_CLAIR3_MODEL,
-                    variant_quality=15,
+                    variant_quality=10,
+                    frameshift_variant_quality=50,
                     variant_depth=10,
                     minimum_map_quality=30,
                     clair3_model_dir=f"{root}/clair3_models",

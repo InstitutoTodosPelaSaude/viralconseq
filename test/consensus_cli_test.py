@@ -388,9 +388,20 @@ class Test_ConsensusNanoporeCommand(unittest.TestCase):
                 os.path.join(".cache", "viralconseq", "clair3-models")
             )
         )
-        self.assertEqual(args["variant_quality"], 15)
+        self.assertEqual(args["variant_quality"], 10)
+        self.assertEqual(args["frameshift_variant_quality"], 50)
         self.assertEqual(args["variant_depth"], 10)
         self.assertEqual(args["minimum_map_quality"], 30)
+
+    def test_frameshift_variant_quality_option_honoured(self):
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0) as mock_main:
+            result = self.runner.invoke(
+                consensus,
+                self._required + ["--frameshift-variant-quality", "40"],
+                catch_exceptions=False,
+            )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(mock_main.call_args[0][0]["frameshift_variant_quality"], 40)
 
 
 class Test_ConsensusCondaPrefix(unittest.TestCase):

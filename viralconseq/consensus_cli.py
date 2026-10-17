@@ -459,10 +459,22 @@ def consensus_illumina(
 )
 @click.option(
     "--variant-quality",
-    default=15,
+    default=10,
     show_default=True,
     type=int,
-    help="Minimum variant quality (clair3).",
+    help="Minimum Clair3 QUAL for a SNV or in-frame indel to enter the consensus; a call "
+    "below it whose allele ratio passed is masked (N) rather than written as the "
+    "reference base.",
+)
+@click.option(
+    "--frameshift-variant-quality",
+    default=50,
+    show_default=True,
+    type=click.IntRange(min=0),
+    help="Minimum Clair3 QUAL for an indel that shifts the reading frame (length change "
+    "not a multiple of 3); such calls are rare in viruses and far more often errors, so "
+    "the bar is higher than --variant-quality. A frameshifting indel below it is masked "
+    "(N), not written.",
 )
 @click.option(
     "--variant-depth",
@@ -499,6 +511,7 @@ def consensus_nanopore(
     chunk_size: int,
     clair3_model: str,
     variant_quality: int,
+    frameshift_variant_quality: int,
     variant_depth: int,
     minimum_map_quality: int,
     **kwargs: Any,
@@ -538,6 +551,7 @@ def consensus_nanopore(
         chunk_size=chunk_size,
         clair3_model=clair3_model,
         variant_quality=variant_quality,
+        frameshift_variant_quality=frameshift_variant_quality,
         variant_depth=variant_depth,
         minimum_map_quality=minimum_map_quality,
     )

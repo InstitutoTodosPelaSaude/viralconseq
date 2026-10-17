@@ -61,6 +61,11 @@ class TestValidateNumericParameters(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_numeric_parameters({"af_threshold": 5.0})
 
+    def test_frameshift_variant_quality_bounds(self):
+        with self.assertRaises(ValidationError):
+            validate_numeric_parameters({"frameshift_variant_quality": -1})
+        self.assertIsNone(validate_numeric_parameters({"frameshift_variant_quality": 0}))
+
 
 def _touch(path: str) -> str:
     with open(path, "w") as fh:
@@ -221,6 +226,7 @@ def _good_config(data="nanopore", **overrides):
             clair3_model_dir="/models",
             minimum_mapped_reads=10,
             variant_quality=20,
+            frameshift_variant_quality=50,
             variant_depth=10,
             minimum_map_quality=30,
             infer_consensus_sequence_ram=2,
@@ -273,6 +279,10 @@ class Test_ValidateConfigDict(unittest.TestCase):
             "bad flag string": _good_config(viralqc_extra_flags="--x; rm -rf /"),
             "budget below rule": _good_config(max_memory_mb=1024),
             "empty model": _good_config(clair3_model=""),
+            "negative frameshift quality": _good_config(frameshift_variant_quality=-1),
+            "missing frameshift quality": {
+                k: v for k, v in _good_config().items() if k != "frameshift_variant_quality"
+            },
             "move-table model": _good_config(clair3_model="r1041_e82_400bps_hac_v520_with_mv"),
             "model dict names unknown sample": _good_config(
                 clair3_model={"sample-zzz": "r941_prom_hac_g360+g422"}
@@ -290,6 +300,9 @@ class Test_ValidateConfigDict(unittest.TestCase):
     def test_illumina_adapters_may_be_null(self):
         """--adapters omitted -> `adapters: null` in the YAML; fastp then detects them."""
         validate_config_dict(_good_config("illumina", adapters=None))
+
+    def test_zero_frameshift_variant_quality_accepted(self):
+        validate_config_dict(_good_config(frameshift_variant_quality=0))
 
     def test_per_sample_model_mapping_accepted(self):
         validate_config_dict(_good_config(clair3_model={"sample-a": "r941_prom_hac_g360+g422"}))

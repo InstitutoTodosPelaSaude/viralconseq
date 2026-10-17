@@ -55,6 +55,7 @@ COLUMNS = [
     "viralqc_dataset",
     "viralqc_dataset_version",
     "clair3_model",
+    "masked_variant_sites",  # nanopore: Clair3 calls the filter masked (N) instead of writing
 ]
 
 # viralQC column -> summary column
@@ -142,6 +143,30 @@ def load_model_files(paths: Iterable[str], segmented: bool) -> Dict[Key, str]:
     return out
 
 
+def load_variant_filter_files(paths: Iterable[str], segmented: bool) -> Dict[Key, str]:
+    """``assembly/[<segment>/]consensus/final_consensus/<sample>.variant_filter.tsv``
+    -> the number of rows whose ``verdict`` is ``mask`` (positions written as N
+    because Clair3 called a variant the filter would not write but could not
+    dismiss either; see scripts/python/filter_variants.py)."""
+    out: Dict[Key, str] = {}
+    for path in paths:
+        parts = os.path.normpath(path).split(os.sep)
+        sample = parts[-1][: -len(".variant_filter.tsv")]
+        segment = parts[-4] if segmented and len(parts) >= 4 else None
+        try:
+            with open(path, newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                if reader.fieldnames is None or "verdict" not in reader.fieldnames:
+                    out[(sample, segment)] = NA
+                    continue
+                masked = sum(1 for row in reader if row.get("verdict") == "mask")
+        except OSError:
+            out[(sample, segment)] = NA
+            continue
+        out[(sample, segment)] = str(masked)
+    return out
+
+
 def load_viralqc(path: Optional[str]) -> List[Dict[str, str]]:
     return read_tsv(path) if path else []
 
@@ -213,6 +238,7 @@ def build_rows(
     isnvs: Dict[Key, str],
     statuses: Dict[Key, str],
     models: Dict[Key, str],
+    masked_sites: Dict[Key, str],
     viralqc_rows: List[Dict[str, str]],
     viralqc_status: Optional[str],
     run_viralqc: bool,
@@ -248,6 +274,7 @@ def build_rows(
                 row[target] = value if value not in (None, "") else NA
         if data_type == "nanopore":
             row["clair3_model"] = models.get((sample, segment)) or clair3_model or NA
+            row["masked_variant_sites"] = masked_sites.get((sample, segment), NA)
         row["status"] = decide_status(
             stats_row, statuses.get((sample, segment)), viralqc_status, qc_row, run_viralqc
         )
@@ -311,6 +338,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--isnvs", default=None)
     parser.add_argument("--status-files", nargs="*", default=[])
     parser.add_argument("--model-files", nargs="*", default=[])
+    parser.add_argument(
+        "--variant-filter-files",
+        nargs="*",
+        default=[],
+        help="nanopore: per-sample variant_filter.tsv (masked_variant_sites column)",
+    )
     parser.add_argument("--clair3-model", default=None, help="run-wide model name (fallback)")
     parser.add_argument("--output", required=True)
     parser.add_argument("--legacy-csv", default=None)
@@ -331,6 +364,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         isnvs=load_isnvs(args.isnvs),
         statuses=load_status_files(args.status_files, segmented),
         models=load_model_files(args.model_files, segmented),
+        masked_sites=load_variant_filter_files(args.variant_filter_files, segmented),
         viralqc_rows=load_viralqc(args.viralqc_results),
         viralqc_status=viralqc_status,
         run_viralqc=run_viralqc,

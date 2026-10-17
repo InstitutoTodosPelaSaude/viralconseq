@@ -68,6 +68,8 @@ rule organize_files:
     input:
         vcf_files = expand(rules.infer_consensus_sequence.output.vcf, sample=config["samples"]),
         vcf_raw_files = expand(rules.infer_consensus_sequence.output.vcf_raw, sample=config["samples"]),
+        filter_files = expand(rules.infer_consensus_sequence.output.filter_tsv, sample=config["samples"]),
+        mask_files = expand(rules.infer_consensus_sequence.output.mask_bed, sample=config["samples"]),
         model_files = expand(rules.infer_consensus_sequence.output.model_txt, sample=config["samples"]),
         status_files = expand(rules.check_mapped_reads.output.status, sample=config["samples"]),
         stats_files = expand(rules.calculate_assembly_statistics.output.stats, sample=config["samples"]),
@@ -104,6 +106,14 @@ rule organize_files:
             sample=$(basename $_file .raw.vcf.gz);
             ln -sf $_file {params.outdir}samples/$sample/raw.vcf.gz;
             ln -sf $_file.tbi {params.outdir}samples/$sample/raw.vcf.gz.tbi;
+        done
+        for _file in {input.filter_files}; do
+            sample=$(basename $_file .variant_filter.tsv);
+            ln -sf "$_file" {params.outdir:q}samples/"$sample"/variant_filter.tsv;
+        done
+        for _file in {input.mask_files}; do
+            sample=$(basename $_file .mask.bed);
+            ln -sf "$_file" {params.outdir:q}samples/"$sample"/mask.bed;
         done
         for _file in {input.model_files}; do
             sample=$(basename $(dirname $_file));

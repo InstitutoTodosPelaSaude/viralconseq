@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import click
 import yaml
 from click.testing import CliRunner
 
@@ -31,6 +32,7 @@ def _config(**overrides):
         "clair3_model_dir": "/models",
         "minimum_mapped_reads": 10,
         "variant_quality": 20,
+        "frameshift_variant_quality": 50,
         "variant_depth": 10,
         "minimum_map_quality": 30,
         "infer_consensus_sequence_ram": 2,
@@ -109,6 +111,15 @@ class Test_RerunCommand(unittest.TestCase):
         self._write(_config(reference={"S": "/S.fa", "L": "/L.fa"}))
         _, captured = self._invoke("--dry-run")
         self.assertTrue(captured["workflow"].endswith("consensus_nanopore_segmented.smk"))
+
+    def test_set_may_add_a_key_this_release_requires(self):
+        # A 0.2.x nanopore config predates frameshift_variant_quality: the
+        # documented migration is `rerun --set frameshift_variant_quality=50`.
+        old = {k: v for k, v in _config().items() if k != "frameshift_variant_quality"}
+        config = apply_overrides(dict(old), ["frameshift_variant_quality=50"])
+        self.assertEqual(config["frameshift_variant_quality"], 50)
+        with self.assertRaises(click.BadParameter):
+            apply_overrides(dict(old), ["frameshift_variant_qualty=50"])
 
     def test_set_rewrites_the_config_and_keeps_a_backup(self):
         self._write(_config())

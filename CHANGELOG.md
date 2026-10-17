@@ -7,6 +7,48 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
+## [Unreleased]
+
+### Changed
+
+- Nanopore variant calls that the consensus filter rejects are no longer
+  silently written as the reference base. `infer_consensus_sequence` now gives
+  every normalised Clair3 record one of three verdicts
+  (`scripts/python/filter_variants.py`, replacing the `bcftools filter`
+  expression): **discard** when the FILTER is `RefCall` or the allele ratio
+  (ALT over REF plus ALT reads) is below `--af-threshold`, keeping the
+  reference base because at such a site the reference is usually right;
+  **mask** when the call cleared the ratio but has fewer ALT reads than
+  `--variant-depth` or a QUAL below the bar, writing `N` at the position
+  instead of a confident wrong base; **pass** otherwise. Masked intervals are
+  added to the depth mask (`<sample>.masked_variants.bed`, union in
+  `<sample>.mask.bed`), every verdict is listed in
+  `samples/sample-<id>/variant_filter.tsv`, and `summary.tsv` gains a
+  `masked_variant_sites` column (`NA` on Illumina). On the CDC CoronaHiT
+  benchmark sets this is the mechanism ARTIC already uses; see item 5 of the
+  benchmark report for the trade-off (about 0.12 extra `N` per sample).
+- `--variant-quality` defaults to 10 instead of 15 on nanopore, and the bar is
+  now applied by the filter from the record's QUAL rather than through
+  Clair3's `LowQual` stamp. Across 216 CoronaHiT libraries the bar at 15 still
+  reverted 35 true variants that Clair3 had called; 10 (ARTIC's constant)
+  recovers 19 of them for two false positives, and together with masking the
+  silent reversions fall to about one. Clair3 is also run with
+  `--var_pct_full=1.0`, so every pileup candidate is judged by the
+  full-alignment model: measured as a wash for accuracy and runtime, adopted
+  because at the default the model that judges a site depended on how many
+  other candidates the sample carried.
+
+### Added
+
+- `--frameshift-variant-quality` (nanopore, default 50): the QUAL bar for an
+  indel whose length change is not a multiple of three. Every frameshifting
+  indel the benchmark's consensus accepted scored below 50 and ARTIC masks
+  them at that bar; a frameshifting indel below it is now masked. New required
+  config key `frameshift_variant_quality`: a nanopore `config.yml` written by
+  0.2.x needs `viralconseq rerun <config> --set frameshift_variant_quality=50`,
+  and such a rerun will not reproduce its earlier consensus (the verdicts and
+  the two defaults above changed).
+
 ## [0.2.1] - 2026-09-29
 
 The `0.2.0` files on PyPI were built from this release's code by mistake,

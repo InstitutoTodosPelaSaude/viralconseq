@@ -1159,7 +1159,7 @@ const inputLines = M && M.inputs && M.inputs.length
 document.getElementById("fine").innerHTML =
   `Read counts and coverage come from <code>summary.tsv</code>; the depth trace from each row's
    <code>table_cov_basewise.txt</code>; variant counts are VCF records; the N mask is derived from
-   depth &lt; ${P.min_depth}×. Clade, lineage and grade are viralQC's. Source: <code>${esc(DATA.run.output_dir)}</code>.` +
+   depth &lt; ${P.min_depth}× plus, on nanopore, the calls the filter masked (<code>masked_variants.bed</code>). Clade, lineage and grade are viralQC's. Source: <code>${esc(DATA.run.output_dir)}</code>.` +
   DATA.run.versions.filter(([, v]) => v.length > LONG)
     .map(([k, v]) => `<br><code>${esc(k)}</code>: ${esc(v)}`).join("") +
   inputLines;

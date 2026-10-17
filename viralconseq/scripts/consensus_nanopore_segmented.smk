@@ -77,6 +77,14 @@ rule organize_files:
             rules.infer_consensus_sequence.output.vcf_raw,
             sample=config["samples"], segment=SEGMENTS.keys()
         ),
+        filter_files = expand(
+            rules.infer_consensus_sequence.output.filter_tsv,
+            sample=config["samples"], segment=SEGMENTS.keys()
+        ),
+        mask_files = expand(
+            rules.infer_consensus_sequence.output.mask_bed,
+            sample=config["samples"], segment=SEGMENTS.keys()
+        ),
         model_files = expand(
             rules.infer_consensus_sequence.output.model_txt,
             sample=config["samples"], segment=SEGMENTS.keys()
@@ -143,6 +151,18 @@ rule organize_files:
             sample=$(basename $_file .raw.vcf.gz);
             ln -sf $_file {params.outdir}samples/$sample/$segment/raw.vcf.gz;
             ln -sf $_file.tbi {params.outdir}samples/$sample/$segment/raw.vcf.gz.tbi;
+        done
+        for _file in {input.filter_files}; do
+            outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
+            segment=$(echo "$rel" | cut -d'/' -f1);
+            sample=$(basename $_file .variant_filter.tsv);
+            ln -sf "$_file" {params.outdir:q}samples/"$sample"/$segment/variant_filter.tsv;
+        done
+        for _file in {input.mask_files}; do
+            outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
+            segment=$(echo "$rel" | cut -d'/' -f1);
+            sample=$(basename $_file .mask.bed);
+            ln -sf "$_file" {params.outdir:q}samples/"$sample"/$segment/mask.bed;
         done
         for _file in {input.model_files}; do
             outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};

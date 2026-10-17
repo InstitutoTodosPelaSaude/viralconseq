@@ -262,8 +262,11 @@ The three knobs you will reach for most often:
 
 Nanopore has a few extra knobs:
 
-- **`--variant-quality`** (default `15`) — Clair3 minimum QUAL. Calls below it are flagged `LowQual` and never reach the consensus.
-- **`--variant-depth`** (default `10`) — minimum alt-allele read support.
+- **`--variant-quality`** (default `10`) — minimum Clair3 QUAL for a SNV or in-frame indel to be written. A call below it that cleared the allele ratio is not reverted to the reference base: the position is written as `N`, because Clair3 saw something there and a confident reference base would be a silent error.
+- **`--frameshift-variant-quality`** (default `50`) — the same bar for an indel whose length is not a multiple of three. Frameshifts are rare in viral genomes and usually sequencing errors, so the bar is higher; a frameshifting indel below it is masked.
+- **`--variant-depth`** (default `10`) — minimum ALT-read support. A call with fewer ALT reads whose allele ratio passed is masked, not dropped.
+
+Every normalised Clair3 call and its verdict (`pass`, `mask`, `discard`, `suppress`) is listed in `samples/sample-<id>/variant_filter.tsv`, the intervals written as `N` are in `samples/sample-<id>/mask.bed`, and `summary.tsv` counts the masked calls per sample in `masked_variant_sites`. A call whose allele ratio is below `--af-threshold` is discarded and the reference base kept: at such a site the reference is usually right.
 - **`--chunk-size`** (default `10000`) — Clair3 chunk size; tune only if Clair3 runs out of memory on huge references.
 
 The full set is in the [Commands reference](../commands.md#viralconseq-consensus).

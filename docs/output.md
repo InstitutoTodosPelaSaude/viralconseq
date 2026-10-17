@@ -49,6 +49,8 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 │       ├── consensus.fasta
 │       ├── consensus.vcf.gz
 │       ├── raw.vcf.gz                # nanopore
+│       ├── variant_filter.tsv        # nanopore: every Clair3 call and its verdict (pass / mask / discard)
+│       ├── mask.bed                  # nanopore: the intervals written as N (low depth + masked calls)
 │       ├── clair3_model.txt          # nanopore: the Clair3 model used
 │       ├── status.txt                # nanopore: ok / no_mapped_reads (see below)
 │       ├── isnvs.vcf.gz              # illumina + --run-isnv
@@ -104,6 +106,8 @@ deleted once the run is finished.
 | `consensus/consensus.fasta` | Every consensus pooled into one multi-FASTA (one-line sequences, no reference record); `consensus/consensus.cov<T>.fasta` keeps only the samples whose `coverage_min_depth` reaches `--consensus-coverage-threshold` (default 70 %), ready to share or submit. Segmented runs write one pair per segment |
 | `samples/sample-{id}/consensus.fasta` | Final consensus sequence |
 | `samples/sample-{id}/consensus.vcf.gz` | Variants relative to the reference |
+| `samples/sample-{id}/variant_filter.tsv` | Nanopore: one row per normalised Clair3 call with QUAL, REF/ALT read counts, allele ratio, whether the indel shifts the frame, the verdict (`pass` written, `mask` written as `N`, `discard` reference kept, `suppress` superseded by a passing call at the same site) and the reason |
+| `samples/sample-{id}/mask.bed` | Nanopore: the intervals `bcftools consensus` wrote as `N`, the union of `assembly/consensus/final_consensus/sample-{id}.low_cov.bed` (below `--minimum-coverage`) and `sample-{id}.masked_variants.bed` (masked calls) |
 | `assembly/coverage_stats/sample-{id}.table_cov_basewise.txt` | Per-base coverage table (`RNAME`, `POS`, `DEPTH`) |
 | `samples/sample-{id}/raw_mapped_reads.bam` | Reads mapped to the reference, before primer clipping |
 | `samples/sample-{id}/trimmed_mapped_reads.bam` | Primer-clipped BAM used for consensus calling |
@@ -158,6 +162,7 @@ row, even when nothing was assembled for it.
 | `qc_overall_status` | Nextclade's overall verdict (`good` / `mediocre` / `bad`) as reported by viralQC |
 | `viralqc_dataset`, `viralqc_dataset_version` | Nextclade dataset and version behind the clade call |
 | `clair3_model` | Clair3 model used for this sample (nanopore), else `NA` |
+| `masked_variant_sites` | Nanopore: Clair3 calls the filter masked (written as `N`) because they cleared the allele ratio but not the quality bar or the ALT-read floor; see `variant_filter.tsv`. `NA` on Illumina |
 
 `status` values, in the order they are tested:
 

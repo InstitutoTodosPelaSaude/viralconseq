@@ -69,6 +69,7 @@ REQUIRED_NANOPORE = [
     "chunk_size",
     "clair3_model",
     "variant_quality",
+    "frameshift_variant_quality",
     "variant_depth",
     "minimum_map_quality",
 ]
