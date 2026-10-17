@@ -69,6 +69,35 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ### Added
 
+- `--normalise-depth` (both platforms, default 100; `0` = off): the primer-clipped
+  BAM is capped at this many records per reference position before consensus
+  calling, by a new rule `normalise_depth` (`rules/normalise.smk`,
+  `scripts/python/normalise_depth.py`, standard library, runs in the alignment
+  env). Every position keeps at least `min(target, original depth)` records (the
+  script re-derives the depth from its decisions and refuses to write a result
+  that breaks this), the strand ratio is preserved per position and, with a
+  primer scheme, so is the amplicon mix (the target is split per strand x
+  amplicon in the original proportions); reads that span two amplicons are
+  never dropped. Proper pairs are matched by read name (ampliconclip leaves
+  PNEXT stale) and kept or dropped whole; records are re-emitted in input order,
+  so the output is sorted and byte-reproducible. Only `infer_consensus_sequence`
+  (`samtools consensus`, Clair3) reads the normalised BAM; `summary.tsv`'s depth
+  columns, the coverage tables, the report traces, the nanopore mapped-read
+  gate and the Illumina iSNV step stay on the trimmed BAM. The target counts
+  records (an overlapping Illumina pair is two) and kept depth may reach about
+  twice the target at coverage boundaries and amplicon overlaps, as in ARTIC's
+  normalisation; Clair3 2.0.2 rescales its pileup above 216x, so 100 keeps
+  every position in its raw-count regime. New outputs
+  `assembly/mapped_reads/normalised/<sample>.{sorted.bam,depth.tsv,amplicons.tsv,normalise.txt}`
+  (`samples/<sample>/normalised_mapped_reads.bam`, `normalise_depth.tsv`,
+  `normalise_amplicons.tsv`), `summary.tsv` columns `normalise_target` and
+  `mapped_reads_normalised`, a `--normalise-depth-cpus` option, and the
+  required config key `normalise_depth` (a 0.2.x `config.yml` needs
+  `rerun --set normalise_depth=100`, or `0` to reproduce its consensus). The
+  cap is refused when positive but below `--minimum-coverage`. On the
+  SARS-CoV-2 test data (ARTIC V3) the Illumina sample went from 194,452 to
+  24,556 records in 4 s and 86 MB; a 5.8 M-record, 29,000x copy of it took
+  51 s and 277 MB.
 - `--frameshift-variant-quality` (nanopore, default 50): the QUAL bar for an
   indel whose length change is not a multiple of three. Every frameshifting
   indel the benchmark's consensus accepted scored below 50 and ARTIC masks

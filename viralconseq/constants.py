@@ -35,6 +35,7 @@ class ConfigKeys:
     ADAPTERS = "adapters"
     MINIMUM_LENGTH = "minimum_length"
     MINIMUM_DEPTH = "minimum_depth"
+    NORMALISE_DEPTH = "normalise_depth"
     TRIM_HEAD = "trim_head"
     TRIM_TAIL = "trim_tail"
     CUT_FRONT_MEAN_QUALITY = "cut_front_mean_quality"
@@ -258,6 +259,7 @@ class ResourceDefaults:
         "perform_qc",
         "map_reads",
         "trim_primer_sequences",
+        "normalise_depth",
         "detect_isnv",
         "run_viralqc",
     ]
@@ -266,6 +268,7 @@ class ResourceDefaults:
     CONSENSUS_NANOPORE_RULES = [
         "map_reads",
         "trim_primer_sequences",
+        "normalise_depth",
         "infer_consensus_sequence",
         "run_viralqc",
     ]

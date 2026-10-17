@@ -8,6 +8,7 @@ threads: 4
 reference: data/references/reference.fasta
 scheme: data/references/primers.bed
 minimum_depth: 10
+normalise_depth: 100
 minimum_length: 50
 workflow_path: .
 

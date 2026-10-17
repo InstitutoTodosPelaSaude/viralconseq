@@ -86,7 +86,7 @@ Two tool-level settings are config-only (no CLI): `minimap2_consensus_align_flag
 
 ### Snakemake workflows
 
-Each top-level `.smk` in `viralconseq/scripts/` is small — it includes `rules/common.smk` first (config guard, wildcard constraints, `run.log` hooks, `LOG`/`BENCH`/`cpus`/`ram_mb`/`clair3_model_*` helpers), sets up `TERMINAL_INPUTS` and `rule all` (`default_target: True`), then `include:`s the rule modules from `viralconseq/scripts/rules/` in DAG order (`qc_illumina`, `alignment_{illumina,nanopore}`, `consensus_{illumina,nanopore}`, `stats`, `consensus_{illumina,nanopore}_common`, `viralqc`, `collect`, `report`), defines `organize_files`, and includes `rules/provenance.smk` last. `docs/workflow.md` documents every rule's command and flags.
+Each top-level `.smk` in `viralconseq/scripts/` is small — it includes `rules/common.smk` first (config guard, wildcard constraints, `run.log` hooks, `LOG`/`BENCH`/`cpus`/`ram_mb`/`clair3_model_*` helpers), sets up `TERMINAL_INPUTS` and `rule all` (`default_target: True`), then `include:`s the rule modules from `viralconseq/scripts/rules/` in DAG order (`qc_illumina`, `alignment_{illumina,nanopore}`, `normalise`, `consensus_{illumina,nanopore}`, `stats`, `consensus_{illumina,nanopore}_common`, `viralqc`, `collect`, `report`), defines `organize_files`, and includes `rules/provenance.smk` last. `docs/workflow.md` documents every rule's command and flags.
 
 Cross-cutting conventions to know before editing rules:
 

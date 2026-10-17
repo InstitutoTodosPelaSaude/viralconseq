@@ -472,6 +472,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
             "segmented_reference": None,
             "primer_scheme": "scheme",
             "minimum_coverage": 5,
+            "normalise_depth": 40,
             "adapters": "adapters.fasta",
             "minimum_read_length": 50,
             "trim": 0,
@@ -504,6 +505,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
         self.assertEqual(config_dict["reference"], "reference.fasta")
         self.assertEqual(config_dict["scheme"], "scheme")
         self.assertEqual(config_dict["minimum_depth"], 5)
+        self.assertEqual(config_dict["normalise_depth"], 40)
         self.assertEqual(config_dict["threads"], 1)
         self.assertTrue(
             config_dict["workflow_path"].endswith(os.path.join("viralconseq", "scripts"))
@@ -562,6 +564,7 @@ class Test_GenerateConfigFile(unittest.TestCase):
         self.assertEqual(config_dict["reference"], "reference.fasta")
         self.assertEqual(config_dict["scheme"], "scheme")
         self.assertEqual(config_dict["minimum_depth"], 5)
+        self.assertEqual(config_dict["normalise_depth"], 40)
         self.assertEqual(config_dict["threads"], 1)
         self.assertTrue(
             config_dict["workflow_path"].endswith(os.path.join("viralconseq", "scripts"))

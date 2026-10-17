@@ -32,6 +32,7 @@ def get_map_input_fastqs(wildcards):
 
 include: "rules/qc_illumina.smk"
 include: "rules/alignment_illumina.smk"
+include: "rules/normalise.smk"
 include: "rules/consensus_illumina.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_illumina_common.smk"
@@ -73,6 +74,9 @@ rule organize_files:
         consensus_files = expand(rules.rename_sequences.output.consensus_renamed, sample=config["samples"]),
         raw_mapped_reads = expand(rules.map_reads.output.bam, sample=config["samples"]),
         trimmed_mapped_reads = expand(rules.trim_primer_sequences.output.bam, sample=config["samples"]),
+        normalised_mapped_reads = expand(rules.normalise_depth.output.bam, sample=config["samples"]),
+        normalise_depth_tables = expand(rules.normalise_depth.output.depth, sample=config["samples"]),
+        normalise_amplicon_tables = expand(rules.normalise_depth.output.amplicons, sample=config["samples"]),
         viralqc_files = expand(rules.split_viralqc_results.output.tsv, sample=config["samples"]) if config.get("run_viralqc", True) else [],
     output:
         # Sentinel: the symlink tree has no single file to declare. benchmark.tsv
@@ -125,6 +129,19 @@ rule organize_files:
             sample=$(basename $_file .sorted.bam);
             ln -sf $_file {params.outdir}samples/$sample/trimmed_mapped_reads.bam;
             ln -sf $_file.bai {params.outdir}samples/$sample/trimmed_mapped_reads.bam.bai;
+        done
+        for _file in {input.normalised_mapped_reads}; do
+            sample=$(basename $_file .sorted.bam);
+            ln -sf $_file {params.outdir}samples/$sample/normalised_mapped_reads.bam;
+            ln -sf $_file.bai {params.outdir}samples/$sample/normalised_mapped_reads.bam.bai;
+        done
+        for _file in {input.normalise_depth_tables}; do
+            sample=$(basename $_file .depth.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/normalise_depth.tsv;
+        done
+        for _file in {input.normalise_amplicon_tables}; do
+            sample=$(basename $_file .amplicons.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/normalise_amplicons.tsv;
         done
         
         for _file in {input.viralqc_files} ""; do

@@ -28,6 +28,7 @@ from viralconseq.validators import (
     validate_clair3_model,
     validate_config_dict,
     validate_consensus_input_integrity,
+    validate_consensus_requirements,
     validate_flag_strings,
     validate_numeric_parameters,
     validate_sample_sheet,
@@ -56,6 +57,12 @@ class TestValidateNumericParameters(unittest.TestCase):
     def test_negative_threads_total_rejected(self):
         with self.assertRaises(ValidationError):
             validate_numeric_parameters({"threads_total": -1})
+
+    def test_normalise_depth_zero_accepted_negative_rejected(self):
+        self.assertIsNone(validate_numeric_parameters({"normalise_depth": 0}))
+        self.assertIsNone(validate_numeric_parameters({"normalise_depth": 100}))
+        with self.assertRaises(ValidationError):
+            validate_numeric_parameters({"normalise_depth": -1})
 
     def test_af_threshold_above_one_rejected(self):
         with self.assertRaises(ValidationError):
@@ -209,6 +216,7 @@ def _good_config(data="nanopore", **overrides):
         "reference": "/ref.fa",
         "scheme": "NA",
         "minimum_depth": 20,
+        "normalise_depth": 100,
         "minimum_length": 50,
         "af_threshold": 0.51,
         "consensus_coverage_threshold": 70.0,
@@ -269,6 +277,12 @@ class Test_ValidateConfigDict(unittest.TestCase):
             "wrong file count": _good_config(samples={"s": ["/a.fq", "/b.fq"]}),
             "empty samples": _good_config(samples={}),
             "bool as number": _good_config(minimum_depth=True),
+            "negative normalise depth": _good_config(normalise_depth=-1),
+            "float normalise depth": _good_config(normalise_depth=50.5),
+            "normalise depth below depth gate": _good_config(normalise_depth=5, minimum_depth=10),
+            "missing normalise depth": {
+                k: v for k, v in _good_config().items() if k != "normalise_depth"
+            },
             "float where int": _good_config(chunk_size=1.5),
             "af above one": _good_config(af_threshold=1.5),
             "coverage threshold above 100": _good_config(consensus_coverage_threshold=101),
@@ -296,6 +310,19 @@ class Test_ValidateConfigDict(unittest.TestCase):
             with self.subTest(case=label):
                 with self.assertRaises(ConfigurationError):
                     validate_config_dict(config)
+
+    def test_normalise_depth_off_or_at_least_the_gate_passes(self):
+        validate_config_dict(_good_config(normalise_depth=0, minimum_depth=10))
+        validate_config_dict(_good_config(normalise_depth=100, minimum_depth=10))
+        validate_config_dict(_good_config(normalise_depth=10, minimum_depth=10))
+
+    def test_normalise_depth_below_gate_names_both_flags(self):
+        with self.assertRaises(ConfigurationError) as ctx:
+            validate_config_dict(_good_config(normalise_depth=5, minimum_depth=10))
+        message = str(ctx.exception)
+        self.assertIn("--normalise-depth", message)
+        self.assertIn("--minimum-coverage", message)
+        self.assertIn("mask", message)
 
     def test_illumina_adapters_may_be_null(self):
         """--adapters omitted -> `adapters: null` in the YAML; fastp then detects them."""
@@ -334,6 +361,50 @@ def _tagged_fastq(path, model_id, n=3):
         for i in range(n):
             fh.write(f"@r{i} basecall_model_version_id={model_id}\nACGT\n+\nIIII\n")
     return path
+
+
+class Test_ValidateConsensusRequirementsNormaliseDepth(unittest.TestCase):
+    """The CLI-side twin of the config cross-check: a depth cap strictly between
+    0 (off) and --minimum-coverage is refused before any work starts."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.reference = os.path.join(self._tmp.name, "ref.fasta")
+        with open(self.reference, "w") as fh:
+            fh.write(">ref\nACGTACGTACGT\n")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _args(self, **overrides):
+        args = {
+            "reference": self.reference,
+            "segmented_reference": None,
+            "primer_scheme": None,
+            "minimum_coverage": 10,
+            "normalise_depth": 100,
+        }
+        args.update(overrides)
+        return args
+
+    def test_default_and_off_pass(self):
+        validate_consensus_requirements(self._args())
+        validate_consensus_requirements(self._args(normalise_depth=0))
+        validate_consensus_requirements(self._args(normalise_depth=10))
+
+    def test_cap_below_depth_gate_rejected(self):
+        with self.assertRaises(ValidationError) as ctx:
+            validate_consensus_requirements(self._args(normalise_depth=5, minimum_coverage=10))
+        message = str(ctx.exception)
+        self.assertIn("--normalise-depth", message)
+        self.assertIn("--minimum-coverage", message)
+        self.assertIn("mask", message)
+
+    def test_absent_key_is_not_checked(self):
+        # Embedding callers that never heard of the option keep working.
+        args = self._args()
+        del args["normalise_depth"]
+        validate_consensus_requirements(args)
 
 
 class Test_ValidateClair3Model(unittest.TestCase):

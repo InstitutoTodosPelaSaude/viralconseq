@@ -115,6 +115,15 @@ _COMMON_OPTIONS = [
         help="Minimum coverage depth for consensus base inclusion.",
     ),
     click.option(
+        "--normalise-depth",
+        default=100,
+        show_default=True,
+        type=click.IntRange(min=0),
+        help="Cap the read depth handed to the consensus caller at this many records per "
+        "reference position after primer clipping, keeping the strand ratio and, with a "
+        "primer scheme, the amplicon mix of the original data. 0 switches normalisation off.",
+    ),
+    click.option(
         "--consensus-coverage-threshold",
         default=70.0,
         show_default=True,
@@ -344,6 +353,7 @@ def consensus_illumina(
     segmented_reference: Tuple[str, ...],
     primer_scheme: Optional[str],
     minimum_coverage: int,
+    normalise_depth: int,
     minimum_read_length: int,
     threads: int,
     threads_total: int,
@@ -386,6 +396,7 @@ def consensus_illumina(
         segmented_reference=_parse_segmented_reference(segmented_reference),
         primer_scheme=primer_scheme,
         minimum_coverage=minimum_coverage,
+        normalise_depth=normalise_depth,
         minimum_read_length=minimum_read_length,
         threads=threads,
         threads_total=threads_total,
@@ -499,6 +510,7 @@ def consensus_nanopore(
     segmented_reference: Tuple[str, ...],
     primer_scheme: Optional[str],
     minimum_coverage: int,
+    normalise_depth: int,
     minimum_read_length: int,
     threads: int,
     threads_total: int,
@@ -539,6 +551,7 @@ def consensus_nanopore(
         segmented_reference=_parse_segmented_reference(segmented_reference),
         primer_scheme=primer_scheme,
         minimum_coverage=minimum_coverage,
+        normalise_depth=normalise_depth,
         minimum_read_length=minimum_read_length,
         threads=threads,
         threads_total=threads_total,

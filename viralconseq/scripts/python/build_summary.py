@@ -56,6 +56,8 @@ COLUMNS = [
     "viralqc_dataset_version",
     "clair3_model",
     "masked_variant_sites",  # nanopore: Clair3 calls the filter masked (N) instead of writing
+    "normalise_target",  # records per position the consensus caller saw (0 = off)
+    "mapped_reads_normalised",  # primary mapped records in the normalised BAM
 ]
 
 # viralQC column -> summary column

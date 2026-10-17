@@ -151,6 +151,7 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--segmented-reference` | — | Per-segment reference: `SEGMENT=PATH` (repeatable). |
 | `--primer-scheme` | — | Primer scheme BED file (amplicon sequencing only). |
 | `--minimum-coverage` | `10` | Minimum depth for consensus base inclusion. |
+| `--normalise-depth` | `100` | Cap the read depth handed to the consensus caller at this many records per reference position after primer clipping, keeping the strand ratio and, with a primer scheme, the amplicon mix of the original data. `0` switches normalisation off. Must be `0` or at least `--minimum-coverage`: a cap below the depth gate would mask every position the gate would accept. |
 | `--minimum-read-length` | `50` | Minimum read length threshold. |
 | `--af-threshold` | `0.51` Illumina, `0.6` Nanopore | Minimum allele fraction to call a variant into consensus. Illumina: the fraction of base counts (`samtools consensus -c`). Nanopore: ALT reads over REF plus ALT reads at the site from Clair3's `AD`; reads showing a deletion or a third base there do not count, so a variant that creates a homopolymer is not lost to the reads that collapse it. |
 | `--consensus-coverage-threshold` | `70` | Percent of reference positions at or above `--minimum-coverage` (`coverage_min_depth` in `summary.tsv`) a sample needs to enter `consensus/consensus.cov<T>.fasta`; 0–100. Every sample is always in `consensus/consensus.fasta`. |
@@ -462,8 +463,8 @@ Three levels bound a run:
 
 The rules with a `--<rule>-cpus` option (flags replace `_` with `-`):
 
-- **Illumina** — `perform_qc`, `map_reads`, `trim_primer_sequences`, `detect_isnv`, `run_viralqc`.
-- **Nanopore** — `map_reads`, `trim_primer_sequences`, `infer_consensus_sequence`, `run_viralqc`.
+- **Illumina** — `perform_qc`, `map_reads`, `trim_primer_sequences`, `normalise_depth`, `detect_isnv`, `run_viralqc`.
+- **Nanopore** — `map_reads`, `trim_primer_sequences`, `normalise_depth`, `infer_consensus_sequence`, `run_viralqc`.
 
 Memory is handled separately, and only where it was measured. Two rules declare memory and have a `--<rule>-ram` option (GB): `--infer-consensus-sequence-ram` (Clair3, default **2**) and `--run-viralqc-ram` (viralQC, default **1**). The declarations bind: Snakemake is given the `--max-memory` budget and runs those jobs concurrently only while their declared RAM fits it (with the default budget on a 16 GB machine, Clair3 runs at most 7 samples at once). Every other rule peaked well under 200 MB on the test data and declares nothing. The values land in the `# --- resources ---` section of the config as `<rule>_ram`, `threads_total`, `max_memory_mb` and `memory_detected_mb`.
 

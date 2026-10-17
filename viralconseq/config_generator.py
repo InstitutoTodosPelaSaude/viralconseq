@@ -42,6 +42,7 @@ _KEY_SECTIONS: Dict[str, str] = {
     ConfigKeys.REFERENCE: "consensus",
     ConfigKeys.SCHEME: "consensus",
     ConfigKeys.MINIMUM_DEPTH: "consensus",
+    ConfigKeys.NORMALISE_DEPTH: "consensus",
     ConfigKeys.MINIMAP2_CONSENSUS_ALIGN_FLAGS: "consensus",
     ConfigKeys.AF_THRESHOLD: "consensus",
     ConfigKeys.CONSENSUS_COVERAGE_THRESHOLD: "consensus",
@@ -336,6 +337,7 @@ class ConfigGenerator:
         primer_scheme: str,
         minimum_coverage: int,
         minimap2_consensus_align_flags: str = "-a --sam-hit-only --secondary=no --score-N=0",
+        normalise_depth: int = 100,
     ) -> None:
         """Add consensus-specific settings to configuration.
 
@@ -348,11 +350,15 @@ class ConfigGenerator:
                 re-aligning the per-sample consensus FASTA back to the
                 reference for the final multiple-sequence alignment. The
                 default keeps the historical behaviour.
+            normalise_depth: Cap on the read depth per reference position
+                handed to the consensus caller after primer clipping; 0
+                switches normalisation off.
         """
         P = self.SECTION_CONSENSUS
         self._set(ConfigKeys.REFERENCE, reference, P)
         self._set(ConfigKeys.SCHEME, primer_scheme, P)
         self._set(ConfigKeys.MINIMUM_DEPTH, minimum_coverage, P)
+        self._set(ConfigKeys.NORMALISE_DEPTH, normalise_depth, P)
         self._set(
             ConfigKeys.MINIMAP2_CONSENSUS_ALIGN_FLAGS,
             minimap2_consensus_align_flags,
@@ -512,6 +518,7 @@ class ConfigGenerator:
                 reference=f"{root}/references/skel.reference.fasta",
                 primer_scheme="NA",
                 minimum_coverage=10,
+                normalise_depth=100,
             )
             if data_type == DataType.ILLUMINA:
                 # run_isnv=True pulls the detect_isnv (LoFreq) rule into

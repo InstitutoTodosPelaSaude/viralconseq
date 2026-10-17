@@ -32,6 +32,7 @@ _REQUIRED_KEYS = [
     "reference",
     "scheme",
     "minimum_depth",
+    "normalise_depth",
     "minimum_length",
     "af_threshold",
     "consensus_coverage_threshold",
@@ -135,9 +136,22 @@ def LOG(rule, target="{sample}", per_segment=True):
 # The rules with a --<rule>-cpus option (mirror of ResourceDefaults.CONSENSUS_*_RULES;
 # the inventory test keeps them in step). Used to report each rule's threads.
 THREADED_RULES = (
-    ["perform_qc", "map_reads", "trim_primer_sequences", "detect_isnv", "run_viralqc"]
+    [
+        "perform_qc",
+        "map_reads",
+        "trim_primer_sequences",
+        "normalise_depth",
+        "detect_isnv",
+        "run_viralqc",
+    ]
     if config.get("data") == "illumina"
-    else ["map_reads", "trim_primer_sequences", "infer_consensus_sequence", "run_viralqc"]
+    else [
+        "map_reads",
+        "trim_primer_sequences",
+        "normalise_depth",
+        "infer_consensus_sequence",
+        "run_viralqc",
+    ]
 )
 
 

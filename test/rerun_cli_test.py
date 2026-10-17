@@ -24,6 +24,7 @@ def _config(**overrides):
         "reference": "/ref.fa",
         "scheme": "NA",
         "minimum_depth": 20,
+        "normalise_depth": 100,
         "minimum_length": 50,
         "af_threshold": 0.51,
         "consensus_coverage_threshold": 70.0,

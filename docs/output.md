@@ -59,7 +59,10 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 │       ├── table_cov_basewise.txt    # nanopore
 │       ├── viralqc.tsv               # unless --no-run-viralqc
 │       ├── raw_mapped_reads.bam
-│       └── trimmed_mapped_reads.bam
+│       ├── trimmed_mapped_reads.bam
+│       ├── normalised_mapped_reads.bam # depth-capped BAM the consensus caller saw (--normalise-depth)
+│       ├── normalise_depth.tsv       # depth before / after per position and strand
+│       └── normalise_amplicons.tsv   # reads and depth before / after per amplicon (or per contig)
 └── benchmark.tsv                     # per-task runtime
 ```
 
@@ -83,8 +86,8 @@ completes and the other samples are unaffected. `assembly/clair3/<sample>/model.
 records the Clair3 model and model directory used (and the status, when skipped).
 
 Intermediate files are kept as well (useful for debugging, safe to delete):
-`assembly/mapped_reads/{raw,trimmed}/` (BAMs and the ampliconclip `*.trimmed.txt`
-reports), `assembly/consensus/final_consensus/` (per-sample consensus FASTAs and VCFs
+`assembly/mapped_reads/{raw,trimmed,normalised}/` (BAMs, the ampliconclip `*.trimmed.txt`
+reports and the `*.normalise.txt` summaries), `assembly/consensus/final_consensus/` (per-sample consensus FASTAs and VCFs
 before symlinking, `aln.consensus.sam`, the indel-masked alignment),
 `assembly/clair3/{sample}/` (nanopore variant calls), `assembly/isnvs/` (LoFreq VCFs
 with `--run-isnv`), `qc/data/` and `qc/reports/` (fastp-trimmed reads and per-sample
@@ -110,7 +113,10 @@ deleted once the run is finished.
 | `samples/sample-{id}/mask.bed` | Nanopore: the intervals `bcftools consensus` wrote as `N`, the union of `assembly/consensus/final_consensus/sample-{id}.low_cov.bed` (below `--minimum-coverage`) and `sample-{id}.masked_variants.bed` (masked calls) |
 | `assembly/coverage_stats/sample-{id}.table_cov_basewise.txt` | Per-base coverage table (`RNAME`, `POS`, `DEPTH`) |
 | `samples/sample-{id}/raw_mapped_reads.bam` | Reads mapped to the reference, before primer clipping |
-| `samples/sample-{id}/trimmed_mapped_reads.bam` | Primer-clipped BAM used for consensus calling |
+| `samples/sample-{id}/trimmed_mapped_reads.bam` | Primer-clipped BAM; the source of every depth statistic, the nanopore mapped-read gate and the iSNV calls |
+| `samples/sample-{id}/normalised_mapped_reads.bam` | The primer-clipped BAM capped at `--normalise-depth` records per position (strand ratio and amplicon mix preserved); what `samtools consensus` / Clair3 read. Identical to the trimmed BAM with `--normalise-depth 0` |
+| `samples/sample-{id}/normalise_depth.tsv` | Per reference position: depth before and after normalisation, total and per strand |
+| `samples/sample-{id}/normalise_amplicons.tsv` | Per amplicon (per contig without a scheme): span, mean depth and record counts before and after, plus `unassigned` and `interior_primer` (skip-amplicon) rows |
 | `assembly/consensus/final_consensus/samples_alignment.fasta` | All consensus sequences aligned to the reference (MSA-ready) |
 | `qc/viralqc/outputs/results.tsv` | viralQC table: virus, clade and genome-quality score per consensus sequence (see below) |
 | `samples/sample-{id}/viralqc.tsv` | The rows of `results.tsv` belonging to one sample |
@@ -163,6 +169,8 @@ row, even when nothing was assembled for it.
 | `viralqc_dataset`, `viralqc_dataset_version` | Nextclade dataset and version behind the clade call |
 | `clair3_model` | Clair3 model used for this sample (nanopore), else `NA` |
 | `masked_variant_sites` | Nanopore: Clair3 calls the filter masked (written as `N`) because they cleared the allele ratio but not the quality bar or the ALT-read floor; see `variant_filter.tsv`. `NA` on Illumina |
+| `normalise_target` | Records per position the consensus caller saw after depth normalisation (`--normalise-depth`); `0` when switched off |
+| `mapped_reads_normalised` | Primary mapped records left in the normalised BAM (`mapped_reads` counts the trimmed BAM) |
 
 `status` values, in the order they are tested:
 

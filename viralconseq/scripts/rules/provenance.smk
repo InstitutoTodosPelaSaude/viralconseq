@@ -47,7 +47,7 @@ rule versions_alignment:
         """
         set -euo pipefail
         exec > {log} 2>&1
-        python {input.script:q} --tools minimap2 samtools bedtools GSAlign gofasta \
+        python {input.script:q} --tools python minimap2 samtools bedtools GSAlign gofasta \
             --output {output.fragment:q}
         cat {output.fragment:q}
         """

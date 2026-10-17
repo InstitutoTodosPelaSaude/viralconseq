@@ -118,6 +118,7 @@ class Test_ConsensusIlluminaCommand(unittest.TestCase):
         self.assertEqual(args["af_isnv_threshold"], 0.0)
         self.assertFalse(args["run_isnv"])
         self.assertEqual(args["minimum_coverage"], 10)
+        self.assertEqual(args["normalise_depth"], 100)
         self.assertEqual(args["minimum_read_length"], 50)
         self.assertEqual(args["threads"], 1)
         self.assertEqual(args["threads_total"], detect_cores())
@@ -390,6 +391,7 @@ class Test_ConsensusNanoporeCommand(unittest.TestCase):
         )
         self.assertEqual(args["variant_quality"], 10)
         self.assertEqual(args["frameshift_variant_quality"], 50)
+        self.assertEqual(args["normalise_depth"], 100)
         self.assertEqual(args["variant_depth"], 10)
         self.assertEqual(args["minimum_map_quality"], 30)
 
@@ -402,6 +404,32 @@ class Test_ConsensusNanoporeCommand(unittest.TestCase):
             )
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(mock_main.call_args[0][0]["frameshift_variant_quality"], 40)
+
+    def test_normalise_depth_option_honoured(self):
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0) as mock_main:
+            result = self.runner.invoke(
+                consensus,
+                self._required + ["--normalise-depth", "0"],
+                catch_exceptions=False,
+            )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(mock_main.call_args[0][0]["normalise_depth"], 0)
+
+    def test_normalise_depth_rejects_negative(self):
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0) as mock_main:
+            result = self.runner.invoke(consensus, self._required + ["--normalise-depth", "-1"])
+        self.assertNotEqual(result.exit_code, 0)
+        mock_main.assert_not_called()
+
+    def test_normalise_depth_cpus_option_exists(self):
+        with patch("viralconseq.consensus_cli.consensus_main", return_value=0) as mock_main:
+            result = self.runner.invoke(
+                consensus,
+                self._required + ["--normalise-depth-cpus", "3"],
+                catch_exceptions=False,
+            )
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(mock_main.call_args[0][0]["normalise_depth_cpus"], 3)
 
 
 class Test_ConsensusCondaPrefix(unittest.TestCase):

@@ -4,7 +4,8 @@
 Executed by Snakemake via a ``script:`` directive in
 ``rules/consensus_*_common.smk``; Snakemake injects a ``snakemake`` global
 (``snakemake.input`` with named members ``raw``, ``qc_passed`` (Illumina
-only), ``bam``, ``table_cov``, ``consensus``; ``snakemake.output[0]``;
+only), ``bam``, ``bam_normalised``, ``normalise_summary``, ``table_cov``,
+``consensus``; ``snakemake.output[0]``;
 ``snakemake.params.minimum_depth``; ``snakemake.wildcards``). ruff/mypy
 cannot see the global and are silenced for this directory in ``pyproject.toml``.
 Standard library only.
@@ -12,7 +13,9 @@ Standard library only.
 Writes a one-row, headered TSV: read counts (every sequenced read, so both
 mates on Illumina), mapped reads, mean and median depth, breadth of coverage
 at 10x / 100x / 1000x / ``minimum_depth`` as percentages (0-100, 2 dp), and
-the consensus length and N content. ``summary.tsv`` (``build_summary.py``)
+the consensus length and N content, the depth-normalisation target and the
+primary mapped records left in the normalised BAM the consensus caller saw
+(``rules/normalise.smk``). ``summary.tsv`` (``build_summary.py``)
 joins these rows with viralQC and the rest, so the coverage arithmetic lives
 here only.
 """
@@ -41,6 +44,8 @@ COLUMNS = [
     "consensus_length",
     "n_count",
     "n_pct",
+    "normalise_target",
+    "mapped_reads_normalised",
 ]
 NA = "NA"
 
@@ -132,8 +137,14 @@ def build_row(
     table_cov: str,
     consensus: str,
     minimum_depth: int,
+    bam_normalised: Optional[str] = None,
+    normalise_summary: Optional[str] = None,
 ) -> Dict[str, Value]:
-    """The per-sample row (``segment`` key present only when given)."""
+    """The per-sample row (``segment`` key present only when given).
+
+    ``bam_normalised`` and ``normalise_summary`` (the ``normalise.txt``
+    key/value file) fill ``mapped_reads_normalised`` and ``normalise_target``;
+    both are ``NA`` when not given."""
     total_reads = sum(count_reads(path) for path in raw_fastqs)
     qc_passed: Value = sum(count_reads(path) for path in qc_fastqs) if qc_fastqs else NA
     mapped = count_mapped_reads(bam)
@@ -151,7 +162,19 @@ def build_row(
     row.update(coverage_stats(table_cov, minimum_depth))
     row["min_depth"] = minimum_depth
     row.update(consensus_stats(consensus))
+    row["normalise_target"] = normalise_target(normalise_summary) if normalise_summary else NA
+    row["mapped_reads_normalised"] = count_mapped_reads(bam_normalised) if bam_normalised else NA
     return row
+
+
+def normalise_target(summary: str) -> Value:
+    """The ``target`` value of a ``normalise.txt`` key/value file (``NA`` if absent)."""
+    with open(summary) as handle:
+        for line in handle:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) >= 2 and fields[0] == "target":
+                return int(fields[1]) if fields[1].isdigit() else fields[1]
+    return NA
 
 
 def write_tsv(row: Dict[str, Value], output: str) -> None:
@@ -175,6 +198,12 @@ def main_from_snakemake(smk) -> None:
         table_cov=str(smk.input.table_cov),
         consensus=str(smk.input.consensus),
         minimum_depth=int(smk.params.minimum_depth),
+        bam_normalised=(
+            str(smk.input.bam_normalised) if "bam_normalised" in smk.input.keys() else None
+        ),
+        normalise_summary=(
+            str(smk.input.normalise_summary) if "normalise_summary" in smk.input.keys() else None
+        ),
     )
     write_tsv(row, smk.output[0])
 

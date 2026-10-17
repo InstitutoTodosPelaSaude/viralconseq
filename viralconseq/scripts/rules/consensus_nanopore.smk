@@ -54,8 +54,10 @@ rule infer_consensus_sequence:
     conda:
         "../envs/clair3.yaml"
     input:
-        bam = rules.trim_primer_sequences.output.bam,
-        bam_index = rules.trim_primer_sequences.output.bam_index,
+        # The depth-normalised BAM (rules/normalise.smk); check_mapped_reads
+        # and the coverage statistics stay on the trimmed BAM.
+        bam = rules.normalise_depth.output.bam,
+        bam_index = rules.normalise_depth.output.bam_index,
         reference = REFERENCE,
         fai = REFERENCE + ".fai",
         status = rules.check_mapped_reads.output.status,

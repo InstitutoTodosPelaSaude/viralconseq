@@ -53,6 +53,7 @@ REQUIRED_COMMON = [
     "reference",
     "scheme",
     "minimum_depth",
+    "normalise_depth",
     "minimum_length",
     "af_threshold",
     "consensus_coverage_threshold",
