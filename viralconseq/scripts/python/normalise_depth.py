@@ -31,12 +31,15 @@ Algorithm (one left-to-right sweep per contig):
   primers between them); one that fits no amplicon and contains no primer is
   ``unassigned``. Containing a neighbour's primer while fitting one amplicon
   is normal in a tiling scheme and is not a signature of anything.
-  Both classes go to the last-ranked ``other`` stratum of their strand, are
-  never dropped, and are counted in the reports.
-* At each position ``p`` the target ``min(T, original depth)`` minus the
-  depth of the always-kept ``other`` records is split among the strata in
-  the original proportions (largest-remainder rounding, never above a
-  stratum's own depth). Units starting at ``p`` are pushed onto their
+  Both classes form one extra ``other`` stratum per strand, capped
+  proportionally like any amplicon (so their share of the kept depth equals
+  their share of the original depth) and counted in the reports. They used
+  to be kept unconditionally; in LoCost libraries they cluster at primer
+  edges carrying artefacts, and once the normal reads were capped they
+  dominated the pileup and Clair3 called the artefact (benchmark v4).
+* At each position ``p`` the target ``min(T, original depth)`` is split
+  among the strata in the original proportions (largest-remainder rounding,
+  never above a stratum's own depth). Units starting at ``p`` are pushed onto their
   stratum's pending set, ordered by furthest reference end first and then
   input order; while a stratum is below its target the furthest-reaching
   pending unit is popped and kept
@@ -613,7 +616,6 @@ class Normaliser:
         recs = self.recs
         target = self.target
         n_amp = self.n_amplicons.get(name, 0)
-        other_ids = {2 * n_amp, 2 * n_amp + 1} if self.scheme is not None else set()
         result = ContigResult(name, length)
         strata: Dict[int, Tuple[array.array, array.array]] = {}
 
@@ -640,7 +642,6 @@ class Normaliser:
                 orig[a] += 1
                 orig[b] -= 1
         ids = sorted(strata)
-        regular = [s for s in ids if s not in other_ids]
         orig_cur = {s: 0 for s in ids}
         kept_cur = {s: 0 for s in ids}
         # Pending units per stratum: for every reference end, the ordinals of
@@ -733,10 +734,6 @@ class Normaliser:
                 pending += 1
                 if kept[k]:
                     continue  # pre-credited through its mate
-                s = stratum_of[k]
-                if s in other_ids:
-                    keep_unit(k, p)
-                    continue
                 m = mate[k]
                 if m >= 0 and kept[m]:
                     credit(k, p)
@@ -750,9 +747,8 @@ class Normaliser:
             t_total = min(target, orig_total)
             if orig_total > target:
                 capped += 1
-            other_kept = sum(kept_cur[s] for s in other_ids if s in kept_cur)
-            active = [s for s in regular if orig_cur[s] > 0]
-            shares = split_target(max(0, t_total - other_kept), [orig_cur[s] for s in active])
+            active = [s for s in ids if orig_cur[s] > 0]
+            shares = split_target(t_total, [orig_cur[s] for s in active])
             for s, share in zip(active, shares):
                 while kept_cur[s] < share:
                     k = pop_live(s, p)

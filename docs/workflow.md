@@ -194,19 +194,21 @@ coordinate-sorted and two runs over the same input are byte-identical (the
 counted; supplementary records are single-record units. A record that fits
 no single amplicon and contains a whole primer interval is a skip-amplicon
 product (`interior_primer`); one that fits no amplicon and contains no primer
-is `unassigned`; both are never dropped and are counted in the tables.
+is `unassigned`; both form an extra stratum per strand, capped proportionally like any
+amplicon, and are counted in the tables (they were kept unconditionally until benchmark v4
+showed that in LoCost libraries they cluster at primer edges carrying artefacts and, once
+the normal reads are capped, dominate the pileup).
 
 Before writing anything the script re-derives the depth from its kept flags
 and refuses a result where the final depth is below `min(target, original)`
 at any position, so every read is kept wherever the original depth is below
 the target and the `--minimum-coverage` masks are unchanged there. Kept depth
 can exceed the target: up to `2T` per strand for single-record units at
-coverage boundaries and amplicon overlaps (as in ARTIC's normalisation), more
-where the never-dropped skip-amplicon reads are dense. On the SARS-CoV-2 test
-data (ARTIC V3, 100x): the Illumina sample went from 194,452 to 24,556
+coverage boundaries and amplicon overlaps (as in ARTIC's normalisation). On the SARS-CoV-2 test
+data (ARTIC V3, 100x): the Illumina sample went from 194,452 to 23,225
 records in 4 s and 86 MB, the nanopore sample (no scheme) from 7,641 to
 3,464; a 5.8 M-record, 29,000x copy of the Illumina sample (the dengue
-regime) took 51 s and 277 MB, two streaming passes over `samtools view`. The
+regime) took 50 s and 279 MB, two streaming passes over `samtools view`. The
 depth table reports both before and after per strand. `normalise.txt` holds the mode
 (`off` / `position` / `amplicon`), the target, record counts in / kept /
 dropped, secondary and unmapped drops, orphan mates, unassigned and

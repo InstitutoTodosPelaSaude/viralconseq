@@ -329,23 +329,43 @@ class TestSchemeMode(unittest.TestCase):
         self.assertIn("unassigned", by_name)
         self.assertIn("interior_primer", by_name)
 
-    def test_other_class_is_never_dropped_and_counted(self):
-        records = [rec(f"a{i}", 30, 250) for i in range(100)]
-        records += [rec(f"skip{i}", 30, 500) for i in range(5)]  # skip-amplicon products
+    def test_other_class_is_capped_proportionally_and_counted(self):
+        records = [rec(f"a{i}", 30, 250) for i in range(100)]  # amplicon 1
+        records += [
+            rec(f"b{i}", 275, 245) for i in range(100)
+        ]  # amplicon 2, covers the skip reads' tail
+        records += [
+            rec(f"skip{i}", 30, 490) for i in range(50)
+        ]  # skip-amplicon products, end with amplicon 2
         records += [rec(f"far{i}", 900, 50) for i in range(3)]  # fit no amplicon, no primer
         lines = header(1000) + sort_records(records)
         recs, results, values, rows = run(lines, 20, self.scheme)
-        self.assertEqual(values["interior_primer_before"], "5")
-        self.assertEqual(values["interior_primer_after"], "5")
+        self.assertEqual(values["interior_primer_before"], "50")
         self.assertEqual(values["unassigned_before"], "3")
-        self.assertEqual(values["unassigned_after"], "3")
+        self.assertEqual(values["unassigned_after"], "3")  # 3 < target: all kept
+        kept_skip = int(values["interior_primer_after"])
+        # Capped like any stratum: a third of the depth, so a third of the target.
+        self.assertEqual(kept_skip, 7)
         before, after = depths(results[0])
         self.assertTrue(all(after[p] >= min(20, before[p]) for p in range(1000)))
-        # the always-kept skip reads count against the target: 5 kept + 15 normal
-        self.assertEqual(after[100], 20)
+        self.assertEqual(results[0].after_fwd[100], 20)  # 13 normal + 7 skip, all forward
         by_name = {row[1]: row for row in rows}
-        self.assertEqual(by_name["interior_primer"][7:11], ["5", "5", "5", "5"])
+        self.assertEqual(by_name["interior_primer"][7], "50")
+        self.assertEqual(by_name["interior_primer"][8], str(kept_skip))
         self.assertEqual(by_name["unassigned"][7:9], ["3", "3"])
+
+    def test_share_of_boundary_reads_matches_the_original_proportion(self):
+        # 300 amplicon-1 reads : 100 reverse skip reads at target 40 -> 30 : 10, so an
+        # artefact carried only by the skip reads keeps its 25 % share (v4 had them
+        # kept wholesale, which flipped LoCost pileups at primer edges). Amplicon-2
+        # reads cover the skip reads' tail so nothing is topped up there.
+        records = [rec(f"a{i}", 30, 250) for i in range(300)]
+        records += [rec(f"b{i}", 275, 245) for i in range(300)]
+        records += [rec(f"skip{i}", 30, 490, flag=16) for i in range(100)]
+        lines = header(1000) + sort_records(records)
+        recs, results, values, _ = run(lines, 40, self.scheme)
+        self.assertEqual((results[0].after_fwd[100], results[0].after_rev[100]), (30, 10))
+        self.assertEqual(values["interior_primer_after"], "10")
 
     def test_pair_with_one_skip_amplicon_mate_is_kept_whole(self):
         records = [rec(f"a{i}", 30, 250) for i in range(100)]
@@ -378,13 +398,14 @@ class TestSchemeMode(unittest.TestCase):
         with self.assertRaises(nd.NormaliseError):
             nd.parse_scheme(bed)
 
-    def test_scheme_contig_absent_from_bam_keeps_everything_as_unassigned(self):
+    def test_scheme_contig_absent_from_bam_treats_reads_as_unassigned_and_caps_them(self):
         lines = ["@HD\tVN:1.6\n", "@SQ\tSN:other\tLN:300\n"] + [
             rec(f"a{i}", 0, 100, contig="other") for i in range(30)
         ]
         recs, _, values, _ = run(lines, 10, self.scheme)
         self.assertEqual(values["unassigned_before"], "30")
-        self.assertEqual(sum(recs.kept), 30)
+        self.assertEqual(values["unassigned_after"], "10")
+        self.assertEqual(sum(recs.kept), 10)
 
 
 class TestDeterminismAndEmission(unittest.TestCase):

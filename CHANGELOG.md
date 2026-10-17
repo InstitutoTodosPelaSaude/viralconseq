@@ -77,8 +77,9 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   script re-derives the depth from its decisions and refuses to write a result
   that breaks this), the strand ratio is preserved per position and, with a
   primer scheme, so is the amplicon mix (the target is split per strand x
-  amplicon in the original proportions); reads that span two amplicons are
-  never dropped. Proper pairs are matched by read name (ampliconclip leaves
+  amplicon in the original proportions, with reads that fit no single
+  amplicon as a stratum of their own, so their share is preserved too).
+  Proper pairs are matched by read name (ampliconclip leaves
   PNEXT stale) and kept or dropped whole; records are re-emitted in input order,
   so the output is sorted and byte-reproducible. Only `infer_consensus_sequence`
   (`samtools consensus`, Clair3) reads the normalised BAM; `summary.tsv`'s depth
@@ -96,8 +97,8 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   `rerun --set normalise_depth=100`, or `0` to reproduce its consensus). The
   cap is refused when positive but below `--minimum-coverage`. On the
   SARS-CoV-2 test data (ARTIC V3) the Illumina sample went from 194,452 to
-  24,556 records in 4 s and 86 MB; a 5.8 M-record, 29,000x copy of it took
-  51 s and 277 MB.
+  23,225 records in 4 s and 86 MB; a 5.8 M-record, 29,000x copy of it took
+  50 s and 279 MB.
 - `--frameshift-variant-quality` (nanopore, default 50): the QUAL bar for an
   indel whose length change is not a multiple of three. Every frameshifting
   indel the benchmark's consensus accepted scored below 50 and ARTIC masks

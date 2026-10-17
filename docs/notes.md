@@ -38,7 +38,7 @@ The nanopore workflow automatically sanitizes reference FASTA headers before use
 
 ## Amplicon vs. shotgun data
 
-`--primer-scheme` is optional. When a BED file is given, `samtools ampliconclip` removes primer sequences from the mapped reads before consensus calling and both the raw and the clipped BAM are kept. Without a scheme the clipping step is a pass-through and the two BAMs are identical. In both cases the clipped BAM is then depth-normalised to `--normalise-depth` records per position (default 100) before consensus calling; with a scheme the cap is split per strand *and* amplicon in the original proportions, so the amplicon mix in overlaps is preserved, and reads that span two amplicons (skip-amplicon products) are never dropped. The statistics, the mapped-read gate and the iSNV calls still see every read (see [Workflow: Depth normalisation](workflow.md#depth-normalisation)).
+`--primer-scheme` is optional. When a BED file is given, `samtools ampliconclip` removes primer sequences from the mapped reads before consensus calling and both the raw and the clipped BAM are kept. Without a scheme the clipping step is a pass-through and the two BAMs are identical. In both cases the clipped BAM is then depth-normalised to `--normalise-depth` records per position (default 100) before consensus calling; with a scheme the cap is split per strand *and* amplicon in the original proportions, so the amplicon mix in overlaps is preserved, and reads that span two amplicons (skip-amplicon products) keep their original share rather than being dropped or kept wholesale. The statistics, the mapped-read gate and the iSNV calls still see every read (see [Workflow: Depth normalisation](workflow.md#depth-normalisation)).
 
 ## Per-rule conda environments
 
