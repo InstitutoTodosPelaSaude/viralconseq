@@ -185,10 +185,12 @@ streams `samtools view -h` twice. Pass 1 parses QNAME, FLAG, RNAME, POS and
 CIGAR, pairs proper-pair mates **by QNAME** (ampliconclip moves POS without
 rewriting the mate's PNEXT), assigns each record to the amplicon whose outer
 span contains it (10 bp tolerance) and sweeps every position left to right:
-units (a record, or both mates) starting there join their stratum's heap,
-furthest reference end first, and while a stratum is below its share of
-`min(target, original depth)` its furthest-reaching pending unit is kept
-whole. Pass 2 re-emits the kept records in input order, so the output is
+units (a record, or both mates) starting there join their stratum's pending
+set, ranked by reach (start plus aligned query bases, so an indel does not
+change a read's rank; ranking by the reference end made deletion-bearing reads
+reach further and enriched deletions six-fold in benchmark v5), and while a
+stratum is below its share of `min(target, original depth)` its
+furthest-reaching pending unit is kept whole. Pass 2 re-emits the kept records in input order, so the output is
 coordinate-sorted and two runs over the same input are byte-identical (the
 `@PG` line carries no paths or timestamps). Secondary records are dropped and
 counted; supplementary records are single-record units. A record that fits

@@ -79,7 +79,9 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   primer scheme, so is the amplicon mix (the target is split per strand x
   amplicon in the original proportions, with reads that fit no single
   amplicon as a stratum of their own, so their share is preserved too).
-  Proper pairs are matched by read name (ampliconclip leaves
+  Reads are ranked by reach measured in aligned query bases, so a deletion or
+  insertion does not change a read's rank and indel-bearing reads keep their
+  original share. Proper pairs are matched by read name (ampliconclip leaves
   PNEXT stale) and kept or dropped whole; records are re-emitted in input order,
   so the output is sorted and byte-reproducible. Only `infer_consensus_sequence`
   (`samtools consensus`, Clair3) reads the normalised BAM; `summary.tsv`'s depth

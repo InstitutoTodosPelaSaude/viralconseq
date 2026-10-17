@@ -62,15 +62,15 @@ def sort_records(records):
 
 class TestCigar(unittest.TestCase):
     def test_match_deletion_cover_insertion_clips_do_not(self):
-        self.assertEqual(nd.cigar_intervals(10, "5M2D3M"), [(10, 20)])
-        self.assertEqual(nd.cigar_intervals(10, "5S5M2I5M5H"), [(10, 20)])
-        self.assertEqual(nd.cigar_intervals(0, "4=1X5M"), [(0, 10)])
+        self.assertEqual(nd.cigar_intervals(10, "5M2D3M"), ([(10, 20)], 8))
+        self.assertEqual(nd.cigar_intervals(10, "5S5M2I5M5H"), ([(10, 20)], 12))
+        self.assertEqual(nd.cigar_intervals(0, "4=1X5M"), ([(0, 10)], 10))
 
     def test_skip_splits_coverage(self):
-        self.assertEqual(nd.cigar_intervals(0, "5M10N5M"), [(0, 5), (15, 20)])
+        self.assertEqual(nd.cigar_intervals(0, "5M10N5M"), ([(0, 5), (15, 20)], 10))
 
     def test_star_gives_nothing(self):
-        self.assertEqual(nd.cigar_intervals(0, "*"), [])
+        self.assertEqual(nd.cigar_intervals(0, "*"), ([], 0))
 
 
 class TestSplitTarget(unittest.TestCase):
@@ -184,6 +184,50 @@ class TestPositionMode(unittest.TestCase):
         self.assertEqual(before[25], 0)
         self.assertEqual(before[45], 1)
         self.assertEqual(after[45], 1)
+
+
+class TestIndelNeutrality(unittest.TestCase):
+    def test_deletion_reads_are_not_preferred(self):
+        # Same start, same read length; half carry a 30 bp deletion, so they reach
+        # 30 bp further on the reference. Ranking by reference end kept all 20
+        # from the deletion half (benchmark v4/v5 wrote 28-31 bp deletions into
+        # consensuses at >1000x); ranking by aligned query bases is neutral. A
+        # third set covers the deletion reads' tail so nothing is topped up there.
+        records = []
+        for i in range(100):
+            records.append(rec(f"n{i}", 0, 150))
+            records.append(rec(f"d{i}", 0, 180, cigar="60M30D90M"))
+        tail = [rec(f"m{i}", 30, 150) for i in range(100)]
+        recs, results, _, _ = run(header(400) + records + tail, 20)
+        kept_del = sum(1 for i in range(200) if recs.kept[i] and i % 2 == 1)
+        kept_normal = sum(1 for i in range(200) if recs.kept[i] and i % 2 == 0)
+        self.assertEqual((kept_normal, kept_del), (10, 10))
+        before, after = depths(results[0])
+        self.assertTrue(all(after[p] >= min(20, before[p]) for p in range(400)))
+
+    def test_insertion_reads_are_not_disfavoured(self):
+        records = []
+        for i in range(100):
+            records.append(rec(f"n{i}", 0, 150))
+            records.append(
+                rec(f"i{i}", 0, 140, cigar="70M10I70M")
+            )  # 150 query bases, 140 on the reference
+        recs, _, _, _ = run(header(400) + records, 20)
+        kept_ins = sum(1 for i in range(recs.n) if recs.kept[i] and i % 2 == 1)
+        self.assertEqual(kept_ins, 10)
+
+    def test_expiry_uses_the_true_coverage_end(self):
+        # A deletion read reaches 220 on the reference though its rank is 190;
+        # at 200 it is the only coverage and must still be selectable.
+        lines = (
+            header(400)
+            + [rec("d", 0, 220, cigar="100M30D90M")]
+            + [rec(f"n{i}", 0, 150) for i in range(30)]
+        )
+        recs, results, _, _ = run(lines, 5)
+        before, after = depths(results[0])
+        self.assertEqual(before[210], 1)
+        self.assertEqual(after[210], 1)
 
 
 class TestPairs(unittest.TestCase):

@@ -40,8 +40,9 @@ Algorithm (one left-to-right sweep per contig):
 * At each position ``p`` the target ``min(T, original depth)`` is split
   among the strata in the original proportions (largest-remainder rounding,
   never above a stratum's own depth). Units starting at ``p`` are pushed onto their
-  stratum's pending set, ordered by furthest reference end first and then
-  input order; while a stratum is below its target the furthest-reaching
+  stratum's pending set, ordered by furthest reach first (start plus aligned
+  query bases, so a deletion or insertion does not change a read's rank) and
+  then input order; while a stratum is below its target the furthest-reaching
   pending unit is popped and kept
   (both mates); a deficit a stratum cannot fill is filled from the other
   strata, so the total lower bound always holds.
@@ -168,14 +169,16 @@ class SelfCheckError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def cigar_intervals(start: int, cigar: str) -> List[Tuple[int, int]]:
+def cigar_intervals(start: int, cigar: str) -> Tuple[List[Tuple[int, int]], int]:
     """Half-open reference intervals ``[a, b)`` a record covers, from its
-    0-based ``start`` and CIGAR. ``M``/``D``/``=``/``X`` cover, ``N`` splits,
+    0-based ``start`` and CIGAR, and the number of aligned query bases
+    (``M``/``I``/``=``/``X``). ``M``/``D``/``=``/``X`` cover, ``N`` splits,
     the rest consume no reference. ``*`` gives no interval."""
     intervals: List[Tuple[int, int]] = []
     pos = start
     run_start = start
     covering = False
+    query = 0
     for length, op in CIGAR_RE.findall(cigar):
         n = int(length)
         if op in "MDX=":
@@ -183,6 +186,10 @@ def cigar_intervals(start: int, cigar: str) -> List[Tuple[int, int]]:
                 run_start = pos
                 covering = True
             pos += n
+            if op != "D":
+                query += n
+        elif op == "I":
+            query += n
         elif op == "N":
             if covering:
                 intervals.append((run_start, pos))
@@ -190,7 +197,7 @@ def cigar_intervals(start: int, cigar: str) -> List[Tuple[int, int]]:
             pos += n
     if covering:
         intervals.append((run_start, pos))
-    return intervals
+    return intervals, query
 
 
 class Amplicon:
@@ -380,6 +387,7 @@ class Records:
     def __init__(self) -> None:
         self.start = array.array("i")
         self.end = array.array("i")
+        self.rank = array.array("i")  # start + aligned query bases: the selection key
         self.contig = array.array("i")  # index into header order; -1 = not a unit
         self.strand = array.array("b")
         self.cls = array.array("b")
@@ -398,6 +406,7 @@ class Records:
         self,
         start: int,
         end: int,
+        rank: int,
         contig: int,
         strand: int,
         cls: int,
@@ -406,6 +415,7 @@ class Records:
     ) -> int:
         self.start.append(start)
         self.end.append(end)
+        self.rank.append(rank)
         self.contig.append(contig)
         self.strand.append(strand)
         self.cls.append(cls)
@@ -461,11 +471,11 @@ def load_records(
         rname = fields[2]
         if flag & FLAG_UNMAPPED or rname == "*":
             recs.unmapped_dropped += 1
-            recs.append(0, 0, -1, 0, CLASS_NORMAL, -1, None)
+            recs.append(0, 0, 0, -1, 0, CLASS_NORMAL, -1, None)
             continue
         if flag & FLAG_SECONDARY:
             recs.secondary_dropped += 1
-            recs.append(0, 0, -1, 0, CLASS_NORMAL, -1, None)
+            recs.append(0, 0, 0, -1, 0, CLASS_NORMAL, -1, None)
             continue
         try:
             contig = contig_index[rname]
@@ -486,10 +496,10 @@ def load_records(
                 f"record {qname} at {rname}:{pos + 1} follows position {last_pos + 1}: input is not coordinate-sorted"
             )
         last_pos = pos
-        intervals = cigar_intervals(pos, fields[5])
+        intervals, query_bases = cigar_intervals(pos, fields[5])
         if not intervals:
             recs.unmapped_dropped += 1
-            recs.append(0, 0, -1, 0, CLASS_NORMAL, -1, None)
+            recs.append(0, 0, 0, -1, 0, CLASS_NORMAL, -1, None)
             continue
         # Ordering and pushing follow POS (the sort key); coverage follows the
         # intervals, which start after POS only when the CIGAR opens with N.
@@ -508,7 +518,16 @@ def load_records(
                 cls = CLASS_UNASSIGNED
             else:
                 amplicon, cls = assigner.assign(start, end)
-        i = recs.append(start, end, contig, strand, cls, amplicon, intervals if multi else None)
+        i = recs.append(
+            start,
+            end,
+            pos + query_bases,
+            contig,
+            strand,
+            cls,
+            amplicon,
+            intervals if multi else None,
+        )
         pair_eligible = (
             flag & FLAG_PAIRED
             and flag & FLAG_PROPER
@@ -644,10 +663,14 @@ class Normaliser:
         ids = sorted(strata)
         orig_cur = {s: 0 for s in ids}
         kept_cur = {s: 0 for s in ids}
-        # Pending units per stratum: for every reference end, the ordinals of
-        # the units ending there in input order (a compact array, 4 bytes per
-        # unit), and a heap of the live ends. Selection order is furthest end
-        # first, then input order. At 30,000x every read of an amplicon starts
+        # Pending units per stratum: for every rank (start + aligned query
+        # bases, a reach that an indel does not change: ranking by the true
+        # reference end made every deletion-bearing read reach further than
+        # its peers and systematically enriched deletions, benchmark v4/v5),
+        # the ordinals of the units with that rank in input order (a compact
+        # array, 4 bytes per unit), and a heap of the live ranks. Selection
+        # order is furthest rank first, then input order; expiry uses the true
+        # coverage end per record. At 30,000x every read of an amplicon starts
         # at the same clipped position, so millions of units are pending at
         # once; tuples per unit would cost ~140 bytes each.
         ends_heap: Dict[int, List[int]] = {s: [] for s in ids}
@@ -685,39 +708,36 @@ class Normaliser:
             if m >= 0 and not kept[m]:
                 credit(m, p)
 
+        rank = recs.rank
+
         def push(k: int) -> None:
             s = stratum_of[k]
-            e = end[k]
-            group = groups[s].get(e)
+            r = rank[k]
+            group = groups[s].get(r)
             if group is None:
-                group = groups[s][e] = array.array("i")
-                heads[s][e] = 0
-                heapq.heappush(ends_heap[s], -e)
+                group = groups[s][r] = array.array("i")
+                heads[s][r] = 0
+                heapq.heappush(ends_heap[s], -r)
             group.append(k)
 
         def pop_live(s: int, p: int) -> int:
-            """The furthest-reaching pending unit of stratum ``s`` that still
-            reaches past ``p``, or -1. Groups whose end has passed (every unit
-            in them expired: dropped unless a mate is still to come) and
-            exhausted groups are discarded."""
+            """The furthest-ranked pending unit of stratum ``s`` whose coverage
+            still reaches past ``p``, or -1. Units already kept through their
+            mate and expired units (dropped unless a mate is still to come)
+            are skipped; an exhausted rank group is discarded."""
             heap = ends_heap[s]
             while heap:
-                e = -heap[0]
-                if e <= p:
-                    heapq.heappop(heap)
-                    del groups[s][e]
-                    del heads[s][e]
-                    continue
-                group = groups[s][e]
-                i = heads[s][e]
-                while i < len(group) and kept[group[i]]:
-                    i += 1  # kept through its mate
+                r = -heap[0]
+                group = groups[s][r]
+                i = heads[s][r]
+                while i < len(group) and (kept[group[i]] or end[group[i]] <= p):
+                    i += 1
                 if i >= len(group):
                     heapq.heappop(heap)
-                    del groups[s][e]
-                    del heads[s][e]
+                    del groups[s][r]
+                    del heads[s][r]
                     continue
-                heads[s][e] = i + 1
+                heads[s][r] = i + 1
                 return group[i]
             return -1
 
