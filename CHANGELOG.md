@@ -37,6 +37,15 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   full-alignment model: measured as a wash for accuracy and runtime, adopted
   because at the default the model that judges a site depended on how many
   other candidates the sample carried.
+- `--minimum-coverage` defaults to 10 instead of 20 on both platforms
+  (`samtools consensus -d` on Illumina, the low-coverage mask on nanopore).
+  Positions between 10x and 19x get a called base instead of `N`; on the
+  benchmark's Illumina sets that recovers about 20 correct SNVs across 171
+  samples with no new false positive. The nanopore half is a judgement
+  (ARTIC keeps 20) and is covered by the masking above: a variant at 10x to
+  16x that cannot reach `--variant-depth` is masked, not written as the
+  reference. `coverage_min_depth` and `consensus/*.cov<T>.fasta` follow the
+  new threshold.
 
 ### Added
 

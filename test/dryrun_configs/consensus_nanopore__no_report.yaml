@@ -7,7 +7,7 @@ output: test/dryrun_output/consensus_nanopore__no_report/
 threads: 4
 reference: data/references/reference.fasta
 scheme: NA
-minimum_depth: 20
+minimum_depth: 10
 minimum_length: 50
 workflow_path: .
 

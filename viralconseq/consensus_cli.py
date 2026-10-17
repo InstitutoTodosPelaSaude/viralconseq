@@ -109,7 +109,7 @@ _COMMON_OPTIONS = [
     ),
     click.option(
         "--minimum-coverage",
-        default=20,
+        default=10,
         show_default=True,
         type=int,
         help="Minimum coverage depth for consensus base inclusion.",

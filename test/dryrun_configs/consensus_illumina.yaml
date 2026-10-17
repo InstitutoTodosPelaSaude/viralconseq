@@ -12,7 +12,7 @@ output: test/dryrun_output/consensus_illumina/
 threads: 4
 reference: data/references/reference.fasta  # Path to single FASTA reference
 scheme: NA                                  # NA or path to primers.bed
-minimum_depth: 20
+minimum_depth: 10
 minimum_length: 50
 workflow_path: .                             # Base path for internal scripts
 

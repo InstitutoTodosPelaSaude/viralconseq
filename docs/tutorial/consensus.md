@@ -55,7 +55,7 @@ viralconseq consensus illumina \
     --run-name      sarscov2 \
     --reference     databases/refs/nCoV-2019.reference.fasta \
     --primer-scheme databases/refs/nCoV-2019.bed \
-    --minimum-coverage 20 \
+    --minimum-coverage 10 \
     --threads 2 \
     --threads-total 4
 ```
@@ -68,7 +68,7 @@ What each flag does:
 - `--run-name` — appended to `--output`; everything lands under `results/consensus_illumina/sarscov2/`.
 - `--reference` — the reference FASTA. A single-record FASTA is used as-is; a multi-record FASTA is auto-split into one reference per segment (unless `--single-reference`). See [Segmented viruses](#segmented-viruses) below.
 - `--primer-scheme` — BED file of primer coordinates. Omit it for shotgun data; the primer-clipping step then becomes a pass-through.
-- `--minimum-coverage 20` — positions with fewer than 20 reads after primer clipping become `N` in the consensus.
+- `--minimum-coverage 10` — positions with fewer than 10 reads after primer clipping become `N` in the consensus (this is also the default; it is spelled out here because it is the knob you will most often change).
 - `--threads 2 --threads-total 4` — 2 threads per task, 4 cores total across the workflow. Leave `--threads-total` out to use every core but one; a memory budget is detected from the machine too (`--max-memory` overrides it) so the memory-hungry steps never oversubscribe RAM.
 
 ```{tip}
@@ -116,7 +116,7 @@ bcftools view results/consensus_illumina/sarscov2/samples/sample-itps-0001/conse
 **`assembly/coverage_stats/sample-<id>.table_cov_basewise.txt`** — three columns: `RNAME`, `POS`, `DEPTH`. Useful for spotting drop-outs:
 
 ```bash
-awk '$3 < 20' results/consensus_illumina/sarscov2/assembly/coverage_stats/sample-itps-0001.table_cov_basewise.txt | head
+awk '$3 < 10' results/consensus_illumina/sarscov2/assembly/coverage_stats/sample-itps-0001.table_cov_basewise.txt | head
 ```
 
 **`samples/sample-<id>/{raw,trimmed}_mapped_reads.bam`** — both exist deliberately. `raw_mapped_reads.bam` is what minimap2 produced; `trimmed_mapped_reads.bam` is the same BAM after `samtools ampliconclip` removed primer sequences (only different when you passed `--primer-scheme`). The consensus is called from the trimmed BAM.
@@ -188,7 +188,7 @@ viralconseq consensus nanopore \
     --run-name     sarscov2 \
     --reference    databases/refs/nCoV-2019.reference.fasta \
     --clair3-model r941_prom_hac_g360+g422 \
-    --minimum-coverage 20 \
+    --minimum-coverage 10 \
     --minimum-map-quality 30 \
     --threads 4 --threads-total 4
 ```
@@ -256,7 +256,7 @@ See [Notes — Segmented viruses](../notes.md#segmented-viruses) for the full di
 
 The three knobs you will reach for most often:
 
-- **`--minimum-coverage`** (default `20`) — any reference position with fewer than this many reads after primer clipping becomes `N`. Lower it (e.g. `10`) for low-depth samples where you would rather see a tentative base than a hole; raise it for high-confidence assemblies.
+- **`--minimum-coverage`** (default `10`) — any reference position with fewer than this many reads after primer clipping becomes `N`. Raise it (e.g. `20`, the ARTIC default) for high-confidence assemblies; lower it only for very low-depth samples where you would rather see a tentative base than a hole.
 - **`--af-threshold`** (default `0.51` on Illumina, `0.6` on Nanopore) — minimum allele fraction to call a variant into the consensus. On Illumina it is a fraction of base counts, so `0.51` is the majority allele; on Nanopore it is ALT over REF plus ALT reads. Raise it (e.g. `0.7`) for noisier data; lower it to capture ambiguity codes.
 - **`--minimum-read-length`** (default `50`) — on Illumina, reads below this length are dropped by fastp at QC time and by `samtools ampliconclip --filter-len` after primer clipping; on Nanopore it is applied only by `samtools ampliconclip --filter-len`, i.e. only when a primer scheme is given.
 

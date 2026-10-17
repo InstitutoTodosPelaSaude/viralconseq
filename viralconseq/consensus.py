@@ -120,7 +120,7 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
     generator.add_consensus_settings(
         reference=args["reference"],
         primer_scheme=args.get("primer_scheme", "NA"),
-        minimum_coverage=args.get("minimum_coverage", 20),
+        minimum_coverage=args.get("minimum_coverage", 10),
         minimap2_consensus_align_flags=args.get(
             "minimap2_consensus_align_flags",
             "-a --sam-hit-only --secondary=no --score-N=0",

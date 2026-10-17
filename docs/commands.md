@@ -150,7 +150,7 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--single-reference` | off | Treat a multi-record `--reference` as a single reference (align all records together in one pass) instead of auto-splitting it into segments. |
 | `--segmented-reference` | — | Per-segment reference: `SEGMENT=PATH` (repeatable). |
 | `--primer-scheme` | — | Primer scheme BED file (amplicon sequencing only). |
-| `--minimum-coverage` | `20` | Minimum depth for consensus base inclusion. |
+| `--minimum-coverage` | `10` | Minimum depth for consensus base inclusion. |
 | `--minimum-read-length` | `50` | Minimum read length threshold. |
 | `--af-threshold` | `0.51` Illumina, `0.6` Nanopore | Minimum allele fraction to call a variant into consensus. Illumina: the fraction of base counts (`samtools consensus -c`). Nanopore: ALT reads over REF plus ALT reads at the site from Clair3's `AD`; reads showing a deletion or a third base there do not count, so a variant that creates a homopolymer is not lost to the reads that collapse it. |
 | `--consensus-coverage-threshold` | `70` | Percent of reference positions at or above `--minimum-coverage` (`coverage_min_depth` in `summary.tsv`) a sample needs to enter `consensus/consensus.cov<T>.fasta`; 0–100. Every sample is always in `consensus/consensus.fasta`. |

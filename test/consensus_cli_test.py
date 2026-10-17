@@ -117,7 +117,7 @@ class Test_ConsensusIlluminaCommand(unittest.TestCase):
         self.assertEqual(args["af_threshold"], 0.51)
         self.assertEqual(args["af_isnv_threshold"], 0.0)
         self.assertFalse(args["run_isnv"])
-        self.assertEqual(args["minimum_coverage"], 20)
+        self.assertEqual(args["minimum_coverage"], 10)
         self.assertEqual(args["minimum_read_length"], 50)
         self.assertEqual(args["threads"], 1)
         self.assertEqual(args["threads_total"], detect_cores())

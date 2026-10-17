@@ -511,7 +511,7 @@ class ConfigGenerator:
             gen.add_consensus_settings(
                 reference=f"{root}/references/skel.reference.fasta",
                 primer_scheme="NA",
-                minimum_coverage=20,
+                minimum_coverage=10,
             )
             if data_type == DataType.ILLUMINA:
                 # run_isnv=True pulls the detect_isnv (LoFreq) rule into
