@@ -66,9 +66,11 @@ QC_CHECKS = [
     "stopCodons",
 ]
 
-#: The nanopore workflow rewrites these characters in reference contig names to ``_``
-#: (Clair3 makes per-contig directories), so BED chromosome names must follow suit.
-NANOPORE_UNSAFE = re.compile(r"[/\\|,~ ]")
+#: The nanopore workflow rewrites every byte outside ``[A-Za-z0-9._-]`` in reference
+#: contig names to one ``_`` (``rule sanitize_reference``: Clair3 passes contig names
+#: to /bin/sh unquoted and builds ``contig:start-end`` region strings), so BED
+#: chromosome names must follow suit. Same pattern as ``integrity._NANOPORE_SANITIZE_RE``.
+NANOPORE_UNSAFE = re.compile(rb"[^A-Za-z0-9._-]")
 
 #: ``<prefix>_<n>_(LEFT|RIGHT)`` with an optional ``_alt``-style suffix.
 PRIMER_NAME = re.compile(r"^(?P<prefix>.+)_(?P<n>\d+)_(?P<side>LEFT|RIGHT)(?:_.*)?$")
@@ -137,7 +139,7 @@ def read_kv(path):
 
 
 def sanitize_nanopore_contig(name):
-    return NANOPORE_UNSAFE.sub("_", name)
+    return NANOPORE_UNSAFE.sub(b"_", name.encode("utf-8")).decode("ascii")
 
 
 # ---------------------------------------------------------------- per-sample artefacts

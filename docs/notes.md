@@ -34,7 +34,7 @@ kept as `samples_alignment.fasta`).
 
 ## Reference header sanitization
 
-The nanopore workflow automatically sanitizes reference FASTA headers before use. Special characters (`/`, `\`, `|`, `,`, `~`, and spaces) in sequence identifiers are replaced with underscores (`_`). This prevents issues with downstream tools such as Clair3 that use the sequence ID to create output directories. The sanitized copy is written to `reference/reference.sanitized.fasta`, and the input-integrity check reports primer-BED chrom names against the sanitized contig names.
+The nanopore workflow automatically sanitizes reference FASTA headers before use. Every character outside `[A-Za-z0-9._-]` (one `_` per byte, under `LC_ALL=C`) in a header line is replaced with an underscore (`_`). Clair3 uses the sequence ID to create output directories, passes it to `/bin/sh` unquoted and builds `contig:start-end` region strings from it, so parentheses, colons, quotes and other shell metacharacters (an unedited influenza RefSeq header, for instance) would otherwise break the run. A header carrying a character the old `/ \ | , ~` + space rule did not rewrite (so its contig name is not what earlier releases produced) is reported as a `fasta_header_sanitized` warning naming the new contig; the stock RefSeq header, which only has spaces and a comma, stays silent. The sanitized copy is written to `reference/reference.sanitized.fasta`, and the input-integrity check reports primer-BED chrom names against the sanitized contig names.
 
 ## Amplicon vs. shotgun data
 

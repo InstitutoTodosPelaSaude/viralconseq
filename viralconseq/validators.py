@@ -703,13 +703,34 @@ def validate_consensus_input_integrity(args: Dict[str, Any], samples: Dict[str, 
     # Reference FASTA(s): collect the headers so we can derive the exact contig
     # names the pipeline will map against.
     all_headers: List[str] = []
+    fasta_reports: List[integrity.IntegrityReport] = []
     for ref_path in _reference_paths(args.get("reference")):
         report = integrity.validate_fasta(ref_path)
         reports.append(report)
+        fasta_reports.append(report)
         all_headers.extend(report.headers)
 
     data_type = args.get("data_type")
     if data_type == DataType.NANOPORE:
+        # Tell the user when sanitisation renames a contig: the BAM/VCF carry the
+        # sanitised name and a primer BED must use it. One issue per header, not
+        # capped by MAX_ISSUES_PER_FILE.
+        for report in fasta_reports:
+            for header in report.headers:
+                if integrity._NANOPORE_WARN_RE.search(header):
+                    sanitized = integrity.sanitize_nanopore_contig(header)
+                    report.issues.append(
+                        integrity.IntegrityIssue(
+                            "warning",
+                            "fasta_header_sanitized",
+                            f"Reference header '{header}' contains characters earlier releases did not rewrite (outside "
+                            f"[A-Za-z0-9._-]; the nanopore workflow maps against "
+                            f"'{sanitized}' (see reference/*.sanitized.fasta). "
+                            "A primer BED must use that name.",
+                            path=report.path,
+                            kind="fasta",
+                        )
+                    )
         expected_contigs = {integrity.sanitize_nanopore_contig(h) for h in all_headers}
         accession_map = {
             integrity.header_token(h): integrity.sanitize_nanopore_contig(h) for h in all_headers

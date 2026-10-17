@@ -58,6 +58,23 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   and such a rerun will not reproduce its earlier consensus (the verdicts and
   the two defaults above changed).
 
+### Fixed
+
+- The nanopore workflow no longer dies inside Clair3 (`/usr/bin/sh: Syntax
+  error: "(" unexpected`) on a reference header carrying parentheses, colons,
+  quotes or other shell metacharacters, such as an unedited influenza RefSeq
+  header. `sanitize_reference`, `integrity.sanitize_nanopore_contig` and
+  `build_report.NANOPORE_UNSAFE` now rewrite every byte outside
+  `[A-Za-z0-9._-]` to `_` (previously only `/ \ | , ~` and space), under
+  `LC_ALL=C` so the result does not depend on the locale. Headers containing
+  only the old set keep their names; a header with any other character changes
+  its BAM/VCF contig name, the validator reports it as a
+  `fasta_header_sanitized` warning naming the new contig, and a primer BED that
+  used the old name is refused (`bed_chrom_sanitized_mismatch` /
+  `bed_chrom_mismatch`) rather than silently left unclipped. A
+  `viralconseq rerun` of an earlier nanopore run with such a header produces
+  different contig names.
+
 ## [0.2.1] - 2026-09-29
 
 The `0.2.0` files on PyPI were built from this release's code by mistake,

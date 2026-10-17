@@ -37,11 +37,29 @@ _GZIP_MAGIC = b"\x1f\x8b"
 _IUPAC_NT: Set[str] = set("ACGTURYSWKMBDHVN")
 
 # Mirrors the nanopore ``rule sanitize_reference`` sed
-# (``sed '/^>/s/[\\/|,~ ]/_/g'`` in consensus_nanopore*.smk): backslash, '/', '|',
-# ',', '~' and space are replaced with '_' across the whole header. Because spaces
-# are removed, the sanitized header is a single token, so it becomes the BAM @SQ
-# contig name in the nanopore pipeline.
-_NANOPORE_SANITIZE_RE = re.compile(r"[/\\|,~ ]")
+# (``LC_ALL=C sed '/^>/{s/^>//; s/[^A-Za-z0-9._-]/_/g; s/^/>/}'`` in
+# consensus_nanopore.smk and consensus_nanopore_segmented.smk) and the copy in
+# scripts/python/build_report.py (``NANOPORE_UNSAFE``); the three must move
+# together (test/rule_inventory_test.py pins the pattern). Every byte outside
+# ``[A-Za-z0-9._-]`` becomes one '_' across the whole header: Clair3 hands contig
+# names to /bin/sh unquoted (``clair3.sh`` feeds them to GNU parallel as
+# ``--ctgName {1} ... ::: ${CHR[@]}``), so parentheses, quotes, ';' and the like
+# break the run, and it builds ``samtools`` region strings ``contig:start-end``,
+# so ':' is unsafe too. Only this set is safe in both places. The substitution
+# runs on UTF-8 bytes (sed under LC_ALL=C) so the result is locale-independent.
+# Because spaces are removed, the sanitized header is a single token, so it
+# becomes the BAM @SQ contig name in the nanopore pipeline.
+_NANOPORE_SANITIZE_RE = re.compile(rb"[^A-Za-z0-9._-]")
+# What the sed's ``[[:space:]]`` strips under LC_ALL=C; str.strip() would also
+# drop Unicode whitespace that the sed rewrites to ``_``.
+_ASCII_WHITESPACE = " \t\r\n\v\f"
+
+# Headers that match this get a ``fasta_header_sanitized`` warning: they carry a
+# character the pre-0.3 rule left alone, so their BAM contig name is not what an
+# earlier release produced (and would have crashed Clair3). The old set, ``/ \ |
+# , ~`` and space, is left out on purpose: those have always been rewritten, the
+# docs say so, and the stock SARS-CoV-2 RefSeq header carries a comma.
+_NANOPORE_WARN_RE = re.compile(r"[^A-Za-z0-9._ /\\|,~-]")
 
 # A FASTA/mapper contig id is the first WHITESPACE-delimited token of the header.
 # This must match how minimap2/samtools name the BAM @SQ contig and how the
@@ -173,11 +191,16 @@ def header_token(header: str) -> str:
 def sanitize_nanopore_contig(header: str) -> str:
     """Return the BAM contig name the nanopore pipeline derives from *header*.
 
-    The nanopore workflow sanitizes reference headers (``/ \\ | , ~`` and spaces
-    become ``_``) before mapping, so the mapped contig name is the whole
-    sanitized header rather than just the accession.
+    The nanopore workflow sanitizes reference headers (every byte outside
+    ``[A-Za-z0-9._-]`` becomes one ``_``) before mapping, so the mapped contig
+    name is the whole sanitized header rather than just the accession.
+    *header* is the text after the ``>`` marker, as :func:`validate_fasta`
+    stores it (a second ``>`` is content); ASCII whitespace at either end is
+    dropped first, exactly what the ``sed`` trims (``[[:space:]]`` under
+    ``LC_ALL=C``), so a CRLF or trailing-space header gives the same name.
     """
-    return _NANOPORE_SANITIZE_RE.sub("_", header.lstrip(">").strip())
+    stripped = header.strip(_ASCII_WHITESPACE).encode("utf-8")
+    return _NANOPORE_SANITIZE_RE.sub(b"_", stripped).decode("ascii")
 
 
 def _strip_eol(line: str) -> str:
@@ -378,7 +401,7 @@ def validate_fasta(path: str, require_nucleotide: bool = True) -> IntegrityRepor
                 if line.startswith(">"):
                     _close_record()
                     n_records += 1
-                    current_header = line[1:].strip()
+                    current_header = line[1:].strip(_ASCII_WHITESPACE)
                     current_header_line = line_no
                     current_has_seq = False
                     token = header_token(line)

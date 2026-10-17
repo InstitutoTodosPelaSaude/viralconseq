@@ -8,7 +8,11 @@ writes to its log) or move resources the operator never named (a rule reading
 another rule's ``_cpus`` key).
 """
 
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from typing import Dict, Iterator, List, Tuple
@@ -16,7 +20,9 @@ from typing import Dict, Iterator, List, Tuple
 import yaml
 
 import viralconseq
+from viralconseq import integrity
 from viralconseq.constants import ResourceDefaults
+from viralconseq.scripts.python import build_report
 
 SCRIPTS_DIR = Path(viralconseq.__file__).resolve().parent / "scripts"
 ENTRY_FILES = sorted(SCRIPTS_DIR.glob("consensus_*.smk"))
@@ -251,6 +257,67 @@ class Test_RuleInventory(unittest.TestCase):
                     listed,
                     "rules reading a _cpus/_ram key must be exactly the ResourceDefaults list",
                 )
+
+
+class Test_NanoporeSanitiserCopiesAgree(unittest.TestCase):
+    """The contig-name rewrite is written three times: the ``sed`` in both nanopore
+    entry workflows, ``integrity._NANOPORE_SANITIZE_RE`` (validation) and
+    ``build_report.NANOPORE_UNSAFE`` (the report's BED rewrite). Clair3 passes
+    contig names to /bin/sh unquoted, so all three must agree byte for byte."""
+
+    SED_LINE = (
+        "LC_ALL=C sed '1s/^\\\\xef\\\\xbb\\\\xbf//; "
+        "/^>/{{s/^>[[:space:]]*//; s/[[:space:]]*$//; s/[^A-Za-z0-9._-]/_/g; s/^/>/}}' "
+        "{input:q} > {output.fasta:q}"
+    )
+
+    def test_both_nanopore_workflows_use_the_exact_sed_line(self):
+        for entry in ENTRY_FILES:
+            if "nanopore" not in entry.name:
+                continue
+            with self.subTest(workflow=entry.name):
+                self.assertIn(self.SED_LINE, entry.read_text())
+
+    def test_sed_and_python_agree_on_real_headers(self):
+        """Run the exact sed over awkward headers and compare with the Python copy."""
+        if shutil.which("sed") is None:
+            self.skipTest("sed not on PATH")
+        headers = [
+            "MN908947.3 Severe acute respiratory syndrome coronavirus 2, complete genome",
+            "Influenza A virus (A/New York/392/2004(H3N2)) segment 5, complete sequence",
+            "hCoV-19/Wuhan/WIV04/2019|EPI_ISL_402124",
+            "  MN908947.3 x ",
+            ">abc\tq",
+            "\u00d1:a>b",
+            "a\u00a0",
+        ]
+        # Undo the Snakemake-side escaping: doubled braces and the doubled
+        # backslashes of the BOM bytes (Python resolves them before bash).
+        program = (
+            self.SED_LINE.split("'")[1].replace("{{", "{").replace("}}", "}").replace("\\\\", "\\")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            fasta = Path(tmp) / "ref.fasta"
+            body = "\ufeff" + "".join(f">{h}\r\nACGT\r\n" for h in headers)
+            fasta.write_text(body, encoding="utf-8", newline="")
+            out = subprocess.run(
+                ["sed", program, str(fasta)],
+                capture_output=True,
+                check=True,
+                env={"LC_ALL": "C", "PATH": os.environ.get("PATH", "")},
+            ).stdout
+        sed_names = [line[1:] for line in out.decode("ascii").split("\n") if line.startswith(">")]
+        self.assertEqual(sed_names, [integrity.sanitize_nanopore_contig(h) for h in headers])
+        self.assertEqual(
+            sed_names[0],
+            "MN908947.3_Severe_acute_respiratory_syndrome_coronavirus_2__complete_genome",
+        )
+
+    def test_python_copies_share_one_pattern(self):
+        self.assertEqual(integrity._NANOPORE_SANITIZE_RE.pattern, rb"[^A-Za-z0-9._-]")
+        self.assertEqual(
+            integrity._NANOPORE_SANITIZE_RE.pattern, build_report.NANOPORE_UNSAFE.pattern
+        )
 
 
 class Test_DryrunConfigsCarryRequiredKeys(unittest.TestCase):

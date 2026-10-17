@@ -23,9 +23,9 @@ from typing import Dict, List, Set, Tuple
 logger = logging.getLogger(__name__)
 
 # Segment keys become directory names and Snakemake wildcard values, so keep
-# them to a conservative filesystem/shell-safe allowlist. This is a superset of
-# the nanopore header sanitisation (which maps / \ | , ~ and space to _): any
-# character outside the allowlist is collapsed to _.
+# them to a conservative filesystem/shell-safe allowlist, the same one the
+# nanopore header sanitisation uses (integrity._NANOPORE_SANITIZE_RE); the
+# difference is that a segment key is only the first token of the header.
 _SEGMENT_NAME_RE = re.compile(r"[^A-Za-z0-9._-]")
 
 

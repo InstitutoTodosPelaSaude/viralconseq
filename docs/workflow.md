@@ -144,14 +144,16 @@ before mapping.
 
 | Rule | Env | Command(s) | Flags and why | Threads / mem_mb | Measured max_rss |
 |---|---|---|---|---|---|
-| `sanitize_reference` | `clair3` | `sed '/^>/s/[\/|,~ ]/_/g' <reference> > reference/reference.sanitized.fasta; samtools faidx` | The `sed` rewrites `/ \ \| , ~` and spaces in header lines to `_`: Clair3 creates one directory per contig named after the sequence id. `faidx`: the `.fai` is a declared input of `infer_consensus_sequence` (contig lengths for the all-N branch). | 1 | 2 |
+| `sanitize_reference` | `clair3` | `LC_ALL=C sed '1s/^\xef\xbb\xbf//; /^>/{s/^>[[:space:]]*//; s/[[:space:]]*$//; s/[^A-Za-z0-9._-]/_/g; s/^/>/}' <reference> > reference/reference.sanitized.fasta; samtools faidx` | The `sed` rewrites every character outside `[A-Za-z0-9._-]` (one `_` per byte) in header lines to `_`: Clair3 creates one directory per contig named after the sequence id, hands the name to `/bin/sh` unquoted and uses it in `contig:start-end` region strings, so parentheses, colons, quotes and other metacharacters would break the run. `LC_ALL=C` makes the result locale-independent. `faidx`: the `.fai` is a declared input of `infer_consensus_sequence` (contig lengths for the all-N branch). | 1 | 2 |
 
 Segmented runs run it once per segment (`reference/<segment>.sanitized.fasta`,
 log target `<segment>`). Every downstream Nanopore rule uses the sanitised
 copy as `REFERENCE`; the Illumina workflows use the reference as given. The
-Python layer keeps `integrity.sanitize_nanopore_contig` in step with this
-`sed`, so a primer BED whose chromosome names differ only by these characters
-still validates.
+Python layer keeps `integrity.sanitize_nanopore_contig` (and the copy in
+`scripts/python/build_report.py`, `NANOPORE_UNSAFE`) in step with this `sed`,
+so a primer BED whose chromosome names differ only by these characters still
+validates, and a header carrying a character the old `/ \\ | , ~` + space rule did not rewrite is reported as a
+`fasta_header_sanitized` warning naming the new contig.
 
 ## Alignment and primer clipping
 

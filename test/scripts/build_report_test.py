@@ -693,12 +693,15 @@ class Test_PrimerScheme(_RunDir):
 
     def test_nanopore_runs_sanitise_bed_chromosome_names(self):
         self.spine([ok_row("sample-a")])
-        rows = "".join(f"hCoV-19_Wuhan_2019\t{i + 1}\t100\n" for i in range(100))
+        # The coverage table carries the contig as the workflow's sed rewrote it:
+        # '/', '|', '(' and ')' all became '_'.
+        rows = "".join(f"hCoV-19_Wuhan_2019_B.1_\t{i + 1}\t100\n" for i in range(100))
         rows += "".join(f"other_contig\t{i + 1}\t100\n" for i in range(50))
         write_text(self.path("assembly", "coverage_stats", "sample-a.table_cov_basewise.txt"), rows)
         bed = write_text(
             os.path.join(self._tmp.name, "scheme.bed"),
-            "hCoV-19/Wuhan|2019\t10\t30\tx_1_LEFT\n" "hCoV-19/Wuhan|2019\t70\t90\tx_1_RIGHT\n",
+            "hCoV-19/Wuhan|2019(B.1)\t10\t30\tx_1_LEFT\n"
+            "hCoV-19/Wuhan|2019(B.1)\t70\t90\tx_1_RIGHT\n",
         )
         # unsanitised, the chrom matches nothing on a two-contig reference: no extent
         self.assertEqual(self.doc("--scheme", bed, data_type="illumina")["run"]["extents"], {})

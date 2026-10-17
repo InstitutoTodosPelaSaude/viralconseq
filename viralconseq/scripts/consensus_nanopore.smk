@@ -18,7 +18,7 @@ rule sanitize_reference:
         set -euo pipefail
         exec > {log} 2>&1
         mkdir -p $(dirname {output.fasta})
-        sed '/^>/s/[\\/|,~ ]/_/g' {input} > {output.fasta}
+        LC_ALL=C sed '1s/^\\xef\\xbb\\xbf//; /^>/{{s/^>[[:space:]]*//; s/[[:space:]]*$//; s/[^A-Za-z0-9._-]/_/g; s/^/>/}}' {input:q} > {output.fasta:q}
         samtools faidx {output.fasta}
         """
 

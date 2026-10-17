@@ -221,12 +221,93 @@ class TestValidateBed(_TmpBase):
         self.assertIn("MN908947.3_Severe_acute", report.errors[0].message)
 
 
+INFLUENZA_HEADER = "Influenza A virus (A/New York/392/2004(H3N2)) segment 5, complete sequence"
+INFLUENZA_CONTIG = "Influenza_A_virus__A_New_York_392_2004_H3N2___segment_5__complete_sequence"
+
+
+class TestSanitizeNanoporeContig(unittest.TestCase):
+    """Pins the Python copy of ``rule sanitize_reference``'s sed."""
+
+    def test_shell_metacharacters_become_underscores(self):
+        self.assertEqual(integrity.sanitize_nanopore_contig(INFLUENZA_HEADER), INFLUENZA_CONTIG)
+
+    def test_legacy_character_set_is_unchanged(self):
+        # The pre-0.3 rule rewrote only / \ | , ~ and space; such headers must keep
+        # the contig names earlier runs produced.
+        self.assertEqual(
+            integrity.sanitize_nanopore_contig("MN908947.3 Severe acute|x~y,z\\w"),
+            "MN908947.3_Severe_acute_x_y_z_w",
+        )
+
+    def test_one_underscore_per_utf8_byte(self):
+        # Ñ is two bytes in UTF-8, as sed sees it under LC_ALL=C.
+        self.assertEqual(integrity.sanitize_nanopore_contig("Ñ:a>b"), "___a_b")
+
+    def test_leading_marker_and_whitespace_are_stripped(self):
+        self.assertEqual(integrity.sanitize_nanopore_contig("  MN908947.3 x \n"), "MN908947.3_x")
+        # CRLF and trailing spaces are trimmed, as the sed trims them; the header
+        # is the text after the marker, so a second ``>`` is content (the sed
+        # strips one) and a NBSP is not ASCII whitespace.
+        self.assertEqual(integrity.sanitize_nanopore_contig("MN908947.3\r\n"), "MN908947.3")
+        self.assertEqual(integrity.sanitize_nanopore_contig("MN908947.3 \t"), "MN908947.3")
+        self.assertEqual(integrity.sanitize_nanopore_contig(">abc\tq"), "_abc_q")
+        self.assertEqual(integrity.sanitize_nanopore_contig("a\u00a0"), "a__")
+
+
 class TestOrchestration(_TmpBase):
     def _reference(self, header=">MN908947.3\n"):
         return self._write("ref.fasta", header + "ACGTACGTAC\n")
 
     def _fastq(self):
         return self._write("s1.fastq", "@r1\nACGT\n+\nIIII\n")
+
+    def test_nanopore_metacharacter_header_warns_and_bed_uses_sanitized_name(self):
+        args = {
+            "data_type": "nanopore",
+            "reference": self._reference(f">{INFLUENZA_HEADER}\n"),
+            "primer_scheme": self._write("p.bed", f"{INFLUENZA_CONTIG}\t0\t5\tp1\n"),
+        }
+        with self.assertLogs("viralconseq.validators", "WARNING") as logs:
+            validate_consensus_input_integrity(args, {"s1": [self._fastq()]})
+        joined = "\n".join(logs.output)
+        self.assertIn("fasta_header_sanitized", joined)
+        self.assertIn(INFLUENZA_CONTIG, joined)
+
+    def test_nanopore_metacharacter_header_with_accession_bed_blocks(self):
+        args = {
+            "data_type": "nanopore",
+            "reference": self._reference(f">{INFLUENZA_HEADER}\n"),
+            "primer_scheme": self._write("p.bed", "Influenza\t0\t5\tp1\n"),
+        }
+        with self.assertRaises(InputIntegrityError) as ctx:
+            validate_consensus_input_integrity(args, {"s1": [self._fastq()]})
+        issue = ctx.exception.issues[0]
+        self.assertEqual(issue.code, "bed_chrom_sanitized_mismatch")
+        self.assertIn(INFLUENZA_CONTIG, issue.message)
+
+    def test_illumina_metacharacter_header_is_not_warned_about(self):
+        args = {
+            "data_type": "illumina",
+            "reference": self._reference(f">{INFLUENZA_HEADER}\n"),
+            "primer_scheme": self._write("p.bed", "Influenza\t0\t5\tp1\n"),
+        }
+        with self.assertNoLogs("viralconseq.validators", "WARNING"):
+            validate_consensus_input_integrity(args, {"s1": [self._fastq()]})
+
+    def test_nanopore_legacy_characters_do_not_warn(self):
+        # The stock RefSeq header (comma, spaces) and a GISAID id (/ and |) were
+        # rewritten by the old rule too: same contig name as before, no warning.
+        header = "MN908947.3 Severe acute respiratory syndrome coronavirus 2, complete genome"
+        args = {
+            "data_type": "nanopore",
+            "reference": self._reference(f">{header}\n"),
+            "primer_scheme": self._write(
+                "p.bed",
+                "MN908947.3_Severe_acute_respiratory_syndrome_coronavirus_2__complete_genome\t0\t5\tp1\n",
+            ),
+        }
+        with self.assertNoLogs("viralconseq.validators", "WARNING"):
+            validate_consensus_input_integrity(args, {"s1": [self._fastq()]})
 
     def test_happy_path_illumina(self):
         args = {
