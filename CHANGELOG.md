@@ -59,7 +59,11 @@ environment.yml`, or `bash setup.sh`); without it only
   instead of as the bare majority base. With the depth cap the fraction at a
   capped position is a sample of 100 records, and a bare majority is too
   easily a sampling accident. A 0.2.x `config.yml` keeps its own
-  `af_threshold`; pass `--af-threshold 0.51` to keep the old behaviour.
+  `af_threshold`; pass `--af-threshold 0.51` to keep the old behaviour. On
+  the CDC CoronaHiT benchmark (255 samples, campaign v8 against v7) the two
+  ratio changes removed the one Illumina false positive, introduced no new
+  error on any platform and left N content unchanged (mean 0.98 % to 0.99 %
+  on one nanopore subset, identical elsewhere).
 - `--minimum-coverage` defaults to 10 instead of 20 on both platforms
   (`samtools consensus -d` on Illumina, the low-coverage mask on nanopore).
   Positions between 10x and 19x get a called base instead of `N`; on the
