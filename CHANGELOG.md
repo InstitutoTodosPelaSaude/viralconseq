@@ -7,7 +7,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-18
 
 Upgrading from 0.2.1: a `config.yml` written by 0.2.x lacks two now-required
 keys and must be extended before `viralconseq rerun` accepts it:
