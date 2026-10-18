@@ -46,6 +46,11 @@ jobs:
           curl -fsSL "https://github.com/shenwei356/seqkit/releases/download/v${SEQKIT_VERSION}/seqkit_linux_amd64.tar.gz" | tar -xz -C "$HOME/.local/bin" seqkit
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/seqkit" version
+      - name: Install samtools (test/scripts/normalise_depth_test.py round-trips a BAM through it)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq samtools
+          samtools --version | head -1
       - name: Install package with dev extras
         # pulp<2.8: Snakemake 7.32 calls pulp.list_solvers(), removed in pulp 2.8.
         run: |

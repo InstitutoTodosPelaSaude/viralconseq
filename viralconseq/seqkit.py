@@ -29,8 +29,9 @@ seqkit v2.14.0:
 * exit 0 and empty stdout for an empty file (0 bytes, or a gzip of an empty
   stream), which is why :func:`probe_fastq` checks emptiness *before* seqkit;
   it also reads a FASTA given as FASTQ without complaint (``>`` records are
-  FASTA to it) and decompresses bzip2/xz/zstd transparently, so the probe
-  reports the former as ``suspect`` and the latter as ``unreadable``.
+  FASTA to it), accepts a line-wrapped (multi-line) FASTQ that fastp turns
+  into zero reads, and decompresses bzip2/xz/zstd transparently, so the probe
+  reports the first two as ``suspect`` and the last as ``unreadable``.
 
 Known blind spots -- seqkit does **not** catch these, and nothing here claims
 to: quality characters outside ASCII 33-126 (a space and byte 0x80 both pass),
@@ -204,7 +205,10 @@ def probe_fastq(path: str) -> Optional[SeqkitResult]:
     whitespace (0-byte file, a gzip of an empty stream, an "Excel export" of
     nothing); a ``suspect`` result when the first content byte is ``>`` (a
     FASTA mislabelled as FASTQ, which seqkit would read happily and the
-    Python scanner names); and ``None`` otherwise, meaning "ask seqkit".
+    Python scanner names) or when the first record's third line is not a
+    ``+`` separator (a line-wrapped FASTQ: seqkit reads it, fastp emits no
+    reads, the scanner reports ``fastq_bad_separator``); and ``None``
+    otherwise, meaning "ask seqkit".
     """
     try:
         with open(path, "rb") as fh:
@@ -232,7 +236,34 @@ def probe_fastq(path: str) -> Optional[SeqkitResult]:
         return SeqkitResult(
             verdict=VERDICT_SUSPECT, message="file starts with '>' (a FASTA given as FASTQ?)"
         )
+    if _first_record_is_wrapped(path):
+        return SeqkitResult(
+            verdict=VERDICT_SUSPECT,
+            message="the first record's third line is not a '+' separator (a line-wrapped FASTQ?)",
+        )
     return None
+
+
+def _first_record_is_wrapped(path: str) -> bool:
+    """True when the first record's third line does not start with ``+``: a
+    multi-line (line-wrapped) FASTQ, which seqkit reads happily but fastp
+    turns into zero reads without a word. The file was readable when this is
+    called. Fewer than three complete lines within :data:`_PROBE_LIMIT` bytes
+    (one giant read, or a file cut short) is left to seqkit."""
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read(_PROBE_LIMIT)
+        if raw.startswith(_GZIP_MAGIC):
+            with gzip.open(path, "rb") as gz:
+                raw = gz.read(_PROBE_LIMIT)
+    except (OSError, EOFError, zlib.error):
+        return False
+    if raw.startswith(_BOM):
+        raw = raw[len(_BOM) :]
+    lines = raw.lstrip(_WHITESPACE).split(b"\n")
+    if len(lines) < 4:  # the third line must be complete, so a fourth has begun
+        return False
+    return not lines[2].lstrip(b" \t\r").startswith(b"+")
 
 
 def _first_error_line(stderr: str) -> str:

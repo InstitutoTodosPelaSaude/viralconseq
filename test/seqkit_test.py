@@ -119,6 +119,34 @@ class TestProbeFastq(_TmpBase):
                 self.assertIn("FASTA", res.message)
                 self.assertFalse(res.ran_seqkit)
 
+    def test_wrapped_fastq_is_suspect(self):
+        # fastp emits zero reads for a multi-line record; seqkit accepts it.
+        wrapped = b"@r1\nACGTACGTAC\nGTACGTACGT\n+\nIIIIIIIIII\nIIIIIIIIII\n"
+        for name, writer in (("w.fastq", self._write), ("w.fastq.gz", self._write_gz)):
+            with self.subTest(name=name):
+                res = seqkit.probe_fastq(writer(name, wrapped))
+                self.assertIsNotNone(res)
+                self.assertEqual(res.verdict, "suspect")
+                self.assertIn("line-wrapped", res.message)
+
+    def test_wrapped_fastq_after_bom_and_blank_lines_is_suspect(self):
+        p = self._write("w.fastq", b"\xef\xbb\xbf\n\n@r1\nACGT\nACGT\n+\nIIIIIIII\n")
+        self.assertEqual(seqkit.probe_fastq(p).verdict, "suspect")
+
+    def test_crlf_and_indented_separator_defer_to_seqkit(self):
+        self.assertIsNone(
+            seqkit.probe_fastq(self._write("c.fastq", b"@r1\r\nACGT\r\n+\r\nIIII\r\n"))
+        )
+        self.assertIsNone(seqkit.probe_fastq(self._write("p.fastq", b"@r1\nACGT\n+r1\nIIII\n")))
+
+    def test_short_or_giant_first_record_defers_to_seqkit(self):
+        # Fewer than three complete lines: a truncated file is seqkit's call.
+        self.assertIsNone(seqkit.probe_fastq(self._write("t.fastq", b"@r1\nACGT\n+")))
+        self.assertIsNone(seqkit.probe_fastq(self._write("t2.fastq", b"@r1\nACGT\n")))
+        # A sequence line longer than the probe window is not a wrapped record.
+        giant = b"@r1\n" + b"A" * (seqkit._PROBE_LIMIT + 10) + b"\n+\n" + b"I" * 10 + b"\n"
+        self.assertIsNone(seqkit.probe_fastq(self._write("g.fastq", giant)))
+
     def test_other_compression_is_unreadable(self):
         import bz2
         import lzma

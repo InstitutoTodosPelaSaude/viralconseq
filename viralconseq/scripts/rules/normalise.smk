@@ -64,10 +64,12 @@ rule normalise_depth:
                 # output header, and so the BAM, reproducible.
                 echo "normalise_depth: input is not coordinate-sorted; sorting a copy and retrying"
                 scratch={output.bam:q}.sorted_input.bam
+                # Snakemake removes declared outputs on failure, not this
+                # scratch copy or samtools sort's temporary files.
+                trap 'rm -f "$scratch" "$scratch".tmp.*' EXIT
                 samtools sort --no-PG -@ {threads} -o "$scratch" {input.bam:q}
                 rc=0
                 run_normalise "$scratch" || rc=$?
-                rm -f "$scratch"
                 if [ "$rc" -ne 0 ]; then echo "normalise_depth.py exited with status $rc on the sorted copy"; exit "$rc"; fi
                 ;;
             *) echo "normalise_depth.py exited with status $rc"; exit $rc ;;

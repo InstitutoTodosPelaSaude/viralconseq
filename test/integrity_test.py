@@ -255,6 +255,12 @@ class TestValidateFastq(_TmpBase):
         p = self._write("bad.fastq.gz", b"\x1f\x8b not a real gzip stream", mode="wb")
         self.assertEqual(_codes(integrity.validate_fastq(p)), ["fastq_unreadable"])
 
+    def test_wrapped_record_is_a_bad_separator(self):
+        # seqkit accepts a line-wrapped record but fastp emits zero reads for
+        # it; the probe routes it to the scanner, which names the old code.
+        p = self._write("wrapped.fastq", "@r1\nACGTACGTAC\nGTACGTACGT\n+\nIIIIIIIIII\nIIIIIIIIII\n")
+        self.assertIn("fastq_bad_separator", _codes(integrity.validate_fastq(p)))
+
     def test_truncated_record(self):
         p = self._write("trunc.fastq", "@r1\nACGT\n+\nIIII\n@r2\nACGT\n")
         self.assertEqual(_codes(integrity.validate_fastq(p)), ["fastq_truncated"])
