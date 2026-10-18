@@ -151,6 +151,22 @@ class Test_FilterVariants(unittest.TestCase):
         self.assertEqual(bed, [])
         self.assertEqual(vcf, [])
 
+    def test_ratio_between_majority_and_bar_is_masked(self):
+        # 0.5 <= ratio < 0.6: neither allele clears the bar, so N, not the
+        # minority reference base.
+        for ad in ("45,55", "50,50", "41,59"):
+            with self.subTest(ad=ad):
+                rows, bed, vcf, _ = self._run([_rec(100, "A", "G", 40, ad=ad)])
+                self.assertEqual(
+                    (rows[0]["verdict"], rows[0]["reason"]), ("mask", "ambiguous_ratio")
+                )
+                self.assertEqual(bed, [("ref", "99", "100")])
+                self.assertEqual(vcf, [])
+        # Just below the majority line the reference wins and the call is dropped.
+        rows, bed, _, _ = self._run([_rec(100, "A", "G", 40, ad="51,49")])
+        self.assertEqual((rows[0]["verdict"], rows[0]["reason"]), ("discard", "allele_ratio"))
+        self.assertEqual(bed, [])
+
     def test_allele_ratio_at_threshold_is_not_discarded(self):
         # ratio 0.6 >= 0.6 clears rule 3; the record then fails only the ALT floor.
         rows, _, _, _ = self._run([_rec(100, "A", "G", 40, ad="4,6")])

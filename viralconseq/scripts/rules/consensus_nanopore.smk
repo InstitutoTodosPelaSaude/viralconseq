@@ -176,13 +176,14 @@ rule infer_consensus_sequence:
 
         bcftools norm -m - -f {input.reference} {output.vcf_raw} > {output.vcf_norm}
         # Pass / mask / discard (scripts/python/filter_variants.py), first match wins:
-        #   discard  RefCall, or allele ratio below af_threshold: the reference is
-        #            probably right, keep it;
-        #   mask     ALT reads below variant_depth, or QUAL below variant_quality
-        #            (frameshift_variant_quality for an indel whose length is not
-        #            a multiple of three): Clair3 saw something and the filter is
-        #            not sure, so the position becomes N instead of a confident
-        #            reference base;
+        #   discard  RefCall, or allele ratio below 0.5: the reference allele is
+        #            the majority, keep it;
+        #   mask     allele ratio between 0.5 and af_threshold (neither allele
+        #            clears the bar), ALT reads below variant_depth, or QUAL below
+        #            variant_quality (frameshift_variant_quality for an indel whose
+        #            length is not a multiple of three): Clair3 saw something and
+        #            the filter is not sure, so the position becomes N instead of
+        #            a confident reference base;
         #   pass     written into the consensus.
         # The allele ratio is ALT / (REF + ALT) from FORMAT/AD, not Clair3's
         # FORMAT/AF (ALT / DP): DP counts reads that carry a deletion at the site,

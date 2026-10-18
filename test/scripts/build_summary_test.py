@@ -292,9 +292,10 @@ class Test_BuildSummary(unittest.TestCase):
             "illumina",
         )
         self.assertEqual(rows[0]["masked_variant_sites"], "NA")
-        self.assertEqual(build_summary.COLUMNS[-3], "masked_variant_sites")
+        self.assertEqual(build_summary.COLUMNS[-4], "masked_variant_sites")
         self.assertEqual(
-            build_summary.COLUMNS[-2:], ["normalise_target", "mapped_reads_normalised"]
+            build_summary.COLUMNS[-3:],
+            ["normalise_target", "mapped_reads_normalised", "pct_positions_capped"],
         )
 
     def test_segmented_rows_isnvs_and_legacy_csv(self):

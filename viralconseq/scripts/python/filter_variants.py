@@ -13,19 +13,21 @@ package is NOT installed: standard library only, ``main(argv)``::
 
 The previous ``bcftools filter`` expression silently reverted every rejected
 call to the reference base. Following ARTIC's ``vcf_filter``, a call that
-fails is now either *discarded* (the ALT allele is below the ratio bar, so
-the reference base is kept; between 50 % and the bar the reference is the
-minority allele, and the site is still written as the reference) or *masked*
-(the evidence is too weak to tell either way, so the positions of its REF
-span become N). One verdict per record, first match wins; ``QUAL`` is read
-directly and Clair3's ``LowQual`` stamp is ignored:
+fails is now either *discarded* (the ALT allele is the minority, below
+50 %, so the reference base is kept) or *masked* (the evidence is too weak
+to tell either way, so the positions of its REF span become N; this includes
+a ratio between 50 % and the bar, where the reference is the minority allele
+and writing it would be a silent error). One verdict per record, first match
+wins; ``QUAL`` is read directly and Clair3's ``LowQual`` stamp is ignored:
 
 1. ``RefCall`` in FILTER, or a homozygous-reference/missing GT -> ``discard``
    (``refcall``).
 2. AD absent -> ``mask`` (``missing_ad``); AD ``0,0`` (every read shows a
    deletion or a third base) -> ``mask`` (``no_allele_reads``).
-3. ``ad_alt / (ad_ref + ad_alt) < af_threshold`` -> ``discard``
-   (``allele_ratio``): the reference allele is the majority.
+3. ``ad_alt / (ad_ref + ad_alt) < 0.5`` -> ``discard`` (``allele_ratio``):
+   the reference allele is the majority. At or above 0.5 but below
+   ``af_threshold`` -> ``mask`` (``ambiguous_ratio``): neither allele clears
+   the bar, so the position becomes N rather than the minority reference.
 4. ``ad_alt < variant_depth`` -> ``mask`` (``alt_depth``).
 5. ``QUAL`` (``.`` counts as 0) below the bar -> ``mask`` (``quality``, or
    ``frameshift_quality`` under the higher bar when ``len(ALT) - len(REF)``
@@ -54,6 +56,9 @@ DISCARD = "discard"
 SUPPRESS = "suppress"
 
 GZIP_MAGIC = b"\x1f\x8b"
+#: Below this ALT ratio the reference allele is the majority and a failing
+#: call is discarded; from here up to ``--af-threshold`` it is masked instead.
+MAJORITY = 0.5
 HOM_REF_GENOTYPES = {"0", "0/0", "0|0", ".", "./."}
 TSV_COLUMNS = [
     "chrom",
@@ -186,8 +191,10 @@ def judge(
         # Every read shows a deletion or a third base: no evidence for the
         # reference either, so a confident reference base would be a guess.
         return MASK, "no_allele_reads"
-    if record.ratio < af_threshold:
+    if record.ratio < MAJORITY:
         return DISCARD, "allele_ratio"
+    if record.ratio < af_threshold:
+        return MASK, "ambiguous_ratio"
     if record.ad_alt < variant_depth:
         return MASK, "alt_depth"
     if record.frameshift:

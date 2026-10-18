@@ -138,11 +138,16 @@ class Test_BuildRow(unittest.TestCase):
         row = self._row([self.q1, self.q2])
         self.assertEqual(row["normalise_target"], "NA")
         self.assertEqual(row["mapped_reads_normalised"], "NA")
-        self.assertEqual(stats.COLUMNS[-2:], ["normalise_target", "mapped_reads_normalised"])
+        self.assertEqual(row["pct_positions_capped"], "NA")
+        self.assertEqual(
+            stats.COLUMNS[-3:],
+            ["normalise_target", "mapped_reads_normalised", "pct_positions_capped"],
+        )
 
     def test_normalisation_columns_from_summary_and_bam(self):
         summary = _write(
-            os.path.join(self.tmp, "n.txt"), "mode\tamplicon\ntarget\t100\nrecords_kept\t5\n"
+            os.path.join(self.tmp, "n.txt"),
+            "mode\tamplicon\ntarget\t100\nrecords_kept\t5\npct_positions_capped\t55.24\n",
         )
         with patch.object(stats, "count_mapped_reads", side_effect=[30, 12]) as count:
             row = stats.build_row(
@@ -160,11 +165,13 @@ class Test_BuildRow(unittest.TestCase):
         self.assertEqual(row["mapped_reads"], 30)
         self.assertEqual(row["mapped_reads_normalised"], 12)
         self.assertEqual(row["normalise_target"], 100)
+        self.assertEqual(row["pct_positions_capped"], 55.24)
         self.assertEqual([c.args[0] for c in count.call_args_list], ["s.bam", "n.bam"])
 
     def test_normalisation_off_summary_gives_target_zero(self):
         summary = _write(os.path.join(self.tmp, "off.txt"), "mode\toff\ntarget\t0\n")
         self.assertEqual(stats.normalise_target(summary), 0)
+        self.assertEqual(stats.normalise_pct_capped(summary), "NA")
         self.assertEqual(stats.normalise_target(_write(os.path.join(self.tmp, "e.txt"), "")), "NA")
 
     def test_write_tsv_has_header_in_column_order(self):

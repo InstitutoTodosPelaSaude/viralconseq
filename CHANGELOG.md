@@ -29,11 +29,12 @@ environment.yml`, or `bash setup.sh`); without it only
   every normalised Clair3 record one of three verdicts
   (`scripts/python/filter_variants.py`, replacing the `bcftools filter`
   expression): **discard** when the FILTER is `RefCall` or the allele ratio
-  (ALT over REF plus ALT reads) is below `--af-threshold`, keeping the
-  reference base because at such a site the reference is usually right;
-  **mask** when the call cleared the ratio but has fewer ALT reads than
-  `--variant-depth` or a QUAL below the bar, writing `N` at the position
-  instead of a confident wrong base; **pass** otherwise. Masked intervals are
+  (ALT over REF plus ALT reads) is below 0.5, keeping the reference base
+  because it is the majority allele; **mask** when the ratio lies between
+  0.5 and `--af-threshold` (neither allele is a clear majority), or the call
+  cleared the ratio but has fewer ALT reads than `--variant-depth` or a QUAL
+  below the bar, writing `N` at the position instead of a confident wrong
+  base; **pass** otherwise. Masked intervals are
   added to the depth mask (`<sample>.masked_variants.bed`, union in
   `<sample>.mask.bed`), every verdict is listed in
   `samples/sample-<id>/variant_filter.tsv`, and `summary.tsv` gains a
@@ -52,6 +53,13 @@ environment.yml`, or `bash setup.sh`); without it only
   10 %, `--ref_pct_full`): measured as a wash for accuracy and runtime,
   adopted because at the default the model that judges a called site
   depended on how many other candidates the sample carried.
+- `--af-threshold` defaults to 0.6 on Illumina as well (was 0.51), so the two
+  platforms share one bar: a position whose top base holds between 50 % and
+  60 % of the base counts is written as `N` by `samtools consensus -c`
+  instead of as the bare majority base. With the depth cap the fraction at a
+  capped position is a sample of 100 records, and a bare majority is too
+  easily a sampling accident. A 0.2.x `config.yml` keeps its own
+  `af_threshold`; pass `--af-threshold 0.51` to keep the old behaviour.
 - `--minimum-coverage` defaults to 10 instead of 20 on both platforms
   (`samtools consensus -d` on Illumina, the low-coverage mask on nanopore).
   Positions between 10x and 19x get a called base instead of `N`; on the
@@ -107,10 +115,10 @@ environment.yml`, or `bash setup.sh`); without it only
   input order: the only reach proxy that ignores read content, so the kept
   set's indel and artefact fractions stayed within sampling noise of the
   trimmed BAM. Allele fractions at capped positions are a sample of the
-  target: at 100, a true 55 % allele falls below the Illumina 0.51 with
-  probability 0.18 and a true 65 % allele below the nanopore 0.6 bar with
-  probability 0.125, and the reference is then written (one such site in the
-  216-sample benchmark). Proper pairs are matched by read name (ampliconclip leaves
+  target: at 100, a true 65 % allele falls below the 0.6 bar with
+  probability 0.125 on either platform, and the position is then `N` (on
+  nanopore the reference is written only below 0.5, probability 0.001; one
+  such site in the 216-sample benchmark before the mask band). Proper pairs are matched by read name (ampliconclip leaves
   PNEXT stale) and kept or dropped whole; records are re-emitted in input order,
   so the output is sorted and byte-reproducible. Only `infer_consensus_sequence`
   (`samtools consensus`, Clair3) reads the normalised BAM; `summary.tsv`'s depth
@@ -127,8 +135,10 @@ environment.yml`, or `bash setup.sh`); without it only
   were above 216). New outputs
   `assembly/mapped_reads/normalised/<sample>.{sorted.bam,depth.tsv,amplicons.tsv,normalise.txt}`
   (`samples/<sample>/normalised_mapped_reads.bam`, `normalise_depth.tsv`,
-  `normalise_amplicons.tsv`), `summary.tsv` columns `normalise_target` and
-  `mapped_reads_normalised`, a `--normalise-depth-cpus` option, and the
+  `normalise_amplicons.tsv`), `summary.tsv` columns `normalise_target`,
+  `mapped_reads_normalised` and `pct_positions_capped` (the share of
+  positions where the cap acted, so the sampling caveat applies there), a
+  `--normalise-depth-cpus` option, and the
   required config key `normalise_depth` (a 0.2.x `config.yml` needs
   `rerun --set normalise_depth=100`, or `0` to reproduce its consensus). The
   cap is refused when positive but below `--minimum-coverage`, and on

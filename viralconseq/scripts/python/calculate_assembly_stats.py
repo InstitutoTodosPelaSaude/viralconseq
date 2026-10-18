@@ -46,6 +46,7 @@ COLUMNS = [
     "n_pct",
     "normalise_target",
     "mapped_reads_normalised",
+    "pct_positions_capped",
 ]
 NA = "NA"
 
@@ -164,7 +165,23 @@ def build_row(
     row.update(consensus_stats(consensus))
     row["normalise_target"] = normalise_target(normalise_summary) if normalise_summary else NA
     row["mapped_reads_normalised"] = count_mapped_reads(bam_normalised) if bam_normalised else NA
+    row["pct_positions_capped"] = (
+        normalise_pct_capped(normalise_summary) if normalise_summary else NA
+    )
     return row
+
+
+def normalise_pct_capped(summary: str) -> Value:
+    """The ``pct_positions_capped`` value of a ``normalise.txt`` file: the share
+    of reference positions where the cap dropped reads, so the consensus was
+    called from a sample of the data there (``NA`` when absent, including the
+    ``off`` placeholder written for ``--normalise-depth 0``)."""
+    with open(summary) as handle:
+        for line in handle:
+            key, _, value = line.rstrip("\n").partition("\t")
+            if key == "pct_positions_capped":
+                return float(value)
+    return NA
 
 
 def normalise_target(summary: str) -> Value:

@@ -327,10 +327,11 @@ def consensus() -> None:
 )
 @click.option(
     "--af-threshold",
-    default=0.51,
+    default=0.6,
     show_default=True,
     type=float,
-    help="Minimum allele frequency to call a variant into consensus.",
+    help="Minimum fraction of base counts for a base to be written into the consensus "
+    "(samtools consensus -c); a position whose top base is below it becomes N.",
 )
 @click.option(
     "--af-isnv-threshold",

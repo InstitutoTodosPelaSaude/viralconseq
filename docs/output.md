@@ -168,9 +168,10 @@ row, even when nothing was assembled for it.
 | `qc_overall_status` | Nextclade's overall verdict (`good` / `mediocre` / `bad`) as reported by viralQC |
 | `viralqc_dataset`, `viralqc_dataset_version` | Nextclade dataset and version behind the clade call |
 | `clair3_model` | Clair3 model used for this sample (nanopore), else `NA` |
-| `masked_variant_sites` | Nanopore: Clair3 calls the filter masked (written as `N`) because they cleared the allele ratio but not the quality bar or the ALT-read floor; see `variant_filter.tsv`. `NA` on Illumina |
+| `masked_variant_sites` | Nanopore: Clair3 calls the filter masked (written as `N`) because their allele ratio lay between 0.5 and `--af-threshold`, or they cleared the ratio but not the quality bar or the ALT-read floor; see `variant_filter.tsv`. `NA` on Illumina |
 | `normalise_target` | Records per position the consensus caller saw after depth normalisation (`--normalise-depth`); `0` when switched off. Neither this table nor the report says which calls were affected by the sampling; `samples/sample-{id}/normalise_depth.tsv` shows where the cap applied |
 | `mapped_reads_normalised` | Primary mapped records left in the normalised BAM (`mapped_reads` counts the trimmed BAM) |
+| `pct_positions_capped` | Percentage of reference positions where the cap dropped reads, so the consensus there was called from a sample of at most `normalise_target` records and the sampling caveat applies; `NA` when normalisation is off |
 
 `status` values, in the order they are tested:
 

@@ -114,7 +114,7 @@ class Test_ConsensusIlluminaCommand(unittest.TestCase):
         self.assertEqual(args["cut_tail_mean_quality"], 10)
         self.assertEqual(args["cut_right_window_size"], 4)
         self.assertEqual(args["cut_right_mean_quality"], 15)
-        self.assertEqual(args["af_threshold"], 0.51)
+        self.assertEqual(args["af_threshold"], 0.6)
         self.assertEqual(args["af_isnv_threshold"], 0.0)
         self.assertFalse(args["run_isnv"])
         self.assertEqual(args["minimum_coverage"], 10)
