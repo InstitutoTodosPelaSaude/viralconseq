@@ -1,6 +1,8 @@
 """Tests for scripts/python/normalise_depth.py on synthetic SAM text (no samtools)."""
 
+import contextlib
 import importlib.util
+import io
 import os
 import random
 import shutil
@@ -84,6 +86,54 @@ class TestSplitTarget(unittest.TestCase):
 
     def test_two_strands_round_half_up_to_forward(self):
         self.assertEqual(nd.split_target(5, [10, 10]), [3, 2])
+
+    def test_shares_sum_to_min_and_never_exceed_parts(self):
+        rng = random.Random(11)
+        for _ in range(500):
+            parts = [rng.randrange(0, 400) for _ in range(rng.randrange(1, 8))]
+            total = rng.randrange(0, 600)
+            shares = nd.split_target(total, parts)
+            self.assertEqual(len(shares), len(parts))
+            self.assertEqual(sum(shares), min(total, sum(parts)), (total, parts))
+            self.assertTrue(all(0 <= s <= p for s, p in zip(shares, parts)), (total, parts))
+
+
+class TestEmptyInputs(unittest.TestCase):
+    """A BAM with a header but no usable record is a valid, empty result."""
+
+    def test_header_only_input(self):
+        recs, results, values, rows = run(header(100, pg=False), 10)
+        self.assertEqual(recs.n, 0)
+        self.assertEqual(sum(depths(results[0])[0]), 0)
+        self.assertEqual((values["records_in"], values["records_kept"]), ("0", "0"))
+        self.assertEqual((values["mean_span_before"], values["mean_span_after"]), (nd.NA, nd.NA))
+        self.assertEqual(
+            (values["positions_capped"], values["pct_positions_capped"]), ("0", "0.00")
+        )
+        self.assertEqual(values["self_check"], "ok")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][:2], [CONTIG, "contig"])
+
+    def test_unmapped_only_input(self):
+        unmapped = ["u\t4\t*\t0\t0\t*\t*\t0\t0\t*\t*\n"] * 3
+        recs, results, values, _ = run(header(100, pg=False) + unmapped, 10)
+        self.assertEqual(recs.n, 3)
+        self.assertEqual(values["records_in"], "3")
+        self.assertEqual(values["records_kept"], "0")
+        self.assertEqual(values["records_dropped"], "3")
+        self.assertEqual(values["unmapped_dropped"], "3")
+        self.assertEqual(sum(depths(results[0])[0]), 0)
+
+    def test_split_header_on_header_only_stream(self):
+        hdr, rest = nd._split_header(iter(header(100)))
+        self.assertEqual(hdr, header(100))
+        self.assertEqual(list(rest), [])
+
+    def test_split_header_hands_back_the_first_record(self):
+        lines = header(100) + [rec("a", 0, 10), rec("b", 5, 10)]
+        hdr, rest = nd._split_header(iter(lines))
+        self.assertEqual(hdr, header(100))
+        self.assertEqual(list(rest), lines[len(header(100)) :])
 
 
 class TestPositionMode(unittest.TestCase):
@@ -622,6 +672,85 @@ class TestMainWithoutSamtools(unittest.TestCase):
             rc, popen = self._run(["@HD\tVN:1.6\n"], _main_argv(tmp))
             self.assertEqual(rc, 1)
             popen.assert_not_called()
+
+
+class TestMainWritesTables(unittest.TestCase):
+    """main() past the analysis, with the samtools writer mocked to succeed:
+    tables are written only after the writer exits 0, and scheme notes go to
+    stderr."""
+
+    def _run_main(self, lines, argv, writer_rc=0):
+        stderr = io.StringIO()
+        with mock.patch.object(nd, "_samtools_view", return_value=None):
+            with mock.patch.object(nd, "_iter_lines", side_effect=lambda proc: iter(lines)):
+                with mock.patch.object(nd.subprocess, "Popen") as popen:
+                    popen.return_value.wait.return_value = writer_rc
+                    popen.return_value.returncode = writer_rc
+                    with contextlib.redirect_stderr(stderr):
+                        rc = nd.main(argv)
+        return rc, popen, stderr.getvalue()
+
+    def test_tables_written_after_the_writer_succeeds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = header(200) + [rec(f"a{i}", 0, 100) for i in range(30)]
+            rc, popen, err = self._run_main(lines, _main_argv(tmp, target="10"))
+            self.assertEqual(rc, 0, err)
+            popen.assert_called_once()
+            cmd = popen.call_args.args[0]
+            self.assertEqual(cmd[:4], ["samtools", "view", "-b", "--no-PG"])
+            self.assertIn(os.path.join(tmp, "out", "n.bam"), cmd)
+            summary = dict(
+                line.split("\t") for line in open(os.path.join(tmp, "s.txt")).read().splitlines()
+            )
+            self.assertEqual((summary["mode"], summary["target"]), ("position", "10"))
+            self.assertEqual(summary["records_kept"], "10")
+            self.assertEqual(
+                open(os.path.join(tmp, "d.tsv")).readline().rstrip("\n").split("\t"),
+                nd.DEPTH_COLUMNS,
+            )
+            self.assertEqual(
+                open(os.path.join(tmp, "a.tsv")).readline().rstrip("\n").split("\t"),
+                nd.AMPLICON_COLUMNS,
+            )
+            self.assertIn("kept 10 of 30 records", err)
+
+    def test_writer_failure_exits_one_and_writes_no_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = header(200) + [rec(f"a{i}", 0, 100) for i in range(5)]
+            rc, _, err = self._run_main(lines, _main_argv(tmp), writer_rc=1)
+            self.assertEqual(rc, 1)
+            self.assertIn("samtools view -b exited with status 1", err)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "s.txt")))
+
+    def test_scheme_matching_no_bam_contig_warns_and_keeps_every_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bed = os.path.join(tmp, "scheme.bed")
+            with open(bed, "w") as fh:
+                fh.write("other\t10\t30\tx_1_LEFT\t1\t+\nother\t280\t300\tx_1_RIGHT\t1\t-\n")
+            lines = header(200) + [rec(f"a{i}", 0, 100) for i in range(5)]
+            rc, _, err = self._run_main(lines, _main_argv(tmp, target="10", scheme=bed))
+            self.assertEqual(rc, 0, err)
+            self.assertIn("WARNING: no contig of the BAM (ref) appears in the scheme (other)", err)
+            summary = dict(
+                line.split("\t") for line in open(os.path.join(tmp, "s.txt")).read().splitlines()
+            )
+            self.assertEqual(summary["mode"], "amplicon")
+            self.assertEqual(
+                (summary["unassigned_before"], summary["unassigned_after"]), ("5", "5")
+            )
+
+    def test_unparseable_scheme_exits_one_before_opening_the_bam(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bed = os.path.join(tmp, "bad.bed")
+            with open(bed, "w") as fh:
+                fh.write("ref\t10\t30\tprimerA\nref\t280\t300\tprimerB\n")
+            with mock.patch.object(nd, "_samtools_view") as view:
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    rc = nd.main(_main_argv(tmp, scheme=bed))
+            self.assertEqual(rc, 1)
+            view.assert_not_called()
+            self.assertIn("cannot pair primers", stderr.getvalue())
 
 
 @unittest.skipUnless(shutil.which("samtools"), "samtools not on PATH")

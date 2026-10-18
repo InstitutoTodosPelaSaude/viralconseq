@@ -20,7 +20,7 @@ from typing import Dict, Iterator, List, Tuple
 import yaml
 
 import viralconseq
-from viralconseq import integrity
+from viralconseq import integrity, validators
 from viralconseq.constants import ResourceDefaults
 from viralconseq.scripts.python import build_report
 
@@ -319,6 +319,113 @@ class Test_NanoporeSanitiserCopiesAgree(unittest.TestCase):
         self.assertEqual(
             integrity._NANOPORE_SANITIZE_RE.pattern, build_report.NANOPORE_UNSAFE.pattern
         )
+
+
+class Test_RequiredKeyListsAgree(unittest.TestCase):
+    """The required-key contract is written three times: ``_REQUIRED_KEYS`` in
+    rules/common.smk (the parse-time guard), ``validators.CONFIG_REQUIRED_*``
+    (the CLI/rerun check) and the lists at the top of this file (the dry-run
+    config check). A key added to one and not the others would be caught by
+    one layer and silently waved through by another."""
+
+    LIST_RE = re.compile(r"_REQUIRED_KEYS \+?= \[(.*?)\]", re.S)
+
+    @classmethod
+    def setUpClass(cls):
+        text = (SCRIPTS_DIR / "rules" / "common.smk").read_text()
+        lists = [re.findall(r'"(\w+)"', body) for body in cls.LIST_RE.findall(text)]
+        assert (
+            len(lists) == 3
+        ), f"expected the common, illumina and nanopore lists, found {len(lists)}"
+        cls.smk_common, cls.smk_illumina, cls.smk_nanopore = lists
+        # The two memory keys are appended conditionally below the lists.
+        assert '_REQUIRED_KEYS.append("infer_consensus_sequence_ram")' in text
+        assert '_REQUIRED_KEYS.append("run_viralqc_ram")' in text
+
+    def test_common_smk_matches_this_file(self):
+        self.assertEqual(self.smk_common, REQUIRED_COMMON)
+        self.assertEqual(self.smk_illumina, REQUIRED_ILLUMINA)
+        # clair3_model_dir is required by the rules but produced by the CLI, so
+        # it is not a dry-run config key here; the memory key is appended below
+        # the list in common.smk.
+        self.assertEqual(
+            set(self.smk_nanopore) | {"infer_consensus_sequence_ram"},
+            set(REQUIRED_NANOPORE) | {"clair3_model_dir"},
+        )
+
+    def test_common_smk_matches_validators(self):
+        self.assertEqual(set(self.smk_common), set(validators.CONFIG_REQUIRED_COMMON))
+        self.assertEqual(set(self.smk_illumina), set(validators.CONFIG_REQUIRED_ILLUMINA))
+        self.assertEqual(
+            set(validators.required_config_keys({"data": "illumina", "run_viralqc": False})),
+            set(self.smk_common) | set(self.smk_illumina),
+        )
+        self.assertEqual(
+            set(validators.required_config_keys({"data": "nanopore", "run_viralqc": False})),
+            set(self.smk_common) | set(self.smk_nanopore) | {"infer_consensus_sequence_ram"},
+        )
+
+
+class Test_NormalisationWiring(unittest.TestCase):
+    """Only ``infer_consensus_sequence`` reads the depth-normalised BAM; the
+    statistics, the nanopore mapped-read gate and the Illumina iSNV step stay
+    on the trimmed BAM, and every workflow exposes the normalisation outputs in
+    the browse tree. The symlink blocks are shell-only, so this is the test."""
+
+    NORMALISED_BAM = "rules.normalise_depth.output.bam"
+    TRIMMED_BAM = "rules.trim_primer_sequences.output.bam"
+    BROWSE_NAMES = (
+        "normalised_mapped_reads.bam;",
+        "normalised_mapped_reads.bam.bai;",
+        "normalise_depth.tsv;",
+        "normalise_amplicons.tsv;",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.per_entry = {entry: rules_for_entry(entry) for entry in ENTRY_FILES}
+
+    def test_every_workflow_includes_the_rule_after_alignment(self):
+        for entry in ENTRY_FILES:
+            includes = INCLUDE_RE.findall(entry.read_text())
+            with self.subTest(workflow=entry.name):
+                self.assertIn("rules/normalise.smk", includes)
+                alignment = next(i for i, inc in enumerate(includes) if "alignment_" in inc)
+                consensus = next(i for i, inc in enumerate(includes) if "rules/consensus_" in inc)
+                position = includes.index("rules/normalise.smk")
+                self.assertTrue(alignment < position < consensus, includes)
+                self.assertIn("normalise_depth", self.per_entry[entry])
+
+    def test_only_the_consensus_caller_reads_the_normalised_bam(self):
+        for entry, rules in self.per_entry.items():
+            readers = {name for name, (_, body) in rules.items() if self.NORMALISED_BAM in body}
+            with self.subTest(workflow=entry.name):
+                self.assertEqual(
+                    readers,
+                    {"infer_consensus_sequence", "organize_files", "calculate_assembly_statistics"},
+                )
+                self.assertNotIn(self.TRIMMED_BAM, rules["infer_consensus_sequence"][1])
+                for stays_trimmed in (
+                    "calculate_coverage_basewise",
+                    "check_mapped_reads",
+                    "detect_isnv",
+                ):
+                    if stays_trimmed in rules:
+                        self.assertIn(self.TRIMMED_BAM, rules[stays_trimmed][1], stays_trimmed)
+                stats = rules["calculate_assembly_statistics"][1]
+                self.assertIn(self.TRIMMED_BAM, stats)
+                self.assertIn("rules.normalise_depth.output.summary", stats)
+
+    def test_browse_tree_links_every_normalisation_output(self):
+        for entry, rules in self.per_entry.items():
+            body = rules["organize_files"][1]
+            with self.subTest(workflow=entry.name):
+                for name in self.BROWSE_NAMES:
+                    self.assertIn(name, body)
+                if "segmented" in entry.name:
+                    self.assertIn("$segment/normalised_mapped_reads.bam;", body)
+                    self.assertIn("$segment/normalise_depth.tsv;", body)
+                    self.assertIn("$segment/normalise_amplicons.tsv;", body)
 
 
 class Test_DryrunConfigsCarryRequiredKeys(unittest.TestCase):

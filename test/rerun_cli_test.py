@@ -132,6 +132,24 @@ class Test_RerunCommand(unittest.TestCase):
             self.assertEqual(yaml.safe_load(fh)["minimum_depth"], 20)
         self.assertIn("# --- clair3 ---", open(self.config_path).read())
 
+    def test_set_normalise_depth_zero_switches_the_cap_off(self):
+        # The documented way to reproduce a pre-normalisation consensus.
+        self._write(_config())
+        result, captured = self._invoke("--set", "normalise_depth=0", "--dry-run")
+        self.assertEqual(result.exit_code, 0, result.output)
+        with open(self.config_path) as fh:
+            self.assertEqual(yaml.safe_load(fh)["normalise_depth"], 0)
+        self.assertIn("workflow", captured)
+
+    def test_set_normalise_depth_below_the_depth_gate_is_rejected(self):
+        self._write(_config(minimum_depth=10))
+        result, captured = self._invoke("--set", "normalise_depth=5", "--dry-run")
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("normalise", result.output)
+        self.assertNotIn("workflow", captured)
+        with open(self.config_path) as fh:
+            self.assertEqual(yaml.safe_load(fh)["normalise_depth"], 100)  # untouched
+
     def test_invalid_override_rejected_before_snakemake(self):
         self._write(_config())
         result, captured = self._invoke("--set", "af_threshold=abc")

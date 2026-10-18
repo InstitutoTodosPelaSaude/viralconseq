@@ -424,6 +424,10 @@ class Records:
         multi = self.multi.get(i)
         return multi if multi is not None else [(self.start[i], self.end[i])]
 
+    def span(self, i: int) -> int:
+        """Reference bases record ``i`` covers (the sum of its intervals)."""
+        return sum(b - a for a, b in self.intervals(i))
+
 
 def parse_header(header_lines: Sequence[str]) -> Tuple[List[str], List[int]]:
     names: List[str] = []
@@ -595,15 +599,22 @@ class Normaliser:
         self.results: List[ContigResult] = []
         self.positions_capped = 0
 
-    # stratum ids: amplicon mode -> 2 * amplicon + strand, "other" = 2 * n_amplicons + strand;
+    # Stratum ids carry the strand in their lowest bit (see _strand_of):
+    # amplicon mode -> 2 * amplicon + strand, "other" = 2 * n_amplicons + strand;
     # position mode -> strand.
     def _stratum(self, i: int, n_amp: int) -> int:
+        """The stratum id of record ``i`` on a contig with ``n_amp`` amplicons."""
         strand = self.recs.strand[i]
         if self.scheme is None:
             return strand
         if self.recs.cls[i] != CLASS_NORMAL or self.recs.amplicon[i] < 0:
             return 2 * n_amp + strand
         return 2 * self.recs.amplicon[i] + strand
+
+    @staticmethod
+    def _strand_of(stratum: int) -> int:
+        """The strand (0 forward, 1 reverse) encoded in a stratum id."""
+        return stratum & 1
 
     def run(self) -> None:
         recs = self.recs
@@ -656,7 +667,7 @@ class Normaliser:
         kept_cur = {s: 0 for s in ids}
         # Pending units per stratum: for every start position, the ordinals
         # of the units starting there in input order (a compact array, 4 bytes
-        # per unit), and a heap of the live starts. Selection order is latest
+        # per unit), and a max-heap of the live starts. Selection order is latest
         # start first, then input order: the newest unit reaches furthest on
         # average, and the start is the only reach proxy that does not look
         # at read content. Ranking by the reference end enriched
@@ -667,12 +678,13 @@ class Normaliser:
         # At 30,000x every read of an amplicon starts at the same clipped
         # position, so millions of units are pending at once; tuples per unit
         # would cost ~140 bytes each.
-        ends_heap: Dict[int, List[int]] = {s: [] for s in ids}
+        starts_heap: Dict[int, List[int]] = {s: [] for s in ids}  # negated starts
         groups: Dict[int, Dict[int, array.array]] = {s: {} for s in ids}
         heads: Dict[int, Dict[int, int]] = {s: {} for s in ids}
         kept = recs.kept
         end = recs.end
         mate = recs.mate
+        strand_of = self._strand_of
 
         def credit(k: int, p: int) -> None:
             """Mark record ``k`` kept and add its coverage: positions before
@@ -682,7 +694,7 @@ class Normaliser:
             kept[k] = 1
             s = stratum_of[k]
             _orig, kdiff = diffs(s)
-            after = result.after_rev if s & 1 else result.after_fwd
+            after = result.after_rev if strand_of(s) else result.after_fwd
             for a, b in recs.intervals(k):
                 past_end = min(b, p)
                 if a < past_end:
@@ -711,15 +723,15 @@ class Normaliser:
             if group is None:
                 group = groups[s][r] = array.array("i")
                 heads[s][r] = 0
-                heapq.heappush(ends_heap[s], -r)
+                heapq.heappush(starts_heap[s], -r)
             group.append(k)
 
         def pop_live(s: int, p: int) -> int:
             """The latest-starting pending unit of stratum ``s`` whose coverage
             still reaches past ``p``, or -1. Units already kept through their
             mate and expired units (dropped unless a mate is still to come)
-            are skipped; an exhausted rank group is discarded."""
-            heap = ends_heap[s]
+            are skipped; an exhausted start group is discarded."""
+            heap = starts_heap[s]
             while heap:
                 r = -heap[0]
                 group = groups[s][r]
@@ -784,7 +796,7 @@ class Normaliser:
             bf = br = af = ar = 0
             for s in ids:
                 o, kk = orig_cur[s], kept_cur[s]
-                if s & 1:
+                if strand_of(s):
                     br += o
                     ar += kk
                 else:
@@ -812,7 +824,13 @@ def self_check(
     per_contig: Dict[int, Tuple[array.array, array.array, array.array, array.array]] = {}
     for res in results:
         c = contig_index[res.name]
-        per_contig[c] = tuple(array.array("i", bytes(4 * (res.length + 1))) for _ in range(4))  # type: ignore[assignment]
+        zeros = bytes(4 * (res.length + 1))
+        per_contig[c] = (
+            array.array("i", zeros),
+            array.array("i", zeros),
+            array.array("i", zeros),
+            array.array("i", zeros),
+        )
     for i in range(recs.n):
         c = recs.contig[i]
         if c < 0:
@@ -887,7 +905,7 @@ def amplicon_rows(
             continue
         key = (c, recs.amplicon[i], recs.cls[i])
         cell = acc.setdefault(key, [0, 0, 0, 0])
-        span = sum(b - a for a, b in recs.intervals(i))
+        span = recs.span(i)
         cell[0] += 1
         cell[1] += span
         if recs.kept[i]:
@@ -981,7 +999,7 @@ def summary_values(
         if recs.contig[i] < 0:
             continue
         kept = recs.kept[i]
-        span = sum(b - a for a, b in recs.intervals(i))
+        span = recs.span(i)
         n_units += 1
         span_before += span
         if kept:

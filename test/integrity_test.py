@@ -388,6 +388,20 @@ class TestValidateFastqFiles(_TmpBase):
         self.assertEqual([r.path for r in reports], [a, b])
         self.assertIn("serially", "\n".join(logs.output))
 
+    def test_worker_exception_other_than_a_dead_pool_propagates(self):
+        # Only BrokenProcessPool triggers the serial fallback; a real error from
+        # a worker (here: no seqkit) must surface, not be retried serially.
+        a = self._write("a.fastq", "@r1\nACGT\n+\nIIII\n")
+        b = self._write("b.fastq", "@r1\nACGT\n+\nIIII\n")
+        with mock.patch("viralconseq.integrity.validate_fastq", side_effect=_report) as vf:
+            with mock.patch("viralconseq.integrity.concurrent.futures.ProcessPoolExecutor") as pool:
+                pool.return_value.__enter__.return_value.map.side_effect = (
+                    seqkit.SeqkitMissingError()
+                )
+                with self.assertRaises(seqkit.SeqkitMissingError):
+                    integrity.validate_fastq_files([a, b], workers=2)
+        vf.assert_not_called()
+
 
 class TestValidateFasta(_TmpBase):
     def test_valid_reference(self):
@@ -761,6 +775,19 @@ class TestOrchestrationPoolWiring(_TmpBase):
         self.assertNotIsInstance(ctx.exception, InputIntegrityError)
         self.assertIn("seqkit", str(ctx.exception))
         self.assertIn("--skip-input-validation", str(ctx.exception))
+
+    def test_missing_seqkit_through_the_pool_is_a_validation_error(self):
+        # Two files and two workers: the pool path. The worker's error is the
+        # same ValidationError the serial path gives, naming the dependency.
+        args = {"data_type": "illumina", "reference": self._reference(), "threads_total": 2}
+        files = [self._fastq("s1_R1.fastq"), self._fastq("s1_R2.fastq")]
+        with mock.patch("viralconseq.integrity.concurrent.futures.ProcessPoolExecutor") as pool:
+            pool.return_value.__enter__.return_value.map.side_effect = seqkit.SeqkitMissingError()
+            with self.assertRaises(ValidationError) as ctx:
+                validate_consensus_input_integrity(args, {"s1": files})
+        pool.assert_called_once_with(max_workers=2)
+        self.assertNotIsInstance(ctx.exception, InputIntegrityError)
+        self.assertIn("seqkit", str(ctx.exception))
 
     def test_missing_seqkit_is_not_needed_under_skip_flag(self):
         args = {

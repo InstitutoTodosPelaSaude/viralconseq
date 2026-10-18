@@ -57,9 +57,11 @@ rule normalise_depth:
         case $rc in
             0) ;;
             3)
-                # samtools ampliconclip --hard-clip moves POS and can leave the
-                # trimmed BAM out of coordinate order: sort a copy and retry.
-                # --no-PG keeps the output header, and so the BAM, reproducible.
+                # Defensive: trim_primer_sequences indexes its output and
+                # samtools index refuses an unsorted BAM, so a trimmed BAM out
+                # of coordinate order should never reach this rule. If one does
+                # (a hand-made input), sort a copy and retry. --no-PG keeps the
+                # output header, and so the BAM, reproducible.
                 echo "normalise_depth: input is not coordinate-sorted; sorting a copy and retrying"
                 scratch={output.bam:q}.sorted_input.bam
                 samtools sort --no-PG -@ {threads} -o "$scratch" {input.bam:q}
