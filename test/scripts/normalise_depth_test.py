@@ -833,18 +833,42 @@ class TestMainWritesTables(unittest.TestCase):
                 (summary["unassigned_before"], summary["unassigned_after"]), ("5", "5")
             )
 
-    def test_unparseable_scheme_exits_one_before_opening_the_bam(self):
+    def test_unpairable_scheme_falls_back_to_position_mode_with_a_warning(self):
+        # ampliconclip accepts a BED with off-convention names and no strand
+        # column, so the run must not fail here: cap by strand only and say so.
         with tempfile.TemporaryDirectory() as tmp:
             bed = os.path.join(tmp, "bad.bed")
             with open(bed, "w") as fh:
                 fh.write("ref\t10\t30\tprimerA\nref\t280\t300\tprimerB\n")
-            with mock.patch.object(nd, "_samtools_view") as view:
-                stderr = io.StringIO()
-                with contextlib.redirect_stderr(stderr):
-                    rc = nd.main(_main_argv(tmp, scheme=bed))
-            self.assertEqual(rc, 1)
-            view.assert_not_called()
-            self.assertIn("cannot pair primers", stderr.getvalue())
+            lines = header(400) + [rec(f"a{i}", 40, 100) for i in range(30)]
+            rc, _, err = self._run_main(lines, _main_argv(tmp, target="10", scheme=bed))
+            self.assertEqual(rc, 0, err)
+            self.assertIn("WARNING: scheme BED primer names do not parse", err)
+            self.assertIn("position mode", err)
+            summary = dict(
+                line.split("\t") for line in open(os.path.join(tmp, "s.txt")).read().splitlines()
+            )
+            self.assertEqual(summary["mode"], "position")
+            self.assertEqual(summary["records_kept"], "10")
+
+    def test_unpairable_scheme_errors_are_the_fallback_kind(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            no_strand = os.path.join(tmp, "a.bed")
+            with open(no_strand, "w") as fh:
+                fh.write("ref\t10\t30\tprimerA\t1\t\nref\t280\t300\tprimerB\t1\t\n")
+            with self.assertRaises(nd.SchemeUnpairableError):
+                nd.parse_scheme(no_strand)
+            uneven = os.path.join(tmp, "b.bed")
+            with open(uneven, "w") as fh:
+                fh.write("ref\t10\t30\tpA\t1\t+\nref\t50\t70\tpB\t1\t+\nref\t280\t300\tpC\t1\t-\n")
+            with self.assertRaises(nd.SchemeUnpairableError):
+                nd.parse_scheme(uneven)
+            # An empty scheme is still a hard error, not a fallback.
+            empty = os.path.join(tmp, "c.bed")
+            open(empty, "w").close()
+            with self.assertRaises(nd.NormaliseError) as ctx:
+                nd.parse_scheme(empty)
+            self.assertNotIsInstance(ctx.exception, nd.SchemeUnpairableError)
 
 
 @unittest.skipUnless(shutil.which("samtools"), "samtools not on PATH")

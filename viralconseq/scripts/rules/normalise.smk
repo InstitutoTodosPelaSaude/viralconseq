@@ -5,9 +5,10 @@
 # Deep amplicon runs hand every read to the consensus caller for no gain in
 # accuracy; Clair3 rescales its pileup tensor above 216x. normalise_depth.py
 # keeps, at every reference position, at least min(normalise_depth, original
-# depth) records, preserving the strand ratio and (with a scheme) the amplicon
-# mix, and re-emits them in input order so the BAM stays coordinate-sorted and
-# byte-reproducible. Only infer_consensus_sequence reads the normalised BAM;
+# depth) records, approximately preserving the strand ratio and (with a scheme)
+# giving every amplicon a share of the positions it covers (an overlap becomes
+# a roughly even mix, see docs/workflow.md), and re-emits them in input order
+# so the BAM stays coordinate-sorted and byte-reproducible. Only infer_consensus_sequence reads the normalised BAM;
 # depth statistics, the nanopore mapped-read gate and the Illumina iSNV step
 # stay on the trimmed BAM. `normalise_depth: 0` switches the step off: the
 # trimmed BAM is copied and header-only tables are written, so the DAG is

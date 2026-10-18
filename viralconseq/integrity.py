@@ -68,6 +68,12 @@ _ASCII_WHITESPACE = " \t\r\n\v\f"
 # docs say so, and the stock SARS-CoV-2 RefSeq header carries a comma.
 _NANOPORE_WARN_RE = re.compile(r"[^A-Za-z0-9._ /\\|,~-]")
 
+# The primer-name convention normalise_depth.py pairs primers by (its
+# ``PRIMER_NAME``; build_report.py carries the same pattern). A BED whose names
+# do not follow it and that has no +/- strand column still clips fine, but the
+# depth normaliser cannot build amplicons from it and normalises by strand only.
+_PRIMER_NAME_RE = re.compile(r"^(?P<prefix>.+)_(?P<n>\d+)_(?P<side>LEFT|RIGHT)(?:_.*)?$")
+
 # A FASTA/mapper contig id is the first WHITESPACE-delimited token of the header.
 # This must match how minimap2/samtools name the BAM @SQ contig and how the
 # consensus workflows list contigs (`grep '^>' | sed 's/^>//' | cut -d' ' -f1`):
@@ -574,12 +580,17 @@ def validate_bed(
     whole-scheme BED reused on a subset of segments). ``accession_map`` (nanopore
     only: raw accession -> sanitized full header) always yields a blocking fix-it
     error when a chrom matches the accession but not the sanitized header the
-    pipeline will use. An out-of-range strand column is a warning.
+    pipeline will use. An out-of-range strand column is a warning, and so is a
+    file whose primer names do not follow ``<prefix>_<n>_LEFT/RIGHT`` while a
+    row lacks a ``+``/``-`` strand (``bed_primers_unpairable``: the depth
+    normaliser then works by strand only).
     """
     report = IntegrityReport(path=path, kind="bed")
     add = _make_adder(report)
     n_features = 0
     matched_any = False
+    first_unparsed_name: Optional[str] = None
+    strand_missing = False
     # Deferred plain-mismatch rows: their severity depends on whether ANY chrom
     # matched (see below), which is only known after the whole file is read.
     unmatched: List[tuple] = []
@@ -623,6 +634,11 @@ def validate_bed(
                         line_no,
                     )
 
+                name = cols[3] if len(cols) > 3 else ""
+                if first_unparsed_name is None and not _PRIMER_NAME_RE.match(name):
+                    first_unparsed_name = name
+                if len(cols) < 6 or cols[5] not in ("+", "-"):
+                    strand_missing = True
                 if len(cols) >= 6 and cols[5] not in ("+", "-", "."):
                     add(
                         "bed_bad_strand",
@@ -653,6 +669,16 @@ def validate_bed(
 
     if n_features == 0:
         add("bed_no_features", "Primer BED file contains no intervals.")
+    elif first_unparsed_name is not None and strand_missing:
+        add(
+            "bed_primers_unpairable",
+            f"Primer name {first_unparsed_name!r} does not follow <prefix>_<n>_LEFT/RIGHT and "
+            "the strand column is missing or not +/- on some row: primer clipping works, but "
+            "depth normalisation cannot pair primers into amplicons and will cap by strand "
+            "only (position mode). Rename the primers or fill the strand column to normalise "
+            "per amplicon.",
+            severity="warning",
+        )
 
     # A chrom that matches NO reference contig means those primers are silently
     # ignored by ampliconclip. If NONE of the BED's chroms match, the scheme is

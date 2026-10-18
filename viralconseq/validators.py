@@ -267,6 +267,31 @@ def check_normalise_depth_cap(normalise_depth: Any, minimum_depth: Any) -> None:
         )
 
 
+def check_variant_depth_cap(normalise_depth: Any, variant_depth: Any) -> None:
+    """Refuse a depth cap below the nanopore ALT-depth bar.
+
+    ``variant_depth`` is the ALT-read support a Clair3 call needs to enter
+    the consensus, counted in the normalised BAM; with the cap strictly
+    between 0 (off) and that bar, a capped site can never reach it and every
+    call there is masked. Non-numeric values are left to the bounds checks.
+
+    Raises:
+        ValidationError: When ``0 < normalise_depth < variant_depth``.
+    """
+    if isinstance(normalise_depth, bool) or isinstance(variant_depth, bool):
+        return
+    if not isinstance(normalise_depth, (int, float)) or not isinstance(variant_depth, (int, float)):
+        return
+    if 0 < normalise_depth < variant_depth:
+        raise ValidationError(
+            f"--normalise-depth ({normalise_depth}) is below --variant-depth "
+            f"({variant_depth}): a capped site can never carry that many ALT reads, so "
+            "every variant there would be masked. Raise --normalise-depth to at least "
+            "--variant-depth, lower --variant-depth, or pass --normalise-depth 0 to switch "
+            "the cap off (config keys normalise_depth and variant_depth)."
+        )
+
+
 def validate_config_dict(config: Any) -> None:
     """Check a Snakemake config mapping the way the rules will read it.
 
@@ -365,6 +390,8 @@ def validate_config_dict(config: Any) -> None:
             check_number(key, lo, hi, integer)
     try:
         check_normalise_depth_cap(config["normalise_depth"], config["minimum_depth"])
+        if "variant_depth" in config:
+            check_variant_depth_cap(config["normalise_depth"], config["variant_depth"])
     except ValidationError as exc:
         fail(str(exc))
     for key in config:
@@ -688,6 +715,8 @@ def validate_consensus_requirements(args: Dict[str, Any]) -> None:
 
     if args.get("normalise_depth") is not None:
         check_normalise_depth_cap(args["normalise_depth"], args.get("minimum_coverage", 10))
+        if args.get("variant_depth") is not None:
+            check_variant_depth_cap(args["normalise_depth"], args["variant_depth"])
 
 
 # ---------------------------------------------------------------------------

@@ -73,12 +73,11 @@ environment.yml`, or `bash setup.sh`); without it only
   time of the benchmark's 113-sample dengue run. Two inputs the old scanner
   rejected now get through: a read holding `U` is accepted with a
   `fastq_seqkit_flagged` warning (fastp and minimap2 read `U` as `T`), and a
-  multi-line (wrapped) FASTQ passes with no message at all because seqkit
-  reads it, although fastp emits no reads for such a file, so an Illumina
-  sample in that form ends up empty, and `total_reads` is over-counted on
-  nanopore; unwrap it first (`seqkit seq -w 0`). A quality character outside
-  ASCII 33-126 is only reported when a file is diagnosed for another
-  reason. seqkit is a required dependency of the CLI environment
+  multi-line (wrapped) FASTQ is still rejected (`fastq_bad_separator`): seqkit
+  reads such a file, but fastp emits no reads for it, so the probe in front of
+  seqkit checks that the first record's third line is a `+` separator; unwrap
+  the file (`seqkit seq -w 0`). A quality character outside ASCII 33-126 is
+  only reported when a file is diagnosed for another reason. seqkit is a required dependency of the CLI environment
   (`environment.yml`, the Docker image, CI) and its version is recorded in
   `versions.tsv`. An existing conda environment gets it with `conda env update
   -f environment.yml` (or `bash setup.sh`); a pip-only install needs it on
@@ -132,12 +131,19 @@ environment.yml`, or `bash setup.sh`); without it only
   `mapped_reads_normalised`, a `--normalise-depth-cpus` option, and the
   required config key `normalise_depth` (a 0.2.x `config.yml` needs
   `rerun --set normalise_depth=100`, or `0` to reproduce its consensus). The
-  cap is refused when positive but below `--minimum-coverage` (not when below
-  `--variant-depth`, which would mask every capped nanopore site). A scheme
-  whose primer names do not follow `<prefix>_<n>_LEFT/RIGHT` and that has no
-  `+`/`-` strand column fails the rule. On the SARS-CoV-2 test data (ARTIC
-  V3) the Illumina sample went from 194,452 to 25,569 records in 4 s and
-  86 MB; a 5.8 M-record, 29,000x copy of it took 50 s and 279 MB.
+  cap is refused when positive but below `--minimum-coverage`, and on
+  nanopore when below `--variant-depth` (a capped site could never carry that
+  many ALT reads, so every call there would be masked). A scheme whose
+  primer names do not follow `<prefix>_<n>_LEFT/RIGHT` and that has no
+  `+`/`-` strand column cannot be paired into amplicons: the input validator
+  warns (`bed_primers_unpairable`), primer clipping runs as before and the
+  normaliser caps by strand only with a warning in its log
+  (`mode position` in `normalise.txt`). The sweep holds each stratum's
+  bookkeeping over the amplicon's window rather than the whole contig, so a
+  200 kb reference with a 1,300-primer scheme normalises in under 2 s and
+  100 MB instead of 90 s and 2 GB. On the SARS-CoV-2 test data (ARTIC V3)
+  the Illumina sample went from 194,452 to 25,569 records in 4 s and 86 MB;
+  a 5.8 M-record, 29,000x copy of it took 50 s and 279 MB.
 - `--frameshift-variant-quality` (nanopore, default 50): the QUAL bar for an
   indel whose length change is not a multiple of three. Every frameshifting
   indel the benchmark's consensus accepted scored below 50 and ARTIC masks

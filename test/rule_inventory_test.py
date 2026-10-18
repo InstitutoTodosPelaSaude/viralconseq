@@ -321,6 +321,18 @@ class Test_NanoporeSanitiserCopiesAgree(unittest.TestCase):
         )
 
 
+class Test_PrimerNamePatternCopiesAgree(unittest.TestCase):
+    """The <prefix>_<n>_LEFT/RIGHT convention is matched in three places: the
+    normaliser pairs primers by it, the report labels amplicons by it, and the
+    BED validator warns when it will not pair. They must stay one pattern."""
+
+    def test_three_copies_are_identical(self):
+        from viralconseq.scripts.python import normalise_depth
+
+        self.assertEqual(integrity._PRIMER_NAME_RE.pattern, normalise_depth.PRIMER_NAME.pattern)
+        self.assertEqual(integrity._PRIMER_NAME_RE.pattern, build_report.PRIMER_NAME.pattern)
+
+
 class Test_RequiredKeyListsAgree(unittest.TestCase):
     """The required-key contract is written three times: ``_REQUIRED_KEYS`` in
     rules/common.smk (the parse-time guard), ``validators.CONFIG_REQUIRED_*``

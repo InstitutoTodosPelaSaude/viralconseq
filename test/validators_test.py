@@ -316,6 +316,21 @@ class Test_ValidateConfigDict(unittest.TestCase):
         validate_config_dict(_good_config(normalise_depth=100, minimum_depth=10))
         validate_config_dict(_good_config(normalise_depth=10, minimum_depth=10))
 
+    def test_normalise_depth_below_variant_depth_rejected_on_nanopore(self):
+        validate_config_dict(_good_config(normalise_depth=100, variant_depth=10))
+        validate_config_dict(_good_config(normalise_depth=10, minimum_depth=10, variant_depth=10))
+        validate_config_dict(_good_config(normalise_depth=0, variant_depth=50))
+        with self.assertRaises(ConfigurationError) as ctx:
+            validate_config_dict(
+                _good_config(normalise_depth=15, minimum_depth=10, variant_depth=20)
+            )
+        self.assertIn("--variant-depth", str(ctx.exception))
+        self.assertIn("mask", str(ctx.exception))
+        # Illumina configs carry no variant_depth and are not checked for it.
+        illumina = _good_config("illumina", normalise_depth=15, minimum_depth=10)
+        self.assertNotIn("variant_depth", illumina)
+        validate_config_dict(illumina)
+
     def test_normalise_depth_below_gate_names_both_flags(self):
         with self.assertRaises(ConfigurationError) as ctx:
             validate_config_dict(_good_config(normalise_depth=5, minimum_depth=10))
@@ -405,6 +420,15 @@ class Test_ValidateConsensusRequirementsNormaliseDepth(unittest.TestCase):
         args = self._args()
         del args["normalise_depth"]
         validate_consensus_requirements(args)
+
+    def test_cap_below_variant_depth_rejected(self):
+        validate_consensus_requirements(self._args(normalise_depth=20, variant_depth=20))
+        validate_consensus_requirements(self._args(normalise_depth=0, variant_depth=20))
+        with self.assertRaises(ValidationError) as ctx:
+            validate_consensus_requirements(self._args(normalise_depth=15, variant_depth=20))
+        message = str(ctx.exception)
+        self.assertIn("--normalise-depth", message)
+        self.assertIn("--variant-depth", message)
 
 
 class Test_ValidateClair3Model(unittest.TestCase):

@@ -162,6 +162,11 @@ class NormaliseError(Exception):
     """A problem with the input that is not a bug: message for the log."""
 
 
+class SchemeUnpairableError(NormaliseError):
+    """The scheme BED cannot be paired into amplicons (names off-convention
+    and no usable strand column); ``main`` falls back to position mode."""
+
+
 class UnsortedInputError(NormaliseError):
     """The records are not in coordinate order."""
 
@@ -271,7 +276,10 @@ def parse_scheme(path: str) -> Scheme:
     ``<prefix>_<n>_(LEFT|RIGHT)[_alt]`` convention; when a name does not parse,
     the whole scheme falls back to pairing the i-th ``+`` primer with the i-th
     ``-`` primer along each contig (strand column; alternate primers cannot be
-    recognised then), and a note says so. Neither working is an error."""
+    recognised then), and a note says so. Neither working raises
+    :class:`SchemeUnpairableError`, which ``main`` turns into a warning and
+    position mode (``samtools ampliconclip`` accepts such a BED, so the run
+    must not fail here)."""
     scheme = Scheme()
     rows = _read_bed(path)
     if not rows:
@@ -297,7 +305,7 @@ def parse_scheme(path: str) -> Scheme:
             "pairing consecutive LEFT/RIGHT primers by the strand column instead"
         )
         if any(strand not in ("+", "-") for _, _, _, _, _, strand in rows):
-            raise NormaliseError(
+            raise SchemeUnpairableError(
                 "scheme BED primer names do not parse and the strand column is missing or "
                 "not +/-: cannot pair primers into amplicons"
             )
@@ -310,7 +318,7 @@ def parse_scheme(path: str) -> Scheme:
             lefts = sorted((r for r in contig_rows if r[5] == "+"), key=lambda r: (r[1], r[2]))
             rights = sorted((r for r in contig_rows if r[5] == "-"), key=lambda r: (r[1], r[2]))
             if len(lefts) != len(rights):
-                raise NormaliseError(
+                raise SchemeUnpairableError(
                     f"scheme BED: {contig} has {len(lefts)} + and {len(rights)} - primers; cannot "
                     "pair them without <prefix>_<n>_LEFT/RIGHT names"
                 )
@@ -1311,11 +1319,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.scheme and args.scheme != "NA":
         try:
             scheme = parse_scheme(args.scheme)
+        except SchemeUnpairableError as exc:
+            print(
+                f"normalise_depth: WARNING: {exc}; normalising by strand only (position mode)",
+                file=sys.stderr,
+            )
         except NormaliseError as exc:
             print(f"normalise_depth: {exc}", file=sys.stderr)
             return 1
-        for note in scheme.notes:
-            print(f"normalise_depth: scheme: {note}", file=sys.stderr)
+        else:
+            for note in scheme.notes:
+                print(f"normalise_depth: scheme: {note}", file=sys.stderr)
 
     try:
         header, record_lines = _split_header(_iter_lines(_samtools_view(args.samtools, args.bam)))
@@ -1324,7 +1338,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if not any(name in scheme.amplicons for name in names):
                 print(
                     f"normalise_depth: WARNING: no contig of the BAM ({', '.join(names)}) appears in the scheme "
-                    f"({', '.join(scheme.contigs())}); every read is 'unassigned' and kept",
+                    f"({', '.join(scheme.contigs())}); every read is 'unassigned' and capped "
+                    "by strand only, as in position mode",
                     file=sys.stderr,
                 )
         recs, results, values, rows = analyse(header, record_lines, args.target, scheme)

@@ -120,8 +120,9 @@ _COMMON_OPTIONS = [
         show_default=True,
         type=click.IntRange(min=0),
         help="Cap the read depth handed to the consensus caller at this many records per "
-        "reference position after primer clipping, keeping the strand ratio and, with a "
-        "primer scheme, the amplicon mix of the original data. 0 switches normalisation off.",
+        "reference position after primer clipping, approximately keeping the strand ratio "
+        "and, with a primer scheme, giving every amplicon a share of the positions it covers. "
+        "0 switches normalisation off.",
     ),
     click.option(
         "--consensus-coverage-threshold",

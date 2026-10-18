@@ -269,7 +269,7 @@ Nanopore has a few extra knobs:
 
 - **`--variant-quality`** (default `10`) — minimum Clair3 QUAL for a SNV or in-frame indel to be written. A call below it that cleared the allele ratio is not reverted to the reference base: the position is written as `N`, because Clair3 saw something there and a confident reference base would be a silent error.
 - **`--frameshift-variant-quality`** (default `50`) — the same bar for an indel whose length is not a multiple of three. Frameshifts are rare in viral genomes and usually sequencing errors, so the bar is higher; a frameshifting indel below it is masked.
-- **`--variant-depth`** (default `10`) — minimum ALT-read support, counted in the normalised BAM. A call with fewer ALT reads whose allele ratio passed is masked, not dropped. Keep it well below `--normalise-depth`.
+- **`--variant-depth`** (default `10`) — minimum ALT-read support, counted in the normalised BAM. A call with fewer ALT reads whose allele ratio passed is masked, not dropped. It must not exceed `--normalise-depth` (the run refuses to start otherwise).
 
 Every normalised Clair3 call and its verdict (`pass`, `mask`, `discard`, `suppress`) is listed in `samples/sample-<id>/variant_filter.tsv`, the intervals written as `N` are in `samples/sample-<id>/mask.bed`, and `summary.tsv` counts the masked calls per sample in `masked_variant_sites`. A call whose allele ratio is below `--af-threshold` is discarded and the reference base kept, with no `N`: between 50 % and 60 % the reference is the minority allele, so a mixed site is written as the reference, silently. `variant_filter.tsv` (reason `allele_ratio`) is where to look for them.
 - **`--chunk-size`** (default `10000`) — Clair3 chunk size; tune only if Clair3 runs out of memory on huge references.

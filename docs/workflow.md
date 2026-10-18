@@ -206,8 +206,10 @@ BED: names are paired by the `<prefix>_<n>_(LEFT|RIGHT)[_alt]` convention, alter
 primers widen the amplicon; when a name does not parse the whole scheme falls back to
 pairing the i-th `+` primer with the i-th `-` primer of the strand column (alternates are
 then mispaired) with a note in the log, and when the strand column is missing or empty
-too (`databases/refs/nCoV-2019.bed` has an empty sixth column) the script exits 1 and the
-run fails, although `samtools ampliconclip` and the input validator accepted the BED.
+too (`databases/refs/nCoV-2019.bed` has an empty sixth column, so renaming its primers
+would trigger this) the script warns and caps by strand only (`mode position` in
+`normalise.txt`); the input validator announces that case as `bed_primers_unpairable`
+and `samtools ampliconclip` is unaffected.
 In segmented runs each segment is normalised with the whole BED and the other segments'
 amplicons are ignored; a contig with no amplicon in the BED is capped by strand only
 (every read is `unassigned`), with a warning.

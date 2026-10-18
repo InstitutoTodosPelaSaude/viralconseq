@@ -467,6 +467,25 @@ class TestValidateBed(_TmpBase):
         report = integrity.validate_bed(p, expected_contigs={"MN908947.3"})
         self.assertEqual(_codes(report), [])
 
+    def test_unpairable_primers_warn_only_without_a_strand_column(self):
+        # Off-convention names with +/- strands: the normaliser pairs by strand.
+        p = self._write("s.bed", "c\t0\t20\tprimerA\t1\t+\nc\t200\t220\tprimerB\t1\t-\n")
+        self.assertEqual(_warn_codes(integrity.validate_bed(p)), [])
+        # Convention names without a strand column: paired by name.
+        p = self._write("n.bed", "c\t0\t20\tx_1_LEFT\t1\nc\t200\t220\tx_1_RIGHT\t1\n")
+        self.assertEqual(_warn_codes(integrity.validate_bed(p)), [])
+        # Neither: clipping works, normalisation falls back to strand only.
+        for text in (
+            "c\t0\t20\tprimerA\nc\t200\t220\tprimerB\n",
+            "c\t0\t20\tprimerA\t1\t\nc\t200\t220\tprimerB\t1\t\n",
+            "c\t0\t20\tx_1_LEFT\t1\t+\nc\t200\t220\tprimerB\t1\t.\n",
+        ):
+            with self.subTest(text=text):
+                report = integrity.validate_bed(self._write("u.bed", text))
+                self.assertEqual(_codes(report), [])
+                self.assertIn("bed_primers_unpairable", _warn_codes(report))
+                self.assertIn("position mode", report.warnings[-1].message)
+
     def test_too_few_columns(self):
         p = self._write("p.bed", "MN908947.3\t0\n")
         self.assertIn("bed_too_few_columns", _codes(integrity.validate_bed(p)))
@@ -595,7 +614,7 @@ class TestOrchestration(_TmpBase):
         args = {
             "data_type": "nanopore",
             "reference": self._reference(f">{INFLUENZA_HEADER}\n"),
-            "primer_scheme": self._write("p.bed", "Influenza\t0\t5\tp1\n"),
+            "primer_scheme": self._write("p.bed", "Influenza\t0\t5\tp_1_LEFT\n"),
         }
         with self.assertRaises(InputIntegrityError) as ctx:
             validate_consensus_input_integrity(args, {"s1": [self._fastq()]})
@@ -607,7 +626,7 @@ class TestOrchestration(_TmpBase):
         args = {
             "data_type": "illumina",
             "reference": self._reference(f">{INFLUENZA_HEADER}\n"),
-            "primer_scheme": self._write("p.bed", "Influenza\t0\t5\tp1\n"),
+            "primer_scheme": self._write("p.bed", "Influenza\t0\t5\tp_1_LEFT\n"),
         }
         with self.assertNoLogs("viralconseq.validators", "WARNING"):
             validate_consensus_input_integrity(args, {"s1": [self._fastq()]})
@@ -621,7 +640,7 @@ class TestOrchestration(_TmpBase):
             "reference": self._reference(f">{header}\n"),
             "primer_scheme": self._write(
                 "p.bed",
-                "MN908947.3_Severe_acute_respiratory_syndrome_coronavirus_2__complete_genome\t0\t5\tp1\n",
+                "MN908947.3_Severe_acute_respiratory_syndrome_coronavirus_2__complete_genome\t0\t5\tp_1_LEFT\n",
             ),
         }
         with self.assertNoLogs("viralconseq.validators", "WARNING"):
