@@ -17,12 +17,14 @@ The two data types share the same overall idea — *map → trim primers → cal
 ```text
 Illumina:
   raw FASTQ ──► fastp ──► minimap2 -x sr ──► samtools ampliconclip (BED primers)
-            ──► samtools consensus ──► per-base coverage ──► multi-sample alignment
-            └► [optional] LoFreq (iSNVs)
+            ──► depth normalisation (100x) ──► samtools consensus
+            ──► per-base coverage ──► multi-sample alignment
+            └► [optional] LoFreq (iSNVs, from every clipped read)
 
 Nanopore:
   raw FASTQ ──► (sanitize reference headers) ──► minimap2 -x map-ont
-            ──► samtools ampliconclip ──► Clair3 + bcftools (variants + consensus)
+            ──► samtools ampliconclip ──► depth normalisation (100x)
+            ──► Clair3 + variant filter + bcftools (variants + consensus)
             ──► per-base coverage ──► multi-sample alignment
 ```
 
@@ -87,7 +89,9 @@ samples/sample-<id>/           # note the sample- prefix on every sample directo
 ├── consensus.vcf.gz           # variants relative to the reference
 ├── fastp.html                 # fastp QC report
 ├── raw_mapped_reads.bam       # post-mapping, before primer clipping
-├── trimmed_mapped_reads.bam   # primer-clipped — the BAM used for consensus
+├── trimmed_mapped_reads.bam   # primer-clipped — the source of the depth statistics
+├── normalised_mapped_reads.bam  # capped at --normalise-depth records per position — the BAM used for consensus
+├── normalise_depth.tsv        # depth before / after the cap, per position and strand
 └── stats.tsv                  # this sample's row of the assembly statistics
 summary.tsv                              # START HERE: one row per sample, status + stats + viralQC
 assembly/
@@ -119,7 +123,7 @@ bcftools view results/consensus_illumina/sarscov2/samples/sample-itps-0001/conse
 awk '$3 < 10' results/consensus_illumina/sarscov2/assembly/coverage_stats/sample-itps-0001.table_cov_basewise.txt | head
 ```
 
-**`samples/sample-<id>/{raw,trimmed}_mapped_reads.bam`** — both exist deliberately. `raw_mapped_reads.bam` is what minimap2 produced; `trimmed_mapped_reads.bam` is the same BAM after `samtools ampliconclip` removed primer sequences (only different when you passed `--primer-scheme`). The consensus is called from the trimmed BAM.
+**`samples/sample-<id>/{raw,trimmed,normalised}_mapped_reads.bam`** — all three exist deliberately. `raw_mapped_reads.bam` is what minimap2 produced; `trimmed_mapped_reads.bam` is the same BAM after `samtools ampliconclip` removed primer sequences (only different when you passed `--primer-scheme`) and is what every depth statistic is computed from; `normalised_mapped_reads.bam` is the trimmed BAM capped at `--normalise-depth` records per position (default 100; every read is kept where there are fewer) and is what the consensus is called from. `normalise_depth.tsv` shows the depth before and after the cap at every position. With `--normalise-depth 0` the last two BAMs are identical.
 
 **`summary.tsv`** — one row per sample (`sample_id` carries the `sample-` prefix) with a `status`, read counts (`total_reads`, `qc_passed_reads`, `mapped_reads`, `pct_mapped`), depth (`mean_depth`, `median_depth`), breadth (`coverage_10x` … `coverage_min_depth`, in percent), the consensus `n_pct`, and the viralQC `virus`, `clade` and `genome_quality`. The quickest way to spot low-coverage or poorly-mapping samples without opening a single BAM; a `status` other than `ok` says what went wrong. The pre-0.2.0 `assembly/assembly_stats_summary.csv` is still written (deprecated).
 
@@ -211,7 +215,7 @@ Most of the output layout matches the Illumina run, with a couple of additions a
 The headline `consensus.fasta` and `samples_alignment.fasta` files behave identically to the Illumina case.
 
 ```{tip}
-`--af-threshold` means something slightly different on each platform. On Illumina it is the fraction of base counts at the position (`samtools consensus -c`) and defaults to `0.51`. On Nanopore it is ALT reads over REF plus ALT reads from Clair3's `AD` and defaults to `0.6`; reads showing a deletion at the site do not count, so a variant that creates a homopolymer is not lost to the reads that collapse it. Clair3 additionally filters calls by its own quality score (`--variant-quality`, `--variant-depth`). If you see too many heterozygous-looking sites in your consensus, raise the threshold: `--af-threshold 0.7` or higher.
+`--af-threshold` means something slightly different on each platform. On Illumina it is the fraction of base counts at the position (`samtools consensus -c`) and defaults to `0.51`. On Nanopore it is ALT reads over REF plus ALT reads from Clair3's `AD` and defaults to `0.6`; reads showing a deletion at the site do not count, so a variant that creates a homopolymer is not lost to the reads that collapse it. A call that clears the ratio but not `--variant-quality` or `--variant-depth` is masked (`N`), not written. The ratio is measured on the normalised BAM (at most `--normalise-depth` records, default 100), so a site near the bar can land on either side by chance. If you see too many heterozygous-looking sites in your consensus, raise the threshold: `--af-threshold 0.7` or higher.
 ```
 
 ## Segmented viruses
@@ -259,14 +263,15 @@ The three knobs you will reach for most often:
 - **`--minimum-coverage`** (default `10`) — any reference position with fewer than this many reads after primer clipping becomes `N`. Raise it (e.g. `20`, the ARTIC default) for high-confidence assemblies; lower it only for very low-depth samples where you would rather see a tentative base than a hole.
 - **`--af-threshold`** (default `0.51` on Illumina, `0.6` on Nanopore) — minimum allele fraction to call a variant into the consensus. On Illumina it is a fraction of base counts, so `0.51` is the majority allele; on Nanopore it is ALT over REF plus ALT reads. Raise it (e.g. `0.7`) for noisier data; lower it to capture ambiguity codes.
 - **`--minimum-read-length`** (default `50`) — on Illumina, reads below this length are dropped by fastp at QC time and by `samtools ampliconclip --filter-len` after primer clipping; on Nanopore it is applied only by `samtools ampliconclip --filter-len`, i.e. only when a primer scheme is given.
+- **`--normalise-depth`** (default `100`) — the consensus caller sees at most this many records per position (every read where there are fewer). Deep runs finish faster and Clair3 stays in the depth range it was trained on, but allele fractions at capped positions become a sample of 100: a true 55 % allele falls below the Illumina `0.51` with probability 0.18 and a true 65 % allele below the Nanopore `0.6` with probability 0.125, and then the reference base is written. Raise it, or set `0` to switch the cap off, when mixed sites matter; `viralconseq rerun <run>/config.yml --set normalise_depth=0` and a diff of `consensus/` shows which calls the cap touched. Always pass `--primer-scheme` for amplicon data: without it the cap lets the first amplicon own every overlap.
 
 Nanopore has a few extra knobs:
 
 - **`--variant-quality`** (default `10`) — minimum Clair3 QUAL for a SNV or in-frame indel to be written. A call below it that cleared the allele ratio is not reverted to the reference base: the position is written as `N`, because Clair3 saw something there and a confident reference base would be a silent error.
 - **`--frameshift-variant-quality`** (default `50`) — the same bar for an indel whose length is not a multiple of three. Frameshifts are rare in viral genomes and usually sequencing errors, so the bar is higher; a frameshifting indel below it is masked.
-- **`--variant-depth`** (default `10`) — minimum ALT-read support. A call with fewer ALT reads whose allele ratio passed is masked, not dropped.
+- **`--variant-depth`** (default `10`) — minimum ALT-read support, counted in the normalised BAM. A call with fewer ALT reads whose allele ratio passed is masked, not dropped. Keep it well below `--normalise-depth`.
 
-Every normalised Clair3 call and its verdict (`pass`, `mask`, `discard`, `suppress`) is listed in `samples/sample-<id>/variant_filter.tsv`, the intervals written as `N` are in `samples/sample-<id>/mask.bed`, and `summary.tsv` counts the masked calls per sample in `masked_variant_sites`. A call whose allele ratio is below `--af-threshold` is discarded and the reference base kept: at such a site the reference is usually right.
+Every normalised Clair3 call and its verdict (`pass`, `mask`, `discard`, `suppress`) is listed in `samples/sample-<id>/variant_filter.tsv`, the intervals written as `N` are in `samples/sample-<id>/mask.bed`, and `summary.tsv` counts the masked calls per sample in `masked_variant_sites`. A call whose allele ratio is below `--af-threshold` is discarded and the reference base kept, with no `N`: between 50 % and 60 % the reference is the minority allele, so a mixed site is written as the reference, silently. `variant_filter.tsv` (reason `allele_ratio`) is where to look for them.
 - **`--chunk-size`** (default `10000`) — Clair3 chunk size; tune only if Clair3 runs out of memory on huge references.
 
 The full set is in the [Commands reference](../commands.md#viralconseq-consensus).

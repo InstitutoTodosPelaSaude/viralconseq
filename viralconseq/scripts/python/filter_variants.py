@@ -13,10 +13,12 @@ package is NOT installed: standard library only, ``main(argv)``::
 
 The previous ``bcftools filter`` expression silently reverted every rejected
 call to the reference base. Following ARTIC's ``vcf_filter``, a call that
-fails is now either *discarded* (the evidence says the reference base is
-right) or *masked* (the evidence is too weak to tell either way, so the
-positions of its REF span become N). One verdict per record, first match
-wins; ``QUAL`` is read directly and Clair3's ``LowQual`` stamp is ignored:
+fails is now either *discarded* (the ALT allele is below the ratio bar, so
+the reference base is kept; between 50 % and the bar the reference is the
+minority allele, and the site is still written as the reference) or *masked*
+(the evidence is too weak to tell either way, so the positions of its REF
+span become N). One verdict per record, first match wins; ``QUAL`` is read
+directly and Clair3's ``LowQual`` stamp is ignored:
 
 1. ``RefCall`` in FILTER, or a homozygous-reference/missing GT -> ``discard``
    (``refcall``).

@@ -14,6 +14,8 @@ viralconseq infers consensus genome sequences from viral high-throughput sequenc
 
 - Reference-guided consensus assembly for **Illumina** (fastp → minimap2 → samtools/GSAlign) and **Nanopore** (minimap2 → Clair3 → bcftools) reads
 - **Amplicon** primer clipping from a BED scheme, with primer/reference consistency checks
+- **Depth normalisation** of the clipped reads to 100 records per position before consensus calling (`--normalise-depth`, per strand and amplicon; statistics still count every read), so deep amplicon runs finish in a fraction of the time
+- **Nanopore calls are passed, masked or discarded**, never silently reverted: a Clair3 call that clears the allele ratio but not the quality or ALT-read bar becomes `N`, every verdict is listed per sample, and frameshifting indels face a higher bar
 - **Segmented viruses**: a multi-record reference FASTA is split per segment and every segment is assembled in one run
 - Optional **intra-host variant calling** (LoFreq) for Illumina data
 - **Consensus QC with [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC)**: virus and clade assignment plus a genome-quality score (A–D) for every consensus sequence (Nextclade + BLAST), on by default

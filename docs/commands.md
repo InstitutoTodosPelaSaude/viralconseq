@@ -151,7 +151,7 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--segmented-reference` | — | Per-segment reference: `SEGMENT=PATH` (repeatable). |
 | `--primer-scheme` | — | Primer scheme BED file (amplicon sequencing only). |
 | `--minimum-coverage` | `10` | Minimum depth for consensus base inclusion. |
-| `--normalise-depth` | `100` | Cap the read depth handed to the consensus caller at this many records per reference position after primer clipping, keeping the strand ratio and, with a primer scheme, the amplicon mix of the original data. `0` switches normalisation off. Must be `0` or at least `--minimum-coverage`: a cap below the depth gate would mask every position the gate would accept. |
+| `--normalise-depth` | `100` | Cap the read depth handed to the consensus caller at this many records per reference position after primer clipping, keeping the strand ratio approximately and, with a primer scheme, a share for every amplicon (an overlap becomes a roughly even mix of its amplicons, not the original proportions). Allele fractions at capped positions are then a sample of this many records: at 100 a true 55 % allele falls below the Illumina `--af-threshold 0.51` with probability 0.18 and a true 65 % allele below the nanopore bar of 0.6 with probability 0.125, where the reference is written; raise the cap or set `0` (off) when such sites matter. The statistics, the mapped-read gate and the iSNV calls still use every read. Must be `0` or at least `--minimum-coverage`: a cap below the depth gate would mask every position the gate would accept. Keep it well above `--variant-depth` on nanopore for the same reason (not checked). See [Workflow: Depth normalisation](workflow.md#depth-normalisation). |
 | `--minimum-read-length` | `50` | Minimum read length threshold. |
 | `--af-threshold` | `0.51` Illumina, `0.6` Nanopore | Minimum allele fraction to call a variant into consensus. Illumina: the fraction of base counts (`samtools consensus -c`). Nanopore: ALT reads over REF plus ALT reads at the site from Clair3's `AD`; reads showing a deletion or a third base there do not count, so a variant that creates a homopolymer is not lost to the reads that collapse it. |
 | `--consensus-coverage-threshold` | `70` | Percent of reference positions at or above `--minimum-coverage` (`coverage_min_depth` in `summary.tsv`) a sample needs to enter `consensus/consensus.cov<T>.fasta`; 0–100. Every sample is always in `consensus/consensus.fasta`. |
@@ -178,9 +178,14 @@ would break the run or silently produce wrong results:
   gzip integrity. A file seqkit flags is re-read by the Python scanner, which
   names the exact problem and line (`fastq_truncated`, `fastq_length_mismatch`,
   ...); a file seqkit flags but the scanner clears gets a `fastq_seqkit_flagged`
-  warning. The files are checked in parallel, up to `--threads-total` processes.
+  warning (a read holding `U` gets one: fastp and minimap2 read `U` as `T`).
+  The files are checked in parallel, up to `--threads-total` processes.
   Catches truncated uploads and corrupt archives. Quality characters outside
-  ASCII 33-126 are only reported when a file is diagnosed for another reason.
+  ASCII 33-126 are only reported when a file is diagnosed for another reason,
+  and a line-wrapped (multi-line) FASTQ is not detected at all: seqkit reads
+  it, but fastp emits no reads for it, so an Illumina sample in that form
+  ends up empty, and `total_reads` is over-counted on nanopore. Unwrap such a
+  file first (`seqkit seq -w 0`).
 - **Reference FASTA** — at least one record, unique contig ids, non-empty
   sequences, and a nucleotide-only (IUPAC) alphabet — so a protein FASTA or a
   mislabeled file is rejected up front.
@@ -250,7 +255,7 @@ Note that the step needs outbound HTTPS even with the databases in place:
 | `--clair3-model-dir` | `~/.cache/viralconseq/clair3-models` | Directory with one sub-directory per model (`pileup.pt` + `full_alignment.pt`). Picked up from `$VIRALCONSEQ_CLAIR3_MODELS` if set. Every model the run needs must be present and complete or the run stops before any work with the exact `viralconseq setup --clair3-models NAME` command to fetch it. |
 | `--variant-quality` | `10` | Minimum Clair3 QUAL for a SNV or in-frame indel to enter the consensus; a call below it whose allele ratio passed is masked (N) rather than written as the reference base. |
 | `--frameshift-variant-quality` | `50` | Minimum Clair3 QUAL for an indel that shifts the reading frame (length change not a multiple of 3); such calls are rare in viruses and far more often errors, so the bar is higher than `--variant-quality`. A frameshifting indel below it is masked (N), not written. |
-| `--variant-depth` | `10` | Minimum alt allele depth (clair3). |
+| `--variant-depth` | `10` | Minimum ALT reads for a Clair3 call to enter the consensus; a call below it whose allele ratio passed is masked (N), not written as the reference base. The count comes from the normalised BAM, so it must stay well below `--normalise-depth` or every capped site is masked (not checked). |
 | `--minimum-map-quality` | `30` | Minimum mapping quality (clair3). |
 | `--minimum-mapped-reads` | `10` | Samples with fewer primary mapped reads than this are not sent to Clair3: they get an all-N consensus, header-only VCFs and `status no_mapped_reads` in `assembly/status/<sample>.txt`, and the run continues (a barcode with zero reads is a warning, not an error, on nanopore). A crash guard for (near-)empty barcodes, not a QC threshold; `0` disables it. |
 
@@ -367,6 +372,7 @@ viralconseq rerun <output>/config.yml                       # resume / finish an
 viralconseq rerun <output>/config.yml --dry-run             # show what would run
 viralconseq rerun <output>/config.yml --unlock              # release a stale Snakemake lock
 viralconseq rerun <output>/config.yml --set minimum_depth=30 --set af_threshold=0.6
+viralconseq rerun <output>/config.yml --set normalise_depth=0   # call from every read; diff the consensus
 ```
 
 ### Options
@@ -377,7 +383,7 @@ viralconseq rerun <output>/config.yml --set minimum_depth=30 --set af_threshold=
 | `--dry-run` | Plan only (`snakemake -n`). |
 | `--unlock` | Release the lock left by a run that was killed, then exit. |
 | `--keep-going` | Keep running independent jobs after one fails. |
-| `--set KEY=VALUE` | Change a config key (repeatable). The value is parsed as YAML (`30` is an integer, `true` a boolean, `'x'` a string). Only keys already in the file may be set. The file is rewritten, with the previous copy kept as `CONFIG_FILE.bak`, so the config on disk always matches the run. |
+| `--set KEY=VALUE` | Change a config key (repeatable). The value is parsed as YAML (`30` is an integer, `true` a boolean, `'x'` a string). Only keys already in the file, or keys the current release requires for the data type (so a 0.2.x config can be completed with `--set normalise_depth=100` and, on nanopore, `--set frameshift_variant_quality=50`), may be set. The file is rewritten, with the previous copy kept as `CONFIG_FILE.bak`, so the config on disk always matches the run. |
 | `--conda-prefix` | Directory of the cached per-rule conda envs (`$VIRALCONSEQ_CONDA_PREFIX` or `~/.cache/viralconseq/conda-envs`). |
 
 The config is validated before Snakemake starts (required keys, types and

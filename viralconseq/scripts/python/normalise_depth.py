@@ -8,8 +8,11 @@ Run by ``rule normalise_depth`` (``rules/normalise.smk``) inside
 accuracy and a large cost in time and memory, while Clair3 rescales its
 pileup tensor above 216x. This script keeps, for every reference position,
 at least ``min(target, original depth)`` records and drops the rest, chosen
-so that the strand ratio (and, with a primer scheme, the amplicon mix) of
-the original data is preserved at every position.
+so that the strand ratio of the original data is approximately preserved at
+every position and, with a primer scheme, every amplicon keeps a share of
+the positions it covers. An amplicon overlap is not kept in its original
+proportions: units kept upstream are never dropped, so an overlap becomes a
+roughly even mix of its amplicons (measured 159:975 -> 91:90 records).
 
 Algorithm (one left-to-right sweep per contig):
 
@@ -48,12 +51,14 @@ Algorithm (one left-to-right sweep per contig):
   (both mates); a deficit a stratum cannot fill is filled from the other
   strata, so the total lower bound always holds.
 
-Invariants, self-checked from the kept flags before any output is written:
+Invariant, self-checked from the kept flags before any output is written:
 final depth >= ``min(T, original)`` at every position (so every read is kept
 wherever the original depth is below the target and ``--minimum-coverage``
-masks are unchanged there), and per-strand depth <= ``2T`` for single-record
-units (exactly ``T`` for staggered fixed-length reads; amplicon overlaps may
-reach ``2T``, as in ARTIC's normalisation).
+masks are unchanged there). There is no upper bound: units kept at earlier
+positions are never dropped, so depth accumulates at coverage boundaries,
+amplicon overlaps and under long reads of varying length (exactly ``T`` for
+staggered fixed-length reads; measured up to 2.2 T on an Illumina ARTIC BAM
+and 2.4 T, 2.0 T on one strand, on a nanopore BAM at T = 100).
 
 The target counts **records**, as ``samtools consensus -d`` and ``samtools
 depth`` do: an overlapping Illumina pair contributes two. Kept records are

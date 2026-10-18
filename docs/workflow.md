@@ -178,7 +178,7 @@ depth-normalised BAM of the next section.
 
 | Rule | Env | Command(s) | Flags and why | Threads / mem_mb | Measured max_rss |
 |---|---|---|---|---|---|
-| `normalise_depth` (both) | `alignment` | `python normalise_depth.py --bam trimmed/<sample>.sorted.bam --output-bam normalised/<sample>.sorted.bam --target {normalise_depth} --scheme <scheme.bed or NA> --depth-tsv normalised/<sample>.depth.tsv --amplicons-tsv normalised/<sample>.amplicons.tsv --summary normalised/<sample>.normalise.txt --threads {threads}`; exit status 3 (input not in coordinate order, which `ampliconclip --hard-clip` can produce) makes the rule `samtools sort` a copy and retry; then `samtools index`. `normalise_depth` is `0`: the script copies the trimmed BAM and index and writes header-only tables. | `--target`: records to keep per reference position (`--normalise-depth`, default 100; counts records, so an overlapping Illumina pair is two). `--scheme`: with a BED the per-position target is split by strand x amplicon in the original proportions; without one by strand only. `--threads`: `samtools view -b -@` when writing. | `cpus(normalise_depth)` | 86 / 89 |
+| `normalise_depth` (both) | `alignment` | `python normalise_depth.py --bam trimmed/<sample>.sorted.bam --output-bam normalised/<sample>.sorted.bam --target {normalise_depth} --scheme <scheme.bed or NA> --depth-tsv normalised/<sample>.depth.tsv --amplicons-tsv normalised/<sample>.amplicons.tsv --summary normalised/<sample>.normalise.txt --threads {threads}`; exit status 3 (input not in coordinate order) makes the rule `samtools sort` a copy and retry, a defensive path: `ampliconclip --hard-clip` moves POS without re-sorting, but `trim_primer_sequences` indexes its output and `samtools index` refuses an unsorted BAM, so only a hand-made input reaches it; then `samtools index`. `normalise_depth` is `0`: the script copies the trimmed BAM and index and writes header-only tables. | `--target`: records to keep per reference position (`--normalise-depth`, default 100; counts records, so an overlapping Illumina pair is two). `--scheme`: with a BED the per-position target is split by strand x amplicon in the original proportions; without one by strand only (what that does and does not preserve is measured below). `--threads`: `samtools view -b -@` when writing. | `cpus(normalise_depth)` | 86 / 89 |
 
 `normalise_depth.py` (`scripts/python/normalise_depth.py`, standard library)
 streams `samtools view -h` twice. Pass 1 parses QNAME, FLAG, RNAME, POS and
@@ -201,23 +201,80 @@ product (`interior_primer`); one that fits no amplicon and contains no primer
 is `unassigned`; both form an extra stratum per strand, capped proportionally like any
 amplicon, and are counted in the tables (they were kept unconditionally until benchmark v4
 showed that in LoCost libraries they cluster at primer edges carrying artefacts and, once
-the normal reads are capped, dominate the pileup).
+the normal reads are capped, dominate the pileup). The scheme is read from the primer
+BED: names are paired by the `<prefix>_<n>_(LEFT|RIGHT)[_alt]` convention, alternate
+primers widen the amplicon; when a name does not parse the whole scheme falls back to
+pairing the i-th `+` primer with the i-th `-` primer of the strand column (alternates are
+then mispaired) with a note in the log, and when the strand column is missing or empty
+too (`databases/refs/nCoV-2019.bed` has an empty sixth column) the script exits 1 and the
+run fails, although `samtools ampliconclip` and the input validator accepted the BED.
+In segmented runs each segment is normalised with the whole BED and the other segments'
+amplicons are ignored; a contig with no amplicon in the BED is capped by strand only
+(every read is `unassigned`), with a warning.
 
 Before writing anything the script re-derives the depth from its kept flags
 and refuses a result where the final depth is below `min(target, original)`
 at any position, so every read is kept wherever the original depth is below
-the target and the `--minimum-coverage` masks are unchanged there. Kept depth
-can exceed the target: up to `2T` per strand for single-record units at
-coverage boundaries and amplicon overlaps (as in ARTIC's normalisation). On the SARS-CoV-2 test
-data (ARTIC V3, 100x): the Illumina sample went from 194,452 to 23,225
-records in 4 s and 86 MB, the nanopore sample (no scheme) from 7,641 to
-3,464; a 5.8 M-record, 29,000x copy of the Illumina sample (the dengue
-regime) took 50 s and 279 MB, two streaming passes over `samtools view`. The
-depth table reports both before and after per strand. `normalise.txt` holds the mode
-(`off` / `position` / `amplicon`), the target, record counts in / kept /
-dropped, secondary and unmapped drops, orphan mates, unassigned and
-interior-primer counts before and after, mean record span before and after
-(furthest-first raises it), the number and percentage of capped positions and
+the target and the `--minimum-coverage` masks are unchanged there. That lower
+bound is the only invariant. Kept depth has no hard upper bound: units kept
+at earlier positions are never dropped, so coverage boundaries, amplicon
+overlaps and long reads of varying length accumulate above the target.
+Measured at target 100: on the Illumina fixture (ARTIC V3, scheme given) the
+maximum was 218 records (118 on one strand; 25 positions above 200), on the
+nanopore fixture 222 without a scheme and 237 with one (202 on one strand;
+737 positions above 200, 404 above the 216 at which Clair3 2.0.2 rescales its
+pileup tensor), and 236 on a 29,000x copy of the Illumina sample. Budget for
+about 2.5x the target.
+
+What the stratified split does and does not preserve, measured on the same
+fixtures at the capped positions:
+
+- Strand ratio, approximately: the per-position strand fraction moved by
+  median 0.016, p95 0.053, max 0.098 on Illumina; on nanopore by median
+  0.021, p95 0.158, max 0.207 (40 % of capped positions moved by more than
+  0.04), because long reads kept upstream fill a position before its own
+  split is applied.
+- Amplicon mix in overlaps: **not** the original proportions. Reads kept while
+  only the upstream amplicon covered a position stay, so an overlap becomes a
+  roughly even mix of the amplicons covering it (the behaviour of ARTIC's
+  per-amplicon cap): with the scheme the upstream-amplicon fraction moved by
+  median 0.092, p95 0.257, max 0.363 (nCoV-2019_67 against 68 at 20,506: 159
+  against 975 records before, 91 against 90 after). Without the scheme the
+  upstream amplicon owns the overlap (median 0.169, p95 0.493, max 0.689),
+  which is why amplicon data should always be run with `--primer-scheme`.
+  An amplicon-specific artefact can therefore rise from a minority of the
+  trimmed reads to about half of the normalised reads at an overlap.
+- Allele fractions become a sample of size `target`. Within a stratum the
+  selection ignores read content (latest start first, then input order), and
+  the kept set's indel and artefact fractions stayed within sampling noise of
+  the trimmed BAM on the benchmark's three test BAMs (insertion-bearing reads
+  7 / 4 / 19 % kept against 9 / 5 / 14 % trimmed, a deletion 13 % against
+  9 %, a LoCost primer-edge artefact 44 % against 44 %). A site near a
+  threshold is a binomial draw, though: at n = 100 a true 55 % allele falls
+  below the Illumina `--af-threshold 0.51` with probability 0.18 (0.03 at
+  60 %), and a true 65 % allele falls below the nanopore bar of 0.6 with
+  probability 0.125 (0.012 at 70 %), where the call is discarded and the
+  reference written (benchmark sample NORW-F0917, position 4303: 69 % in the
+  trimmed BAM, 0.58 in the normalised one). On nanopore the ratio's
+  denominator excludes deletion-bearing reads, so n is below the target and
+  the noise larger. Nothing in `summary.tsv` or the report flags a sampled
+  call; to check one, `viralconseq rerun <run>/config.yml --set
+  normalise_depth=0` and diff the consensus.
+- Supplementary records are single-record units and occupy slots that Clair3
+  ignores (`--excl-flags 2316`) and `samtools consensus` counts; 1.2 % of the
+  nanopore fixture's records.
+
+On the SARS-CoV-2 test data at 100x the Illumina sample (scheme given) went
+from 194,452 to 25,569 records in 4 s and 86 MB, the nanopore sample (no
+scheme) from 7,641 to 4,384; a 5.8 M-record, 29,000x copy of the Illumina
+sample (the dengue regime) took 50 s and 279 MB, two streaming passes over
+`samtools view`. The depth table reports both before and after per strand.
+`normalise.txt` holds the mode (`off` / `position` / `amplicon`), the target,
+record counts in / kept / dropped, secondary and unmapped drops, orphan
+mates, unassigned and interior-primer counts before and after, mean record
+span before and after (a selection bias would show here; latest-start-first
+lowers it slightly, 148.8 to 140.2 bp on the Illumina fixture and 596 to 569
+on the nanopore one), the number and percentage of capped positions and
 `self_check ok`.
 
 ## Mapped-read gate (Nanopore)
@@ -251,7 +308,7 @@ variants are the separate iSNV table.
 
 | Rule | Env | Command(s) | Flags and why | Threads / mem_mb | Measured max_rss |
 |---|---|---|---|---|---|
-| `infer_consensus_sequence` | `clair3` | **Gate**: if the status file says `no_mapped_reads`, write one all-`N` record per reference contig (lengths from the `.fai`), header-only `raw`, `norm` and final VCFs (with `##contig` lines), header-only `pass.vcf`, `variant_filter.tsv` and empty `low_cov.bed`, `masked_variants.bed` and `mask.bed` (the filter is run on the empty VCF), a `model.txt` with `status no_mapped_reads`, print a `WARNING`, `exit 0`. **Otherwise**: `run_clair3.sh --bam_fn=normalised/<sample>.sorted.bam --ref_fn=<ref> --model_path=<clair3_model_dir>/<model> --output=assembly/[<segment>/]clair3/<sample> --platform=ont --threads={threads} --chunk_size={chunk_size} --qual={variant_quality} --min_mq={minimum_map_quality} --var_pct_full=1.0 --enable_long_indel --haploid_sensitive --no_phasing_for_fa --include_all_ctgs`; decode exit codes 1 / 2 / 127; `cp merge_output.vcf.gz(.tbi)` to `<sample>.raw.vcf.gz`; `bcftools norm -m - -f <ref> raw.vcf.gz > <sample>.norm.vcf.gz`; `python python/filter_variants.py --vcf norm.vcf.gz --variant-quality {variant_quality} --frameshift-variant-quality {frameshift_variant_quality} --variant-depth {variant_depth} --af-threshold {af_threshold} --output-vcf <sample>.pass.vcf --output-bed <sample>.masked_variants.bed --output-tsv <sample>.variant_filter.tsv`; `bgzip -c pass.vcf > <sample>.vcf.gz; tabix`; `samtools depth -J -a trimmed.bam \| awk '$3 < {minimum_depth}'` into `<sample>.low_cov.bed`; `cat low_cov.bed masked_variants.bed \| sort -k1,1 -k2,2n -k3,3n -u > <sample>.mask.bed`; `bcftools consensus -f <ref> --mask mask.bed <sample>.vcf.gz > <sample>.consensus.fasta`; `find <clair3 dir> ... -exec rm -rf` everything but the raw VCF, its index and `model.txt`. | `--platform=ont`: ONT models and error profile. `--threads`: Clair3's parallelism. `--chunk_size` (`--chunk-size`, default 10000 bp): size of the regions called in parallel. `--qual` (`--variant-quality`, default 10): Clair3 stamps calls below it `LowQual` in `raw.vcf.gz` (`QUAL >= qual` is `PASS`); the consensus filter reads QUAL itself and ignores the stamp. `--min_mq` (`--minimum-map-quality`): ignore alignments below this mapping quality. `--var_pct_full=1.0`: send every pileup candidate to the full-alignment model instead of the lowest-ranked 70 %, so which model judges a site no longer depends on how many other candidates the sample carries (measured as a wash for accuracy and runtime; adopted for predictability). `--enable_long_indel`: call indels longer than 50 bp *(inferred from Clair3 docs)*. `--haploid_sensitive`: haploid calling in which both 0/1 and 1/1 count as variants, so mixed sites reach the filter instead of being dropped *(inferred)*. `--no_phasing_for_fa`: skip WhatsHap phasing before full-alignment calling; there is nothing to phase in a haploid genome *(inferred)*. `--include_all_ctgs`: call every contig (Clair3 otherwise restricts itself to human chromosome names). Boolean flags come last because Clair3 2.x parses them as `nargs="?"` and would swallow the next token. `bcftools norm -m -`: split multi-allelic records; `-f`: left-align and normalise indels against the reference. `filter_variants.py` gives every normalised record one verdict, first match wins: **discard** (reference kept) when the FILTER is `RefCall` or the allele ratio, ALT over REF plus ALT reads from `FORMAT/AD`, is below `--af-threshold` (default 0.6); **mask** (written as `N`) when the ALT read count is below `--variant-depth` (default 10) or QUAL is below `--variant-quality` (default 10), or below `--frameshift-variant-quality` (default 50) for an indel whose length change is not a multiple of three; **pass** otherwise. A failing record at a site where another record passes is suppressed, and no masked interval may touch a passing record's REF span because `bcftools consensus` skips any record overlapping a `--mask` interval. Clair3's own `FORMAT/AF` divides by `DP`, which counts reads carrying a deletion or a third base at the site; at a variant that creates a homopolymer half or more of the ONT reads carry the deletion, so that fraction understates the variant. The trade-off is that the `AD` denominator drops every read showing neither allele, so the ratio is not relative to depth and `--variant-depth` is the only absolute floor on the ALT read count. `samtools depth -a`: every position; `-J`: reads with a deletion at the position still count, so a real deletion is not masked *(inferred)*; the `awk` masks positions below `--minimum-coverage`, the same rule `samtools consensus -d` applies on Illumina and `coverage_min_depth` reports. `mask.bed` is the union of the depth mask and the masked calls, kept apart so every `N` can be attributed. `bcftools consensus --mask`: apply the passing variants and write `N` over the masked intervals. The model checkpoints `pileup.pt` and `full_alignment.pt` are declared rule inputs, so a missing model is a `MissingInputException` at DAG time rather than a Clair3 crash. | `cpus(infer_consensus_sequence)`; `mem_mb = ram_mb(infer_consensus_sequence)` (default 2 GB) | 416 |
+| `infer_consensus_sequence` | `clair3` | **Gate**: if the status file says `no_mapped_reads`, write one all-`N` record per reference contig (lengths from the `.fai`), header-only `raw`, `norm` and final VCFs (with `##contig` lines), header-only `pass.vcf`, `variant_filter.tsv` and empty `low_cov.bed`, `masked_variants.bed` and `mask.bed` (the filter is run on the empty VCF), a `model.txt` with `status no_mapped_reads`, print a `WARNING`, `exit 0`. **Otherwise**: `run_clair3.sh --bam_fn=normalised/<sample>.sorted.bam --ref_fn=<ref> --model_path=<clair3_model_dir>/<model> --output=assembly/[<segment>/]clair3/<sample> --platform=ont --threads={threads} --chunk_size={chunk_size} --qual={variant_quality} --min_mq={minimum_map_quality} --var_pct_full=1.0 --enable_long_indel --haploid_sensitive --no_phasing_for_fa --include_all_ctgs`; decode exit codes 1 / 2 / 127; `cp merge_output.vcf.gz(.tbi)` to `<sample>.raw.vcf.gz`; `bcftools norm -m - -f <ref> raw.vcf.gz > <sample>.norm.vcf.gz`; `python python/filter_variants.py --vcf norm.vcf.gz --variant-quality {variant_quality} --frameshift-variant-quality {frameshift_variant_quality} --variant-depth {variant_depth} --af-threshold {af_threshold} --output-vcf <sample>.pass.vcf --output-bed <sample>.masked_variants.bed --output-tsv <sample>.variant_filter.tsv`; `bgzip -c pass.vcf > <sample>.vcf.gz; tabix`; `samtools depth -J -a normalised/<sample>.sorted.bam \| awk '$3 < {minimum_depth}'` into `<sample>.low_cov.bed`; `cat low_cov.bed masked_variants.bed \| sort -k1,1 -k2,2n -k3,3n -u > <sample>.mask.bed`; `bcftools consensus -f <ref> --mask mask.bed <sample>.vcf.gz > <sample>.consensus.fasta`; `find <clair3 dir> ... -exec rm -rf` everything but the raw VCF, its index and `model.txt`. | `--platform=ont`: ONT models and error profile. `--threads`: Clair3's parallelism. `--chunk_size` (`--chunk-size`, default 10000 bp): size of the regions called in parallel. `--qual` (`--variant-quality`, default 10): Clair3 stamps calls below it `LowQual` in `raw.vcf.gz` (`QUAL >= qual` is `PASS`); the consensus filter reads QUAL itself and ignores the stamp. `--min_mq` (`--minimum-map-quality`): ignore alignments below this mapping quality. `--var_pct_full=1.0`: send every pileup variant call (0/1 and 1/1) to the full-alignment model instead of the lowest-quality 70 % of them (Clair3's ONT default), so which model judges a called site no longer depends on how many other candidates the sample carries (measured as a wash for accuracy and runtime; adopted for predictability). Low-quality *reference* calls still go at Clair3's default `--ref_pct_full` of 10 % on ONT. `--enable_long_indel`: call indels longer than 50 bp *(inferred from Clair3 docs)*. `--haploid_sensitive`: haploid calling in which both 0/1 and 1/1 count as variants, so mixed sites reach the filter instead of being dropped *(inferred)*. `--no_phasing_for_fa`: skip WhatsHap phasing before full-alignment calling; there is nothing to phase in a haploid genome *(inferred)*. `--include_all_ctgs`: call every contig (Clair3 otherwise restricts itself to human chromosome names). Boolean flags come last because Clair3 2.x parses them as `nargs="?"` and would swallow the next token. `bcftools norm -m -`: split multi-allelic records; `-f`: left-align and normalise indels against the reference. `filter_variants.py` gives every normalised record one verdict, first match wins: **discard** (reference kept) when the FILTER is `RefCall` or the allele ratio, ALT over REF plus ALT reads from `FORMAT/AD`, is below `--af-threshold` (default 0.6); **mask** (written as `N`) when the ALT read count is below `--variant-depth` (default 10) or QUAL is below `--variant-quality` (default 10), or below `--frameshift-variant-quality` (default 50) for an indel whose length change is not a multiple of three; **pass** otherwise. A failing record at a site where another record passes is suppressed, and no masked interval may touch a passing record's REF span because `bcftools consensus` skips any record overlapping a `--mask` interval. Clair3's own `FORMAT/AF` divides by `DP`, which counts reads carrying a deletion or a third base at the site; at a variant that creates a homopolymer half or more of the ONT reads carry the deletion, so that fraction understates the variant. The trade-off is that the `AD` denominator drops every read showing neither allele, so the ratio is not relative to depth and `--variant-depth` is the only absolute floor on the ALT read count. `samtools depth -a`: every position; `-J`: reads with a deletion at the position still count, so a real deletion is not masked *(inferred)*; the `awk` masks positions below `--minimum-coverage`, the same rule `samtools consensus -d` applies on Illumina and `coverage_min_depth` reports. The depth is read from the normalised BAM (the rule's input), which yields the same mask as the trimmed BAM: the cap is refused below `--minimum-coverage` and the normaliser keeps at least `min(cap, original)` records everywhere (the masked position sets were identical on both fixtures; `samtools depth` skips QCFAIL/DUP records, which minimap2 never sets). `mask.bed` is the union of the depth mask and the masked calls, kept apart so every `N` can be attributed. `bcftools consensus --mask`: apply the passing variants and write `N` over the masked intervals. The model checkpoints `pileup.pt` and `full_alignment.pt` are declared rule inputs, so a missing model is a `MissingInputException` at DAG time rather than a Clair3 crash. | `cpus(infer_consensus_sequence)`; `mem_mb = ram_mb(infer_consensus_sequence)` (default 2 GB) | 416 |
 
 `raw.vcf.gz` is Clair3's `merge_output.vcf.gz` untouched; `consensus.vcf.gz`
 is what survived normalisation and the filter and what `bcftools consensus`
@@ -326,7 +383,7 @@ viralQC inputs.
 | `versions_viralqc` | `viralqc` | `... --tools nextclade blastn --python-dists viralQC` | `run_viralqc` only; viralQC's version is read from Python package metadata. | 1 | 1 / 3 |
 | `versions` | `utils` | `printf` the `component`/`version` header, `viralconseq` (`viralconseq_version` from the config) and `snakemake`; `tail -n +2` every fragment through `awk '!seen[$0]++'`; when viralQC ran, `viralqc_nextclade_datasets_built` (second line of `.nextclade_datasets_ok`, `unknown` if empty) and `viralqc_db` | The `awk` lists a tool pinned in two envs (samtools, bcftools) once when the versions agree and twice when they differ. | 1 | 1 / 1 |
 | `run_config` | none (`run:` block) | `shutil.copyfile(<last --configfile>, config.yml)`; when the config file *is* `<run>/config.yml` (Snakemake would already have deleted it), `yaml.safe_dump` of the in-memory config instead | Copying preserves the section comments `ConfigGenerator` writes. Runs in the Snakemake process, which is why its `max_rss` is the interpreter's footprint, not a tool's. | 1 | 97 / 97 |
-| `organize_files` (entry file) | `utils` | `mkdir -p samples/<sample>[/<segment>]` and one `ln -sf` per artefact; `touch samples/.organized` | Per-platform link sets (see [Output Layout](output.md)): Illumina links `fastp.html`, `consensus.vcf.gz(.tbi)`, `isnvs.vcf.gz(.tbi)` (`run_isnv`), `stats.tsv`, `consensus.fasta`, `raw_mapped_reads.bam(.bai)`, `trimmed_mapped_reads.bam(.bai)`, `viralqc.tsv` (`run_viralqc`); Nanopore links `consensus.vcf.gz`, `raw.vcf.gz`, `variant_filter.tsv`, `mask.bed`, `clair3_model.txt`, `status.txt`, `stats.tsv`, `table_cov_basewise.txt`, `consensus.fasta`, both BAMs and `viralqc.tsv`. The sentinel exists because a symlink tree has no single file to declare. | 1 | 1 / 5 |
+| `organize_files` (entry file) | `utils` | `mkdir -p samples/<sample>[/<segment>]` and one `ln -sf` per artefact; `touch samples/.organized` | Per-platform link sets (see [Output Layout](output.md)): Illumina links `fastp.html`, `consensus.vcf.gz(.tbi)`, `isnvs.vcf.gz(.tbi)` (`run_isnv`), `stats.tsv`, `consensus.fasta`, `raw_mapped_reads.bam(.bai)`, `trimmed_mapped_reads.bam(.bai)`, `normalised_mapped_reads.bam(.bai)`, `normalise_depth.tsv`, `normalise_amplicons.tsv`, `viralqc.tsv` (`run_viralqc`); Nanopore links `consensus.vcf.gz`, `raw.vcf.gz`, `variant_filter.tsv`, `mask.bed`, `clair3_model.txt`, `status.txt`, `stats.tsv`, `table_cov_basewise.txt`, `consensus.fasta`, the three BAMs, the two normalisation tables and `viralqc.tsv`. The sentinel exists because a symlink tree has no single file to declare. | 1 | 1 / 5 |
 | `collect_benchmarks` | `utils` | `python python/collect_benchmarks.py --logs-dir logs/ --samples <ids> [--segmented] --cpus <rule>=<threads> ... --exclude <its own benchmark> --output benchmark.tsv` | Walks `logs/` for `*.benchmark.txt`, derives `rule`, `segment` and `target` from the path, labels run-level rows `All`, fills the `threads` column from `--cpus` (one entry per rule in `THREADED_RULES`), and orders per-sample rows first. Depends on `TERMINAL_INPUTS`, the `organize_files` sentinel, `versions.tsv` and `config.yml`, so it is the last job of every run. | 1 | — (excludes itself) |
 
 ## Resources

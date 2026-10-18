@@ -9,6 +9,19 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ## [Unreleased]
 
+Upgrading from 0.2.1: a `config.yml` written by 0.2.x lacks two now-required
+keys and must be extended before `viralconseq rerun` accepts it:
+`viralconseq rerun <run>/config.yml --set normalise_depth=100` on both
+platforms (`0` reproduces the old behaviour of calling from every read) and,
+on nanopore, `--set frameshift_variant_quality=50`. Such a rerun does not
+reproduce a 0.2.x consensus: the depth gate (20 to 10), the nanopore quality
+bar (15 to 10), the pass/mask/discard verdicts and the depth cap all change
+calls, and a nanopore reference header carrying characters outside
+`[A-Za-z0-9._-]` other than `/ \ | , ~` and space gets a new contig name.
+The CLI environment now needs `seqkit` on `PATH` (`conda env update -f
+environment.yml`, or `bash setup.sh`); without it only
+`--skip-input-validation` runs.
+
 ### Changed
 
 - Nanopore variant calls that the consensus filter rejects are no longer
@@ -33,10 +46,12 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   reverted 35 true variants that Clair3 had called; 10 (ARTIC's constant)
   recovers 19 of them for two false positives, and together with masking the
   silent reversions fall to about one. Clair3 is also run with
-  `--var_pct_full=1.0`, so every pileup candidate is judged by the
-  full-alignment model: measured as a wash for accuracy and runtime, adopted
-  because at the default the model that judges a site depended on how many
-  other candidates the sample carried.
+  `--var_pct_full=1.0`, so every pileup variant call (0/1 and 1/1) is judged
+  by the full-alignment model instead of the lowest-quality 70 % of them
+  (Clair3's ONT default; low-quality reference calls still go at the default
+  10 %, `--ref_pct_full`): measured as a wash for accuracy and runtime,
+  adopted because at the default the model that judges a called site
+  depended on how many other candidates the sample carried.
 - `--minimum-coverage` defaults to 10 instead of 20 on both platforms
   (`samtools consensus -d` on Illumina, the low-coverage mask on nanopore).
   Positions between 10x and 19x get a called base instead of `N`; on the
@@ -56,9 +71,13 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   151 s with the old scanner, 35 s with seqkit on one core, 3 s with 16
   workers. Before this change the phase took 2 h 12 m of the 3 h 06 m wall
   time of the benchmark's 113-sample dengue run. Two inputs the old scanner
-  rejected are now accepted because every downstream tool reads them: a
-  multi-line (wrapped) FASTQ and a read holding `U`; a quality character
-  outside ASCII 33-126 is only reported when a file is diagnosed for another
+  rejected now get through: a read holding `U` is accepted with a
+  `fastq_seqkit_flagged` warning (fastp and minimap2 read `U` as `T`), and a
+  multi-line (wrapped) FASTQ passes with no message at all because seqkit
+  reads it, although fastp emits no reads for such a file, so an Illumina
+  sample in that form ends up empty, and `total_reads` is over-counted on
+  nanopore; unwrap it first (`seqkit seq -w 0`). A quality character outside
+  ASCII 33-126 is only reported when a file is diagnosed for another
   reason. seqkit is a required dependency of the CLI environment
   (`environment.yml`, the Docker image, CI) and its version is recorded in
   `versions.tsv`. An existing conda environment gets it with `conda env update
@@ -75,32 +94,50 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   `scripts/python/normalise_depth.py`, standard library, runs in the alignment
   env). Every position keeps at least `min(target, original depth)` records (the
   script re-derives the depth from its decisions and refuses to write a result
-  that breaks this), the strand ratio is preserved per position and, with a
-  primer scheme, so is the amplicon mix (the target is split per strand x
-  amplicon in the original proportions, with reads that fit no single
-  amplicon as a stratum of their own, so their share is preserved too).
-  Pending reads are taken latest start first, then in input order: the only
-  reach proxy that ignores read content, so indel-bearing reads keep their
-  original share. Proper pairs are matched by read name (ampliconclip leaves
+  that breaks this); the strand ratio is approximately preserved per position
+  (the strand fraction at capped positions moved by at most 0.10 on the
+  Illumina fixture and 0.21 on the nanopore one) and, with a primer scheme,
+  every amplicon keeps a share of the positions it covers (the target is
+  split per strand x amplicon, with reads that fit no single amplicon as a
+  stratum of their own). An amplicon overlap is *not* kept in its original
+  proportions: reads kept upstream are never dropped, so the overlap becomes
+  a roughly even mix of its amplicons (159 against 975 records became 91
+  against 90 on the Illumina fixture), as with ARTIC's per-amplicon cap;
+  without a scheme the upstream amplicon owns the overlap, so pass the BED
+  for amplicon data. Pending reads are taken latest start first, then in
+  input order: the only reach proxy that ignores read content, so the kept
+  set's indel and artefact fractions stayed within sampling noise of the
+  trimmed BAM. Allele fractions at capped positions are a sample of the
+  target: at 100, a true 55 % allele falls below the Illumina 0.51 with
+  probability 0.18 and a true 65 % allele below the nanopore 0.6 bar with
+  probability 0.125, and the reference is then written (one such site in the
+  216-sample benchmark). Proper pairs are matched by read name (ampliconclip leaves
   PNEXT stale) and kept or dropped whole; records are re-emitted in input order,
   so the output is sorted and byte-reproducible. Only `infer_consensus_sequence`
   (`samtools consensus`, Clair3) reads the normalised BAM; `summary.tsv`'s depth
   columns, the coverage tables, the report traces, the nanopore mapped-read
-  gate and the Illumina iSNV step stay on the trimmed BAM. The target counts
-  records (an overlapping Illumina pair is two) and kept depth may reach about
-  twice the target at coverage boundaries and amplicon overlaps, as in ARTIC's
-  normalisation; Clair3 2.0.2 rescales its pileup above 216x, so 100 keeps
-  every position in its raw-count regime. New outputs
+  gate and the Illumina iSNV step stay on the trimmed BAM (the nanopore
+  low-coverage mask is computed on the normalised BAM, with the same result
+  because the cap cannot be set below the gate). The target counts records
+  (an overlapping Illumina pair is two) and kept depth has no upper bound:
+  reads kept upstream accumulate at coverage boundaries, amplicon overlaps
+  and under long reads of varying length, up to 2.2x the target on the
+  Illumina fixture and 2.4x on the nanopore one (per strand up to 2.0x);
+  Clair3 2.0.2 rescales its pileup above 216x, so 100 keeps nearly every
+  position in its raw-count regime (1.4 % of the nanopore fixture's positions
+  were above 216). New outputs
   `assembly/mapped_reads/normalised/<sample>.{sorted.bam,depth.tsv,amplicons.tsv,normalise.txt}`
   (`samples/<sample>/normalised_mapped_reads.bam`, `normalise_depth.tsv`,
   `normalise_amplicons.tsv`), `summary.tsv` columns `normalise_target` and
   `mapped_reads_normalised`, a `--normalise-depth-cpus` option, and the
   required config key `normalise_depth` (a 0.2.x `config.yml` needs
   `rerun --set normalise_depth=100`, or `0` to reproduce its consensus). The
-  cap is refused when positive but below `--minimum-coverage`. On the
-  SARS-CoV-2 test data (ARTIC V3) the Illumina sample went from 194,452 to
-  23,225 records in 4 s and 86 MB; a 5.8 M-record, 29,000x copy of it took
-  50 s and 279 MB.
+  cap is refused when positive but below `--minimum-coverage` (not when below
+  `--variant-depth`, which would mask every capped nanopore site). A scheme
+  whose primer names do not follow `<prefix>_<n>_LEFT/RIGHT` and that has no
+  `+`/`-` strand column fails the rule. On the SARS-CoV-2 test data (ARTIC
+  V3) the Illumina sample went from 194,452 to 25,569 records in 4 s and
+  86 MB; a 5.8 M-record, 29,000x copy of it took 50 s and 279 MB.
 - `--frameshift-variant-quality` (nanopore, default 50): the QUAL bar for an
   indel whose length change is not a multiple of three. Every frameshifting
   indel the benchmark's consensus accepted scored below 50 and ARTIC masks

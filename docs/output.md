@@ -114,7 +114,7 @@ deleted once the run is finished.
 | `assembly/coverage_stats/sample-{id}.table_cov_basewise.txt` | Per-base coverage table (`RNAME`, `POS`, `DEPTH`) |
 | `samples/sample-{id}/raw_mapped_reads.bam` | Reads mapped to the reference, before primer clipping |
 | `samples/sample-{id}/trimmed_mapped_reads.bam` | Primer-clipped BAM; the source of every depth statistic, the nanopore mapped-read gate and the iSNV calls |
-| `samples/sample-{id}/normalised_mapped_reads.bam` | The primer-clipped BAM capped at `--normalise-depth` records per position (strand ratio and amplicon mix preserved); what `samtools consensus` / Clair3 read. Identical to the trimmed BAM with `--normalise-depth 0` |
+| `samples/sample-{id}/normalised_mapped_reads.bam` | The primer-clipped BAM capped at `--normalise-depth` records per position (strand ratio approximately preserved; with a scheme every amplicon keeps a share of an overlap, but not in the original proportions; see [Workflow: Depth normalisation](workflow.md#depth-normalisation)); what `samtools consensus` / Clair3 read, so allele fractions at capped positions are a sample of this many records. Identical to the trimmed BAM with `--normalise-depth 0` |
 | `samples/sample-{id}/normalise_depth.tsv` | Per reference position: depth before and after normalisation, total and per strand |
 | `samples/sample-{id}/normalise_amplicons.tsv` | Per amplicon (per contig without a scheme): span, mean depth and record counts before and after, plus `unassigned` and `interior_primer` (skip-amplicon) rows |
 | `assembly/consensus/final_consensus/samples_alignment.fasta` | All consensus sequences aligned to the reference (MSA-ready) |
@@ -169,7 +169,7 @@ row, even when nothing was assembled for it.
 | `viralqc_dataset`, `viralqc_dataset_version` | Nextclade dataset and version behind the clade call |
 | `clair3_model` | Clair3 model used for this sample (nanopore), else `NA` |
 | `masked_variant_sites` | Nanopore: Clair3 calls the filter masked (written as `N`) because they cleared the allele ratio but not the quality bar or the ALT-read floor; see `variant_filter.tsv`. `NA` on Illumina |
-| `normalise_target` | Records per position the consensus caller saw after depth normalisation (`--normalise-depth`); `0` when switched off |
+| `normalise_target` | Records per position the consensus caller saw after depth normalisation (`--normalise-depth`); `0` when switched off. Neither this table nor the report says which calls were affected by the sampling; `samples/sample-{id}/normalise_depth.tsv` shows where the cap applied |
 | `mapped_reads_normalised` | Primary mapped records left in the normalised BAM (`mapped_reads` counts the trimmed BAM) |
 
 `status` values, in the order they are tested:
