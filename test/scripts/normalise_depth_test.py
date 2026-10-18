@@ -504,6 +504,67 @@ class TestSchemeMode(unittest.TestCase):
         self.assertEqual(sum(recs.kept), 10)
 
 
+class TestStratumWindows(unittest.TestCase):
+    """The sweep keeps one pair of difference arrays per stratum over the
+    window its records span and visits only the strata open at a position.
+    A scheme with many amplicons on a long genome must therefore cost the
+    amplicons' lengths, not strata x genome, and the kept set must not
+    depend on when a stratum opens or closes."""
+
+    def test_stratum_arrays_cover_only_the_window(self):
+        st = nd._Stratum(5, 9)
+        self.assertEqual((st.offset, st.end), (5, 9))
+        self.assertEqual(len(st.orig), 5)  # positions 5..9 inclusive
+        self.assertEqual(len(st.kdiff), 5)
+
+    def test_disjoint_amplicons_open_close_and_cap_independently(self):
+        # Four amplicons 1,000 bp apart on a 5,000 bp contig; amplicon 2's
+        # reads end exactly where amplicon 3's begin (1500), so one stratum
+        # closes at the position another opens.
+        bed = "".join(
+            f"ref\t{s}\t{s + 20}\tx_{n}_LEFT\t1\t+\nref\t{s + 480}\t{s + 500}\tx_{n}_RIGHT\t1\t-\n"
+            for n, s in enumerate((0, 1000, 1500, 3000), start=1)
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "s.bed")
+            with open(path, "w") as fh:
+                fh.write(bed)
+            scheme = nd.parse_scheme(path)
+        # A proper pair whose mates fall in amplicons 1 (forward) and 4
+        # (reverse), first in input order so the forward mate is kept at
+        # position 20 and the reverse mate is credited into a stratum that
+        # opens 3,000 positions later.
+        records = pair("p", 20, 3020, 460)
+        for n, s in enumerate((0, 1000, 1500, 3000), start=1):
+            records += [rec(f"a{n}_{i}", s + 20, 460) for i in range(12)]
+            records += [rec(f"b{n}_{i}", s + 20, 460, flag=16) for i in range(4)]
+        lines = header(5000) + sort_records(records)
+        recs, results, values, rows = run(lines, 8, scheme)  # self_check inside
+        before, after = depths(results[0])
+        self.assertTrue(all(after[p] >= min(8, before[p]) for p in range(5000)))
+        # Every amplicon capped at the target in its own proportions
+        # (13:4 and 12:5 both round to 6:2, as does 12:4).
+        for pos in (200, 1200, 1700, 3200):
+            self.assertEqual((results[0].after_fwd[pos], results[0].after_rev[pos]), (6, 2), pos)
+        self.assertEqual(after[900], 0)  # the gaps hold nothing
+        self.assertEqual(after[2800], 0)
+        # Same start, so input order decides: the pair, then the first reads of
+        # each amplicon and strand up to the share; the pre-credited reverse
+        # mate counts towards amplicon 4's reverse share.
+        kept = {line.split("\t")[0] for line, k in zip(sort_records(records), recs.kept) if k}
+        expected = {"p", "b4_0"} | {f"a1_{i}" for i in range(5)} | {"b1_0", "b1_1"}
+        for n in (2, 3, 4):
+            expected |= {f"a{n}_{i}" for i in range(6)}
+        expected |= {f"b{n}_{i}" for n in (2, 3) for i in range(2)}
+        self.assertEqual(kept, expected)
+        self.assertEqual(values["records_kept"], "32")
+        by_name = {row[1]: row for row in rows}
+        self.assertEqual(
+            [by_name[f"x_{n}"][7:9] for n in (1, 2, 3, 4)],
+            [["17", "8"], ["16", "8"], ["16", "8"], ["17", "8"]],
+        )
+
+
 class TestDeterminismAndEmission(unittest.TestCase):
     def _records(self, seed):
         rng = random.Random(seed)
@@ -667,6 +728,15 @@ class TestMainWithoutSamtools(unittest.TestCase):
             popen.assert_not_called()
             self.assertFalse(os.path.exists(os.path.join(tmp, "d.tsv")))
 
+    def test_missing_samtools_is_a_clean_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                rc = nd.main(_main_argv(tmp) + ["--samtools", os.path.join(tmp, "no-samtools")])
+            self.assertEqual(rc, 1)
+            self.assertIn("not found on PATH", stderr.getvalue())
+            self.assertFalse(os.path.exists(os.path.join(tmp, "d.tsv")))
+
     def test_header_without_sq_is_a_clean_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             rc, popen = self._run(["@HD\tVN:1.6\n"], _main_argv(tmp))
@@ -721,6 +791,30 @@ class TestMainWritesTables(unittest.TestCase):
             self.assertEqual(rc, 1)
             self.assertIn("samtools view -b exited with status 1", err)
             self.assertFalse(os.path.exists(os.path.join(tmp, "s.txt")))
+
+    def test_writer_stopping_early_exits_one_without_a_traceback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = header(200) + [rec(f"a{i}", 0, 100) for i in range(5)]
+            stderr = io.StringIO()
+            with mock.patch.object(nd, "_samtools_view", return_value=None):
+                with mock.patch.object(nd, "_iter_lines", side_effect=lambda proc: iter(lines)):
+                    with mock.patch.object(nd.subprocess, "Popen") as popen:
+                        popen.return_value.stdin.write.side_effect = BrokenPipeError()
+                        popen.return_value.stdin.close.side_effect = BrokenPipeError()
+                        popen.return_value.wait.return_value = 1
+                        with contextlib.redirect_stderr(stderr):
+                            rc = nd.main(_main_argv(tmp))
+            self.assertEqual(rc, 1)
+            self.assertIn("stopped reading (exit status 1)", stderr.getvalue())
+            self.assertFalse(os.path.exists(os.path.join(tmp, "s.txt")))
+
+    def test_threads_below_one_give_the_writer_one_thread(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = header(200) + [rec(f"a{i}", 0, 100) for i in range(5)]
+            rc, popen, err = self._run_main(lines, _main_argv(tmp) + ["--threads", "0"])
+            self.assertEqual(rc, 0, err)
+            cmd = popen.call_args.args[0]
+            self.assertEqual(cmd[cmd.index("-@") + 1], "1")
 
     def test_scheme_matching_no_bam_contig_warns_and_keeps_every_read(self):
         with tempfile.TemporaryDirectory() as tmp:

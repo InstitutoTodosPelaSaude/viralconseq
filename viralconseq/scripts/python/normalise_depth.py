@@ -577,6 +577,23 @@ class ContigResult:
         self.after_rev = array.array("i", bytes(4 * length))
 
 
+class _Stratum:
+    """Difference arrays of one stratum, covering only the reference window
+    ``[offset, end]`` its records span (deltas land on ``[a, b]`` of every
+    interval, hence the inclusive end). An amplicon stratum therefore costs
+    its amplicon's length rather than the contig's: a 200 kb genome with a
+    1,300-stratum scheme would otherwise allocate 2 GB of arrays."""
+
+    __slots__ = ("offset", "end", "orig", "kdiff")
+
+    def __init__(self, offset: int, end: int) -> None:
+        self.offset = offset
+        self.end = end
+        size = 4 * (end - offset + 1)
+        self.orig = array.array("i", bytes(size))  # original coverage deltas
+        self.kdiff = array.array("i", bytes(size))  # kept coverage deltas
+
+
 class Normaliser:
     """Chooses the kept records of a :class:`Records` store."""
 
@@ -638,33 +655,48 @@ class Normaliser:
         target = self.target
         n_amp = self.n_amplicons.get(name, 0)
         result = ContigResult(name, length)
-        strata: Dict[int, Tuple[array.array, array.array]] = {}
 
-        def diffs(s: int) -> Tuple[array.array, array.array]:
-            pair = strata.get(s)
-            if pair is None:
-                pair = strata[s] = (
-                    array.array("i", bytes(4 * (length + 1))),
-                    array.array("i", bytes(4 * (length + 1))),
-                )
-            return pair
-
+        # Pass A: the stratum of every record and each stratum's window. The
+        # ordinals are in coordinate order, so the first record of a stratum
+        # has its lowest start; only the furthest end has to be tracked.
         stratum_of = array.array("i", bytes(4 * recs.n)) if ordinals else array.array("i")
+        windows: Dict[int, List[int]] = {}  # stratum -> [first start, furthest end]
         for k in ordinals:
             s = self._stratum(k, n_amp)
             stratum_of[k] = s
-            orig, _kept = diffs(s)
+            b = recs.end[k]
+            if b > length:
+                raise NormaliseError(
+                    f"a record on {name} reaches position {b}, past the @SQ length {length}: "
+                    "the BAM header does not match the reference"
+                )
+            window = windows.get(s)
+            if window is None:
+                windows[s] = [recs.start[k], b]
+            elif b > window[1]:
+                window[1] = b
+        # Pass B: the original coverage deltas of every stratum.
+        strata = {s: _Stratum(lo, hi) for s, (lo, hi) in windows.items()}
+        for k in ordinals:
+            st = strata[stratum_of[k]]
+            orig, off = st.orig, st.offset
             for a, b in recs.intervals(k):
-                if b > length:
-                    raise NormaliseError(
-                        f"a record on {name} reaches position {b}, past the @SQ length {length}: "
-                        "the BAM header does not match the reference"
-                    )
-                orig[a] += 1
-                orig[b] -= 1
+                orig[a - off] += 1
+                orig[b - off] -= 1
         ids = sorted(strata)
         orig_cur = {s: 0 for s in ids}
         kept_cur = {s: 0 for s in ids}
+        # Strata are opened as the sweep reaches their window and closed
+        # after their last delta, so each position costs the strata that can
+        # hold coverage there (a handful with a tiling scheme, both strands
+        # in position mode), not every stratum of the contig. A closed or
+        # unopened stratum has zero original and kept coverage, so leaving it
+        # out of the sums and the share split changes nothing. `open_ids` is
+        # kept in ascending id order: split_target breaks ties by index and
+        # the deficit fill walks the strata in that order.
+        opening = sorted(ids, key=lambda s: strata[s].offset)
+        next_open = 0
+        open_ids: List[int] = []
         # Pending units per stratum: for every start position, the ordinals
         # of the units starting there in input order (a compact array, 4 bytes
         # per unit), and a max-heap of the live starts. Selection order is latest
@@ -693,7 +725,8 @@ class Normaliser:
             positions into the difference array."""
             kept[k] = 1
             s = stratum_of[k]
-            _orig, kdiff = diffs(s)
+            st = strata[s]
+            kdiff, off = st.kdiff, st.offset
             after = result.after_rev if strand_of(s) else result.after_fwd
             for a, b in recs.intervals(k):
                 past_end = min(b, p)
@@ -705,8 +738,8 @@ class Normaliser:
                 if a <= p:
                     kept_cur[s] += 1
                 else:
-                    kdiff[a] += 1
-                kdiff[b] -= 1
+                    kdiff[a - off] += 1
+                kdiff[b - off] -= 1
 
         def keep_unit(k: int, p: int) -> None:
             credit(k, p)
@@ -751,10 +784,19 @@ class Normaliser:
         n_ord = len(ordinals)
         capped = 0
         for p in range(length):
-            for s in ids:
-                orig, kdiff = strata[s]
-                orig_cur[s] += orig[p]
-                kept_cur[s] += kdiff[p]
+            while next_open < len(opening) and strata[opening[next_open]].offset == p:
+                bisect.insort(open_ids, opening[next_open])
+                next_open += 1
+            closing = False
+            for s in open_ids:
+                st = strata[s]
+                q = p - st.offset
+                orig_cur[s] += st.orig[q]
+                kept_cur[s] += st.kdiff[q]
+                if st.end == p:
+                    closing = True
+            if closing:
+                open_ids = [s for s in open_ids if strata[s].end > p]
             while pending < n_ord and recs.start[ordinals[pending]] == p:
                 k = ordinals[pending]
                 pending += 1
@@ -767,13 +809,13 @@ class Normaliser:
                 push(k)
             if pending < n_ord and recs.start[ordinals[pending]] < p:
                 raise UnsortedInputError("record order violated during the sweep")
-            orig_total = sum(orig_cur.values())
+            orig_total = sum(orig_cur[s] for s in open_ids)
             if orig_total == 0:
                 continue
             t_total = min(target, orig_total)
             if orig_total > target:
                 capped += 1
-            active = [s for s in ids if orig_cur[s] > 0]
+            active = [s for s in open_ids if orig_cur[s] > 0]
             shares = split_target(t_total, [orig_cur[s] for s in active])
             for s, share in zip(active, shares):
                 while kept_cur[s] < share:
@@ -781,7 +823,7 @@ class Normaliser:
                     if k < 0:
                         break
                     keep_unit(k, p)
-            total_kept = sum(kept_cur.values())
+            total_kept = sum(kept_cur[s] for s in open_ids)
             if total_kept < t_total:
                 for s in active:
                     while total_kept < t_total:
@@ -789,12 +831,12 @@ class Normaliser:
                         if k < 0:
                             break
                         keep_unit(k, p)
-                        total_kept = sum(kept_cur.values())
+                        total_kept = sum(kept_cur[s] for s in open_ids)
                     if total_kept >= t_total:
                         break
             # per-strand tallies for the depth table
             bf = br = af = ar = 0
-            for s in ids:
+            for s in open_ids:
                 o, kk = orig_cur[s], kept_cur[s]
                 if strand_of(s):
                     br += o
@@ -1167,13 +1209,33 @@ def _split_header(lines: Iterator[str]) -> Tuple[List[str], Iterator[str]]:
     return header, rest()
 
 
+def _popen(command: List[str], **kwargs: object) -> subprocess.Popen:
+    """``subprocess.Popen`` with a missing binary reported as a
+    :class:`NormaliseError` (a message in the log, exit 1) instead of a traceback."""
+    try:
+        return subprocess.Popen(command, **kwargs)  # type: ignore[call-overload]
+    except FileNotFoundError:
+        raise NormaliseError(f"{command[0]!r} not found on PATH") from None
+
+
 def _samtools_view(samtools: str, bam: str) -> subprocess.Popen:
-    return subprocess.Popen(
+    return _popen(
         [samtools, "view", "-h", "--no-PG", bam],
         stdout=subprocess.PIPE,
         text=True,
         errors="surrogateescape",
     )
+
+
+def _close_writer(writer: subprocess.Popen) -> int:
+    """Close the writer's stdin (a dead writer makes that a broken pipe too)
+    and return its exit status."""
+    assert writer.stdin is not None
+    try:
+        writer.stdin.close()
+    except BrokenPipeError:
+        pass
+    return writer.wait()
 
 
 def _iter_lines(proc: subprocess.Popen) -> Iterator[str]:
@@ -1272,22 +1334,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return EXIT_SELF_CHECK
 
     mode = values["mode"]
-    writer = subprocess.Popen(
-        [
-            args.samtools,
-            "view",
-            "-b",
-            "--no-PG",
-            "-@",
-            str(max(1, args.threads)),
-            "-o",
-            args.output_bam,
-            "-",
-        ],
-        stdin=subprocess.PIPE,
-        text=True,
-        errors="surrogateescape",
-    )
+    try:
+        writer = _popen(
+            [
+                args.samtools,
+                "view",
+                "-b",
+                "--no-PG",
+                "-@",
+                str(max(1, args.threads)),
+                "-o",
+                args.output_bam,
+                "-",
+            ],
+            stdin=subprocess.PIPE,
+            text=True,
+            errors="surrogateescape",
+        )
+    except NormaliseError as exc:
+        print(f"normalise_depth: {exc}", file=sys.stderr)
+        return 1
     assert writer.stdin is not None
     try:
         written = emit(
@@ -1298,12 +1364,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             mode,
         )
     except NormaliseError as exc:
-        writer.stdin.close()
-        writer.wait()
+        _close_writer(writer)
         print(f"normalise_depth: {exc}", file=sys.stderr)
         return 1
-    writer.stdin.close()
-    if writer.wait() != 0:
+    except BrokenPipeError:
+        # The writer died while we were still feeding it; its own error is
+        # already on stderr (the rule's log).
+        status = _close_writer(writer)
+        print(
+            f"normalise_depth: samtools view -b stopped reading (exit status {status})",
+            file=sys.stderr,
+        )
+        return 1
+    if _close_writer(writer) != 0:
         print(
             f"normalise_depth: samtools view -b exited with status {writer.returncode}",
             file=sys.stderr,

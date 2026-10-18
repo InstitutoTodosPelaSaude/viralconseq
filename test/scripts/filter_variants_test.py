@@ -255,6 +255,14 @@ class Test_FilterVariants(unittest.TestCase):
         self.assertEqual(bed, [])
         self.assertEqual(len(vcf), 1)
 
+    def test_subtract_handles_several_blocks_and_full_cover(self):
+        self.assertEqual(
+            filter_variants.subtract((0, 10), [(2, 3), (5, 7), (20, 30)]),
+            [(0, 2), (3, 5), (7, 10)],
+        )
+        self.assertEqual(filter_variants.subtract((4, 6), [(0, 5), (5, 9)]), [])
+        self.assertEqual(filter_variants.subtract((4, 6), []), [(4, 6)])
+
     def test_bed_merges_overlapping_intervals_and_orders_chroms_by_appearance(self):
         lines = [
             _rec(100, "ACGT", "A", 5),  # [99, 103)
