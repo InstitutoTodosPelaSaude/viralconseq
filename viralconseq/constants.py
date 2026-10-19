@@ -224,7 +224,7 @@ class ReportDefaults:
     ``config.yml`` is missing; they match the CLI defaults of ``consensus``."""
 
     DATA_TYPE = "illumina"
-    MIN_DEPTH = 20
+    MIN_DEPTH = 10
     CONSENSUS_COVERAGE_THRESHOLD = 70.0
 
 
