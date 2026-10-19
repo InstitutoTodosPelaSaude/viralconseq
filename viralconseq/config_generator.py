@@ -337,7 +337,7 @@ class ConfigGenerator:
         primer_scheme: str,
         minimum_coverage: int,
         minimap2_consensus_align_flags: str = "-a --sam-hit-only --secondary=no --score-N=0",
-        normalise_depth: int = 100,
+        normalise_depth: int = 0,
     ) -> None:
         """Add consensus-specific settings to configuration.
 
@@ -352,7 +352,7 @@ class ConfigGenerator:
                 default keeps the historical behaviour.
             normalise_depth: Cap on the read depth per reference position
                 handed to the consensus caller after primer clipping; 0
-                switches normalisation off.
+                (the default) switches normalisation off.
         """
         P = self.SECTION_CONSENSUS
         self._set(ConfigKeys.REFERENCE, reference, P)
@@ -518,7 +518,7 @@ class ConfigGenerator:
                 reference=f"{root}/references/skel.reference.fasta",
                 primer_scheme="NA",
                 minimum_coverage=10,
-                normalise_depth=100,
+                normalise_depth=0,
             )
             if data_type == DataType.ILLUMINA:
                 # run_isnv=True pulls the detect_isnv (LoFreq) rule into

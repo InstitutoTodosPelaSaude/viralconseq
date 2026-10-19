@@ -116,13 +116,14 @@ _COMMON_OPTIONS = [
     ),
     click.option(
         "--normalise-depth",
-        default=100,
+        default=0,
         show_default=True,
         type=click.IntRange(min=0),
         help="Cap the read depth handed to the consensus caller at this many records per "
         "reference position after primer clipping, approximately keeping the strand ratio "
         "and, with a primer scheme, giving every amplicon a share of the positions it covers. "
-        "0 switches normalisation off.",
+        "0 (the default) calls the consensus from every read; 100 is a reasonable cap for "
+        "deep amplicon runs.",
     ),
     click.option(
         "--consensus-coverage-threshold",

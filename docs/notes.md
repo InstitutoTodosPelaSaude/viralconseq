@@ -30,7 +30,7 @@ The Nanopore workflow rewrites the reference FASTA headers before use: every cha
 
 `--primer-scheme` is optional. With a BED file, `samtools ampliconclip` removes the primer sequences from the mapped reads before consensus calling, and both the raw and the clipped BAM are kept. Without a scheme the clipping step is a pass-through.
 
-In both cases the clipped reads are then capped at `--normalise-depth` records per position (default 100) before the consensus is called. With a scheme the cap is split per strand and per amplicon, so every amplicon keeps a share of the positions it covers; without one, the amplicon that starts first would own each overlap, which is why amplicon data should always be run with its scheme. The statistics, the Nanopore mapped-read gate and the iSNV calls still see every read. The [workflow reference](workflow.md#depth-normalisation) describes what the cap does and does not preserve.
+In both cases the consensus is called from every clipped read unless `--normalise-depth` sets a cap (off by default; `100` is a reasonable value for deep amplicon runs). With a scheme the cap is split per strand and per amplicon, so every amplicon keeps a share of the positions it covers; without one, the amplicon that starts first would own each overlap, which is why a capped run should always have its scheme. The statistics, the Nanopore mapped-read gate and the iSNV calls always see every read. The [workflow reference](workflow.md#depth-normalisation) describes what the cap does and does not preserve.
 
 ## Consensus QC (viralQC)
 

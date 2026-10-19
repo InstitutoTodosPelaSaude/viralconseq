@@ -12,16 +12,16 @@ Use `viralconseq consensus` when you know which virus is in the sample and you h
 
 ## What it does
 
-Both data types follow the same idea — *map → clip primers → cap the depth → call → consensus → align all samples to the reference* — with a different variant caller:
+Both data types follow the same idea — *map → clip primers → call → consensus → align all samples to the reference* — with a different variant caller:
 
 ```text
 Illumina:
-  raw FASTQ ──► fastp ──► minimap2 ──► primer clipping ──► depth cap (100x)
+  raw FASTQ ──► fastp ──► minimap2 ──► primer clipping ──► [optional depth cap]
             ──► samtools consensus ──► coverage statistics ──► multi-sample alignment
             └► [optional] LoFreq intra-host variants
 
 Nanopore:
-  raw FASTQ ──► minimap2 ──► primer clipping ──► depth cap (100x)
+  raw FASTQ ──► minimap2 ──► primer clipping ──► [optional depth cap]
             ──► Clair3 + variant filter + bcftools consensus
             ──► coverage statistics ──► multi-sample alignment
 ```
@@ -78,7 +78,7 @@ samples/sample-<id>/                     # everything about one sample (note the
 ├── fastp.html                           # read QC report
 ├── raw_mapped_reads.bam                 # as mapped
 ├── trimmed_mapped_reads.bam             # primer-clipped; the source of the depth statistics
-├── normalised_mapped_reads.bam          # depth-capped; what the consensus was called from
+├── normalised_mapped_reads.bam          # what the consensus was called from (same as trimmed unless --normalise-depth)
 ├── stats.tsv                            # this sample's statistics
 └── viralqc.tsv                          # this sample's consensus QC
 assembly/coverage_stats/sample-<id>.table_cov_basewise.txt   # depth at every position
@@ -95,7 +95,7 @@ logs/                                    # one directory per step
 
 **`consensus/`** holds the sequences you will share: one FASTA per sample, all samples pooled, and a pooled file restricted to the samples whose `coverage_min_depth` reaches `--consensus-coverage-threshold` (default 70 %).
 
-**`samples/sample-<id>/consensus.fasta`** is the sample's genome. Runs of `N` mark positions with fewer than `--minimum-coverage` reads, or where no base reached `--af-threshold`. The three BAMs show the reads at each stage: as mapped, after primer clipping (what the statistics count), and after the depth cap (what the consensus was called from).
+**`samples/sample-<id>/consensus.fasta`** is the sample's genome. Runs of `N` mark positions with fewer than `--minimum-coverage` reads, or where no base reached `--af-threshold`. The three BAMs show the reads at each stage: as mapped, after primer clipping (what the statistics count), and what the consensus was called from (the same reads, unless you set a depth cap with `--normalise-depth`).
 
 **`samples/sample-<id>/consensus.vcf.gz`** lists how the consensus differs from the reference:
 
@@ -216,7 +216,7 @@ The settings you will reach for most often:
 
 - **`--minimum-coverage`** (default `10`) — a position with fewer reads than this becomes `N`. Raise it (for example to `20`) for high-confidence assemblies; lower it only when you would rather see a tentative base than a hole.
 - **`--af-threshold`** (default `0.6`) — the fraction of reads a base needs to be written into the consensus. A position where no base reaches it becomes `N`. Raise it (for example to `0.7`) for noisier data.
-- **`--normalise-depth`** (default `100`) — the consensus is called from at most this many reads per position, which keeps deep amplicon runs fast. At a capped position the allele fraction is measured on that sample of reads, so a site close to `--af-threshold` can land on either side. Set it to `0` to call from every read; always pass `--primer-scheme` for amplicon data so every amplicon keeps its share.
+- **`--normalise-depth`** (default `0`, off) — cap the reads the consensus is called from at this many per position, for example `100`, to keep a very deep amplicon run fast. At a capped position the allele fraction is measured on that sample of reads, so a site close to `--af-threshold` can land on either side; pass `--primer-scheme` with a cap so every amplicon keeps its share.
 - **`--minimum-read-length`** (default `50`) — reads shorter than this are dropped after trimming and primer clipping.
 
 Nanopore has three more:

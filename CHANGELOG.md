@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
+## [0.3.2] - 2026-10-19
+
+Upgrading from 0.3.x: no config change; an existing `config.yml` reruns as
+is, with the `normalise_depth` it already holds. Only configs written by the
+CLI from now on get the new default.
+
+### Changed
+
+- `--normalise-depth` defaults to `0`: the consensus is called from every
+  primer-clipped read unless a cap is asked for. The depth cap introduced in
+  0.3.0 (default 100) stays available as an option for very deep amplicon
+  runs; `viralconseq rerun <run>/config.yml --set normalise_depth=100`
+  applies it to an existing run. The output layout is unchanged:
+  `normalised_mapped_reads.bam` is now a copy of the trimmed BAM by default,
+  `normalise_target` reads `0` and `pct_positions_capped` `NA` in
+  `summary.tsv`.
+
 ## [0.3.1] - 2026-10-19
 
 Upgrading from 0.3.0: no config change; a 0.3.0 `config.yml` reruns as is.
