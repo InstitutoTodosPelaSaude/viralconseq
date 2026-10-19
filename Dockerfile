@@ -1,5 +1,5 @@
 FROM continuumio/miniconda3:25.1.1-2
-LABEL version="0.3.0" \
+LABEL version="0.3.1" \
       description="Reference-guided consensus sequence inference for viral high-throughput sequencing data."
 
 WORKDIR /app

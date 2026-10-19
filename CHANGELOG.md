@@ -7,7 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
-## [Unreleased]
+## [0.3.1] - 2026-10-19
+
+Upgrading from 0.3.0: no config change; a 0.3.0 `config.yml` reruns as is.
 
 ### Fixed
 
