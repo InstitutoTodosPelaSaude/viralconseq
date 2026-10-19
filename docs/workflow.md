@@ -1,5 +1,9 @@
 # Workflow Reference
 
+```{note}
+Developer reference: what each rule runs and why. You do not need this page to use viralconseq.
+```
+
 What the Snakemake workflows actually run. For every rule: the conda
 environment it runs in, the commands, each flag and why it is set, the threads
 and memory the rule declares, and the peak memory measured on the test fixture.
@@ -85,8 +89,9 @@ value (a function of the `segment` wildcard on Illumina; the per-segment
 sanitised reference on Nanopore). Per-sample rules therefore run once per
 sample **and segment**; run-level rules run once. The single-reference entry
 files set `SEGMENT_WILDCARD = ""` and the rule modules are unchanged. The
-per-segment FASTAs come from the Python layer (`reference_splitter.py`, written
-to `input_references/`), never from the workflow.
+per-segment FASTAs come from the Python layer, never from the workflow: an
+auto-split `--reference` is written to `input_references/` by
+`reference_splitter.py`, while `--segmented-reference` paths are used as given.
 
 **How Snakemake is launched.** `_orchestrator.run_workflow` calls
 `snakemake()` with the config file, `cores=threads_total`, `use_conda=True`,
@@ -181,104 +186,59 @@ depth-normalised BAM of the next section.
 | `normalise_depth` (both) | `alignment` | `python normalise_depth.py --bam trimmed/<sample>.sorted.bam --output-bam normalised/<sample>.sorted.bam --target {normalise_depth} --scheme <scheme.bed or NA> --depth-tsv normalised/<sample>.depth.tsv --amplicons-tsv normalised/<sample>.amplicons.tsv --summary normalised/<sample>.normalise.txt --threads {threads}`; exit status 3 (input not in coordinate order) makes the rule `samtools sort` a copy and retry, a defensive path: `ampliconclip --hard-clip` moves POS without re-sorting, but `trim_primer_sequences` indexes its output and `samtools index` refuses an unsorted BAM, so only a hand-made input reaches it; then `samtools index`. `normalise_depth` is `0`: the script copies the trimmed BAM and index and writes header-only tables. | `--target`: records to keep per reference position (`--normalise-depth`, default 100; counts records, so an overlapping Illumina pair is two). `--scheme`: with a BED the per-position target is split by strand x amplicon in the original proportions; without one by strand only (what that does and does not preserve is measured below). `--threads`: `samtools view -b -@` when writing. | `cpus(normalise_depth)` | 86 / 89 |
 
 `normalise_depth.py` (`scripts/python/normalise_depth.py`, standard library)
-streams `samtools view -h` twice. Pass 1 parses QNAME, FLAG, RNAME, POS and
-CIGAR, pairs proper-pair mates **by QNAME** (ampliconclip moves POS without
-rewriting the mate's PNEXT), assigns each record to the amplicon whose outer
-span contains it (10 bp tolerance) and sweeps every position left to right:
-units (a record, or both mates) starting there join their stratum's pending
-set, ordered by latest start first and then input order (the only reach proxy
-that ignores read content: ranking by the reference end enriched
-deletion-bearing reads six-fold and ranking by aligned length enriched
-insertion-bearing reads as much, benchmark v4-v6; first-come order is neutral
-but overshoots the target twelve-fold), and while a stratum is below its share
-of `min(target, original depth)` its latest-starting pending unit is kept
-whole. Pass 2 re-emits the kept records in input order, so the output is
-coordinate-sorted and two runs over the same input are byte-identical (the
-`@PG` line carries no paths or timestamps). Secondary records are dropped and
-counted; supplementary records are single-record units. A record that fits
-no single amplicon and contains a whole primer interval is a skip-amplicon
-product (`interior_primer`); one that fits no amplicon and contains no primer
-is `unassigned`; both form an extra stratum per strand, capped proportionally like any
-amplicon, and are counted in the tables (they were kept unconditionally until benchmark v4
-showed that in LoCost libraries they cluster at primer edges carrying artefacts and, once
-the normal reads are capped, dominate the pileup). The scheme is read from the primer
-BED: names are paired by the `<prefix>_<n>_(LEFT|RIGHT)[_alt]` convention, alternate
-primers widen the amplicon; when a name does not parse the whole scheme falls back to
-pairing the i-th `+` primer with the i-th `-` primer of the strand column (alternates are
-then mispaired) with a note in the log, and when the strand column is missing or empty
-too (`databases/refs/nCoV-2019.bed` has an empty sixth column, so renaming its primers
-would trigger this) the script warns and caps by strand only (`mode position` in
-`normalise.txt`); the input validator announces that case as `bed_primers_unpairable`
-and `samtools ampliconclip` is unaffected.
-In segmented runs each segment is normalised with the whole BED and the other segments'
-amplicons are ignored; a contig with no amplicon in the BED is capped by strand only
-(every read is `unassigned`), with a warning.
+streams `samtools view -h` twice. Pass 1 pairs proper-pair mates by QNAME
+(ampliconclip moves POS without rewriting the mate's PNEXT), assigns each
+record to the amplicon whose outer span contains it (10 bp tolerance) and
+sweeps every position left to right: while a stratum (strand, or strand ×
+amplicon with a scheme) is below its share of `min(target, original depth)`,
+its latest-starting pending unit (a record, or both mates) is kept whole.
+Selection ignores read content, so the kept set is a fair sample of the
+alleles at a position. Pass 2 re-emits the kept records in input order, so
+the output stays coordinate-sorted and two runs over the same input are
+byte-identical. Secondary records are dropped and counted; supplementary
+records are single-record units. A record that fits no single amplicon is a
+skip-amplicon product (`interior_primer`, when it contains a whole primer
+interval) or `unassigned`; both form an extra stratum per strand and are
+capped like any amplicon. Amplicons are paired from the BED by the
+`<prefix>_<n>_(LEFT|RIGHT)[_alt]` naming convention; when the names do not
+parse, the script pairs primers by order within the strand column, and when
+the strand column is missing too it caps by strand only (`mode position`),
+which the input check announces as `bed_primers_unpairable`. In segmented
+runs each segment is normalised with the whole BED; a contig with no amplicon
+in the BED is capped by strand only, with a warning.
 
-Before writing anything the script re-derives the depth from its kept flags
-and refuses a result where the final depth is below `min(target, original)`
-at any position, so every read is kept wherever the original depth is below
-the target and the `--minimum-coverage` masks are unchanged there. That lower
-bound is the only invariant. Kept depth has no hard upper bound: units kept
-at earlier positions are never dropped, so coverage boundaries, amplicon
-overlaps and long reads of varying length accumulate above the target.
-Measured at target 100: on the Illumina fixture (ARTIC V3, scheme given) the
-maximum was 218 records (118 on one strand; 25 positions above 200), on the
-nanopore fixture 222 without a scheme and 237 with one (202 on one strand;
-737 positions above 200, 404 above the 216 at which Clair3 2.0.2 rescales its
-pileup tensor), and 236 on a 29,000x copy of the Illumina sample. Budget for
-about 2.5x the target.
+Guarantees and limits:
 
-What the stratified split does and does not preserve, measured on the same
-fixtures at the capped positions:
-
-- Strand ratio, approximately: the per-position strand fraction moved by
-  median 0.016, p95 0.053, max 0.098 on Illumina; on nanopore by median
-  0.021, p95 0.158, max 0.207 (40 % of capped positions moved by more than
-  0.04), because long reads kept upstream fill a position before its own
-  split is applied.
-- Amplicon mix in overlaps: **not** the original proportions. Reads kept while
+- The final depth is never below `min(target, original)` at any position (the
+  script verifies this before writing), so every read is kept wherever the
+  original depth is below the target and the `--minimum-coverage` masks are
+  unchanged.
+- Kept depth has no hard upper bound: units kept at earlier positions are
+  never dropped, so coverage boundaries, amplicon overlaps and long reads
+  accumulate above the target, up to about 2.5× it on the test fixtures.
+- The strand ratio is approximately preserved; on nanopore, long reads kept
+  upstream can shift it noticeably at a minority of positions.
+- Amplicon proportions in an overlap are **not** preserved: reads kept while
   only the upstream amplicon covered a position stay, so an overlap becomes a
   roughly even mix of the amplicons covering it (the behaviour of ARTIC's
-  per-amplicon cap): with the scheme the upstream-amplicon fraction moved by
-  median 0.092, p95 0.257, max 0.363 (nCoV-2019_67 against 68 at 20,506: 159
-  against 975 records before, 91 against 90 after). Without the scheme the
-  upstream amplicon owns the overlap (median 0.169, p95 0.493, max 0.689),
-  which is why amplicon data should always be run with `--primer-scheme`.
-  An amplicon-specific artefact can therefore rise from a minority of the
-  trimmed reads to about half of the normalised reads at an overlap.
-- Allele fractions become a sample of size `target`. Within a stratum the
-  selection ignores read content (latest start first, then input order), and
-  the kept set's indel and artefact fractions stayed within sampling noise of
-  the trimmed BAM on the benchmark's three test BAMs (insertion-bearing reads
-  7 / 4 / 19 % kept against 9 / 5 / 14 % trimmed, a deletion 13 % against
-  9 %, a LoCost primer-edge artefact 44 % against 44 %). A site near a
-  threshold is a binomial draw, though: at n = 100 a true 65 % allele falls
-  below the `--af-threshold` bar of 0.6 with probability 0.125 (0.012 at
-  70 %) on either platform, where the position becomes `N` (Illumina:
-  `samtools consensus -c`; nanopore: the filter masks a ratio between 0.5
-  and the bar, and only below 0.5, probability 0.001 at 65 %, discards the
-  call and writes the reference; benchmark sample NORW-F0917, position 4303:
-  69 % in the trimmed BAM, 0.58 in the normalised one). On nanopore the ratio's
-  denominator excludes deletion-bearing reads, so n is below the target and
-  the noise larger. Nothing in `summary.tsv` or the report flags a sampled
-  call; to check one, `viralconseq rerun <run>/config.yml --set
-  normalise_depth=0` and diff the consensus.
-- Supplementary records are single-record units and occupy slots that Clair3
-  ignores (`--excl-flags 2316`) and `samtools consensus` counts; 1.2 % of the
-  nanopore fixture's records.
+  per-amplicon cap). Without the scheme the upstream amplicon owns the
+  overlap, which is why amplicon data should always be run with
+  `--primer-scheme`.
+- Allele fractions at capped positions are a sample of size `target`. A site
+  near a threshold is a binomial draw: at n = 100 a true 65 % allele falls
+  below the 0.6 bar with probability 0.125 (0.012 at 70 %), where the position
+  becomes `N` (on nanopore the reference is written only when the sampled
+  ratio drops below 0.5, probability 0.001). Nothing in `summary.tsv` or the
+  report flags a sampled call; to check one, rerun with
+  `--set normalise_depth=0` and diff the consensus.
+- Supplementary records occupy slots that Clair3 ignores and
+  `samtools consensus` counts.
 
-On the SARS-CoV-2 test data at 100x the Illumina sample (scheme given) went
-from 194,452 to 25,569 records in 4 s and 86 MB, the nanopore sample (no
-scheme) from 7,641 to 4,384; a 5.8 M-record, 29,000x copy of the Illumina
-sample (the dengue regime) took 50 s and 279 MB, two streaming passes over
-`samtools view`. The depth table reports both before and after per strand.
 `normalise.txt` holds the mode (`off` / `position` / `amplicon`), the target,
-record counts in / kept / dropped, secondary and unmapped drops, orphan
-mates, unassigned and interior-primer counts before and after, mean record
-span before and after (a selection bias would show here; latest-start-first
-lowers it slightly, 148.8 to 140.2 bp on the Illumina fixture and 596 to 569
-on the nanopore one), the number and percentage of capped positions and
-`self_check ok`.
+record counts in / kept / dropped, secondary and unmapped drops, orphan mates,
+unassigned and interior-primer counts before and after, mean record span
+before and after, the number and percentage of capped positions and
+`self_check ok`. The depth table reports before and after per strand.
 
 ## Mapped-read gate (Nanopore)
 
@@ -297,7 +257,7 @@ gate on Illumina: `samtools consensus` tolerates an empty BAM, and
 
 | Rule | Env | Command(s) | Flags and why | Threads / mem_mb | Measured max_rss |
 |---|---|---|---|---|---|
-| `infer_consensus_sequence` | `alignment` | `samtools consensus -a -d {minimum_depth} -m simple -q -c {af_threshold} --show-ins yes normalised/<sample>.sorted.bam -o final_consensus/<sample>.consensus.fasta` | `-a`: emit every reference position, uncovered ones as `N`. `-d`: positions below `--minimum-coverage` become `N`. `-m simple`: frequency-based calling. `-q`: weight the base counts by base quality *(inferred)*. `-c`: an allele is called when it holds at least `--af-threshold` (default 0.51) of the counts. `--show-ins yes`: keep insertions relative to the reference. | 1 | 8 |
+| `infer_consensus_sequence` | `alignment` | `samtools consensus -a -d {minimum_depth} -m simple -q -c {af_threshold} --show-ins yes normalised/<sample>.sorted.bam -o final_consensus/<sample>.consensus.fasta` | `-a`: emit every reference position, uncovered ones as `N`. `-d`: positions below `--minimum-coverage` become `N`. `-m simple`: frequency-based calling. `-q`: weight the base counts by base quality *(inferred)*. `-c`: an allele is called when it holds at least `--af-threshold` (default 0.6) of the counts. `--show-ins yes`: keep insertions relative to the reference. | 1 | 8 |
 | `generate_vcf_consensus` | `alignment` | If the consensus has any A/C/G/T (an `awk` test): `GSAlign -r <ref> -q <consensus> -o <prefix> -fmt 1 -sen`, then `bgzip` + `tabix -p vcf` on `<prefix>.vcf` and `rm <prefix>.maf`. Otherwise, or when GSAlign exits non-zero or writes an empty VCF: a header-only "mock" VCF, and a one-line `WARNING` on the console. | `-fmt 1`: MAF alignment output, deleted afterwards (only the VCF is wanted). `-sen`: sensitive mode, for a consensus divergent from the reference *(inferred)*. The gate exists because GSAlign produces no VCF for an all-N query and the run would otherwise abort under `set -euo pipefail`. | 1 | 2 |
 | `detect_isnv` (`run_isnv` only) | `consensus` | `lofreq indelqual --dindel -f <ref> -o isnvs/<sample>.lofreq.sorted.bam trimmed.bam; samtools index`; `lofreq call-parallel --pp-threads {threads} --call-indels -f <ref> -o tmp.vcf lofreq.bam`; `bcftools view -i 'INFO/AF<0.5 & INFO/AF>={af_isnv_threshold}' tmp.vcf -Oz -o isnvs/<sample>.isnvs.vcf.gz; tabix` | `indelqual --dindel`: insert indel base qualities with the Dindel model, required before `--call-indels`. `--pp-threads`: parallel calling over regions. `--call-indels`: report indels as well as SNVs. The `bcftools view` filter keeps only sub-consensus alleles (`AF < 0.5`) at or above `--af-isnv-threshold` (default 0); LoFreq's own default filters still apply. The re-qualified BAM and the raw VCF are `temp()`. | `cpus(detect_isnv)` | 74 |
 | `summarize_isnvs` (entry file; `run_isnv` only) | `utils` | for each sample: `bcftools view -H <isnvs.vcf.gz> \| wc -l`, appended to `isnvs/isnvs_summary.tsv` (`sample`, `[segment,]`, `number_of_isnvs`) | `-H`: records only, no header, so the line count is the variant count. | 1 | 1 |
@@ -378,13 +338,13 @@ viralQC inputs.
 
 | Rule | Env | Command(s) | Flags and why | Threads / mem_mb | Measured max_rss |
 |---|---|---|---|---|---|
-| `versions_alignment` | `alignment` | `python python/tool_versions.py --tools minimap2 samtools bedtools GSAlign gofasta --output other/versions/alignment.tsv` | Probes each tool's version command inside the env that will run it. Always in the DAG. | 1 | 1 / 3 |
+| `versions_alignment` | `alignment` | `python python/tool_versions.py --tools minimap2 samtools bedtools GSAlign gofasta python --output other/versions/alignment.tsv` | Probes each tool's version command inside the env that will run it. Always in the DAG. | 1 | 1 / 3 |
 | `versions_qc` | `qc` | `... --tools fastp multiqc` | Illumina only. | 1 | 73 |
 | `versions_consensus` | `consensus` | `... --tools lofreq bcftools` | Illumina and `run_isnv` only (no env is built just to read a version). | 1 | 1 |
 | `versions_clair3` | `clair3` | `... --tools clair3 samtools bcftools` | Nanopore only. | 1 | 1 |
 | `versions_utils` | `utils` | `... --tools python samtools bcftools seqtk` | Always. | 1 | 1 / 19 |
 | `versions_viralqc` | `viralqc` | `... --tools nextclade blastn --python-dists viralQC` | `run_viralqc` only; viralQC's version is read from Python package metadata. | 1 | 1 / 3 |
-| `versions` | `utils` | `printf` the `component`/`version` header, `viralconseq` (`viralconseq_version` from the config) and `snakemake`; `tail -n +2` every fragment through `awk '!seen[$0]++'`; when viralQC ran, `viralqc_nextclade_datasets_built` (second line of `.nextclade_datasets_ok`, `unknown` if empty) and `viralqc_db` | The `awk` lists a tool pinned in two envs (samtools, bcftools) once when the versions agree and twice when they differ. | 1 | 1 / 1 |
+| `versions` | `utils` | `printf` the `component`/`version` header, `viralconseq` (`viralconseq_version` from the config) and `snakemake`; a `seqkit` line when seqkit is on `PATH`; `tail -n +2` every fragment through `awk '!seen[$0]++'`; when viralQC ran, `viralqc_nextclade_datasets_built` (second line of `.nextclade_datasets_ok`, `unknown` if empty) and `viralqc_db` | The `awk` lists a tool pinned in two envs (samtools, bcftools) once when the versions agree and twice when they differ. | 1 | 1 / 1 |
 | `run_config` | none (`run:` block) | `shutil.copyfile(<last --configfile>, config.yml)`; when the config file *is* `<run>/config.yml` (Snakemake would already have deleted it), `yaml.safe_dump` of the in-memory config instead | Copying preserves the section comments `ConfigGenerator` writes. Runs in the Snakemake process, which is why its `max_rss` is the interpreter's footprint, not a tool's. | 1 | 97 / 97 |
 | `organize_files` (entry file) | `utils` | `mkdir -p samples/<sample>[/<segment>]` and one `ln -sf` per artefact; `touch samples/.organized` | Per-platform link sets (see [Output Layout](output.md)): Illumina links `fastp.html`, `consensus.vcf.gz(.tbi)`, `isnvs.vcf.gz(.tbi)` (`run_isnv`), `stats.tsv`, `consensus.fasta`, `raw_mapped_reads.bam(.bai)`, `trimmed_mapped_reads.bam(.bai)`, `normalised_mapped_reads.bam(.bai)`, `normalise_depth.tsv`, `normalise_amplicons.tsv`, `viralqc.tsv` (`run_viralqc`); Nanopore links `consensus.vcf.gz`, `raw.vcf.gz`, `variant_filter.tsv`, `mask.bed`, `clair3_model.txt`, `status.txt`, `stats.tsv`, `table_cov_basewise.txt`, `consensus.fasta`, the three BAMs, the two normalisation tables and `viralqc.tsv`. The sentinel exists because a symlink tree has no single file to declare. | 1 | 1 / 5 |
 | `collect_benchmarks` | `utils` | `python python/collect_benchmarks.py --logs-dir logs/ --samples <ids> [--segmented] --cpus <rule>=<threads> ... --exclude <its own benchmark> --output benchmark.tsv` | Walks `logs/` for `*.benchmark.txt`, derives `rule`, `segment` and `target` from the path, labels run-level rows `All`, fills the `threads` column from `--cpus` (one entry per rule in `THREADED_RULES`), and orders per-sample rows first. Depends on `TERMINAL_INPUTS`, the `organize_files` sentinel, `versions.tsv` and `config.yml`, so it is the last job of every run. | 1 | — (excludes itself) |
@@ -461,7 +421,8 @@ run-level rules that do run per segment (`align_consensus_to_reference_genome`,
 Every `shell:` body starts with `set -euo pipefail` and redirects into its log
 (`exec > {log} 2>&1`, or `exec 2> {log}` where stdout is data, as in
 `map_reads`, `check_mapped_reads`, `prepare_viralqc_input`, `split_viralqc_results`,
-`versions` and `collect_benchmarks`); the `script:` rules redirect from Python.
+`versions` and `collect_benchmarks`; `calculate_coverage_basewise` is a
+one-liner with an inline `2> {log}`); the `script:` rules redirect from Python.
 Nothing is only on the console except the one-line `WARNING`s of
 `generate_vcf_consensus`, the Nanopore `infer_consensus_sequence` gate and
 `run_viralqc`. `collect_benchmarks.py` relies on this layout to attribute each

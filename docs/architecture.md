@@ -1,5 +1,9 @@
 # Architecture
 
+```{note}
+Developer reference. You do not need this page to run viralconseq; it describes how the package is put together for people who change it.
+```
+
 viralconseq is a thin Python orchestration layer over Snakemake workflows. The
 Python code validates inputs, writes a YAML config, and launches one of four
 Snakemake workflows; all the bioinformatics lives in the `.smk` rule files.
@@ -42,7 +46,7 @@ per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
 | `create_samplesheet.py` | `create-samplesheet` subcommand. |
 | `rerun_cli.py` | `rerun` subcommand: replays a saved config (`--dry-run`, `--unlock`, `--keep-going`, `--set KEY=VALUE` written back with a `.bak`). |
 | `report_cli.py`, `report.py` | `create-report` subcommand: rebuilds `report.html` for a finished run directory by driving `scripts/python/build_report.py` with the parameters from `<run>/config.yml`. |
-| `setup_cli.py` | `setup` subcommand: pre-builds per-rule conda envs into a shared cache, downloads the viralQC databases via `scripts/viralqc_setup.smk` and the Clair3 models via `scripts/clair3_setup.smk`. |
+| `setup_cli.py` | `setup` subcommand: pre-builds per-rule conda envs into a shared cache, downloads the viralQC databases via `scripts/viralqc_setup.smk` and the Clair3 models through `scripts/python/fetch_clair3_model.py`, called in-process. |
 | `clair3_models.py` | Basecall-tag parsing and the Clair3 model resolver behind `--clair3-model auto` (a port of artic's `choose_model` over `constants.Clair3Models.MANIFEST`), plus checkpoint validation. |
 | `_orchestrator.py` | Shared `run_pipeline` skeleton (resolve → validate → config → manifest → run) with structured error handling. |
 | `validators.py` | File existence, sample-sheet parsing, reference/primer checks, the viralQC database check (`validate_viralqc_database`), input sanitization, and content-level input-integrity orchestration (`validate_consensus_input_integrity`). |
@@ -54,8 +58,8 @@ per-rule conda envs               viralconseq/scripts/envs/*.yaml  (--use-conda)
 | `exceptions.py` | Typed error hierarchy with machine-readable `code`s. |
 | `logging_config.py` | Central logging (run id, text/JSON). |
 | `provenance.py` | `run_manifest.json` (version, config, input checksums, outcome) and the copy of the Snakemake transcript to `logs/snakemake.log`. |
-| `scripts/*.smk`, `scripts/rules/*.smk` | The actual workflows (see [workflow.md](workflow.md) for every rule's command). `rules/common.smk` is included first by every entry file (exact-sample wildcard constraints, required-key and flag-string guards, `run.log` hooks, `LOG`/`BENCH`/`cpus`/`ram_mb` helpers); `rules/viralqc.smk` is the consensus-QC stage; `rules/collect.smk` builds `summary.tsv` and `consensus/`; `rules/report.smk` the report; `rules/provenance.smk` (included last) `versions.tsv`, `config.yml` and `benchmark.tsv`. `scripts/viralqc_setup.smk` and `scripts/clair3_setup.smk` are the downloads driven by `setup`. |
-| `scripts/python/*.py` | Helpers. `calculate_assembly_stats.py` and `rename_sequences.py` run via Snakemake's `script:` directive (injected `snakemake` global); the rest (`tool_versions.py`, `collect_benchmarks.py`, `build_summary.py`, `collect_consensus.py`, `build_report.py`, `fetch_clair3_model.py`) are stdlib argparse scripts run via `shell:` inside a per-rule env, so their tests drive `main(argv)` exactly as the workflow does. |
+| `scripts/*.smk`, `scripts/rules/*.smk` | The actual workflows (see [workflow.md](workflow.md) for every rule's command). `rules/common.smk` is included first by every entry file (exact-sample wildcard constraints, required-key and flag-string guards, `run.log` hooks, `LOG`/`BENCH`/`cpus`/`ram_mb` helpers); `rules/viralqc.smk` is the consensus-QC stage; `rules/collect.smk` builds `summary.tsv` and `consensus/`; `rules/report.smk` the report; `rules/provenance.smk` (included last) `versions.tsv`, `config.yml` and `benchmark.tsv`. `scripts/viralqc_setup.smk` is the database download driven by `setup`. |
+| `scripts/python/*.py` | Helpers. `calculate_assembly_stats.py` and `rename_sequences.py` run via Snakemake's `script:` directive (injected `snakemake` global); the rest (`tool_versions.py`, `collect_benchmarks.py`, `build_summary.py`, `collect_consensus.py`, `build_report.py`, `normalise_depth.py`, `filter_variants.py`) are stdlib argparse scripts run via `shell:` inside a per-rule env, so their tests drive `main(argv)` exactly as the workflow does. `fetch_clair3_model.py` is the exception: it is imported by `setup_cli.py` and `constants.py` and never run by a rule. |
 | `scripts/templates/report.html` | The report's page shell (vanilla JS + SVG, `/*{{DATA}}*/` marker), shipped as package data. |
 
 ## The config is the contract

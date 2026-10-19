@@ -1,123 +1,95 @@
 # Installation
 
-viralconseq is a Python package that launches Snakemake workflows. The core runtime dependencies are listed in the conda environment file `environment.yml`; the per-rule bioinformatics tools (minimap2, samtools, fastp, Clair3, …) live in `viralconseq/scripts/envs/` and are built by Snakemake on demand.
+## Requirements
 
-## Install from PyPI (recommended)
+- Linux or macOS (on Apple Silicon see the note under [Troubleshooting](#troubleshooting))
+- Python 3.10 or 3.11
+- conda, mamba or micromamba: the bioinformatics tools run in per-step conda environments that viralconseq builds for you
+- [seqkit](https://bioinf.shenwei.me/seqkit/): used to validate every FASTQ before a run starts
 
-The viralconseq CLI is published on PyPI, so the quickest install is:
+The project's `environment.yml` provides Python, Snakemake, conda and seqkit in one environment, so the two routes below both start from it.
+
+## Install from PyPI
 
 ```bash
+conda env create -n viralconseq -f https://raw.githubusercontent.com/InstitutoTodosPelaSaude/viralconseq/main/environment.yml
+conda activate viralconseq
 pip install viralconseq
 ```
 
-```{note}
-conda (or mamba/micromamba) is still required **at runtime**. viralconseq orchestrates
-Snakemake, which builds the per-rule tool environments (aligner, variant callers, QC tools)
-via `--use-conda` on first run — so conda/mamba must be installed and on your `PATH`. Pre-build
-those environments once with `viralconseq setup --pipelines all` (see [First-time environment
-setup](#first-time-environment-setup) below).
+If you install with pip into an environment of your own instead, make sure conda and seqkit are on your `PATH` (`conda install -c bioconda seqkit`, or the static seqkit binary from its GitHub releases). Without seqkit, only `--skip-input-validation` runs.
 
-[seqkit](https://bioinf.shenwei.me/seqkit/) must be on `PATH` as well: the input integrity
-check runs it over every FASTQ before Snakemake starts. The conda environment file installs
-it; with a pip-only install, get it from bioconda (`conda install -c bioconda seqkit`) or
-drop the static binary from its GitHub releases into a directory on `PATH`.
-`--skip-input-validation` is the only way to run without it.
-```
+## Install from source
 
-## Clone and create the environment
-
-To work from a source checkout instead (required for development), the one-command route is
-`setup.sh`: it locates conda, mamba or micromamba (falling back to `$CONDA_EXE`/`$MAMBA_EXE` and
-the usual install roots when none is on `PATH`), creates or updates the `viralconseq` environment
-from `environment.yml`, runs `pip install -e ".[dev]"` inside it and then `viralconseq setup
---pipelines all`. Re-running it is safe: the environment is updated in place and assets already
-present are skipped.
+`setup.sh` does everything in one command: it finds conda, mamba or micromamba, creates or updates the `viralconseq` environment from `environment.yml`, installs the package into it and runs the first-time setup described below. Re-running it is safe; what is already in place is skipped.
 
 ```bash
 git clone https://github.com/InstitutoTodosPelaSaude/viralconseq.git
-cd viralconseq/
-bash setup.sh                        # environment + package + per-rule envs, viralQC databases, Clair3 models
-bash setup.sh --no-setup             # environment + package only
-bash setup.sh --skip-clair3-models   # Illumina-only site: no Clair3 models
+cd viralconseq
+bash setup.sh                        # environment, package, tool environments, databases, Clair3 models
+bash setup.sh --no-setup             # environment and package only
+bash setup.sh --skip-clair3-models   # Illumina-only site
 ```
 
-`bash setup.sh --help` lists every option; `--conda-prefix`, `--viralqc-db`, `--clair3-model-dir`,
-`--clair3-models`, `--skip-viralqc-db` and `--skip-clair3-models` are passed straight through to
-`viralconseq setup`, `--cores` sets its `--threads`, `--env-name` (or `$VIRALCONSEQ_ENV_NAME`)
-picks the environment name and `$VIRALCONSEQ_CONDA_BIN` forces a particular conda front end.
-On WSL keep `--conda-prefix` on the Linux filesystem (the default `~/.cache/viralconseq/conda-envs`
-already is), not under `/mnt/c`.
+`bash setup.sh --help` lists the remaining options (`--conda-prefix`, `--viralqc-db`, `--clair3-model-dir`, `--clair3-models`, `--skip-viralqc-db`, `--cores`, `--env-name`).
 
 The same steps by hand:
 
 ```bash
-conda env create -f environment.yml
-conda activate viralconseq
-```
-
-Or with **micromamba** (recommended on macOS with Apple Silicon):
-
-```bash
-micromamba env create -f environment.yml --platform osx-64
-micromamba activate viralconseq
-```
-
-```{warning}
-The nanopore variant caller is Clair3 2.x (`viralconseq/scripts/envs/clair3.yaml`), which pulls in PyTorch (CPU build, roughly 1–2 GB on disk) and Python 3.11. bioconda publishes it for linux-64 and osx-64 only; on macOS with Apple Silicon (M1 or later) that environment may not install. Build the environments once with `viralconseq setup` and keep `--conda-prefix` on a local disk (on WSL, not under `/mnt/c`).
-```
-
-## Troubleshooting
-
-### `CreateCondaEnvironmentException` with a `repodata_shards.msgpack.zst` 404
-
-If the first pipeline run aborts on `Creating conda environment .../qc.yaml ...` with a chained `HTTPError: 404` for `repodata_shards.msgpack.zst` followed by a `JSONDecodeError`, you are hitting a known incompatibility between conda 26.x's libmamba shards path and bioconda (which does not publish shards). `environment.yml` already pins `conda<26` and `conda-libmamba-solver<26` to avoid this, so the fix is to **rebuild the `viralconseq` env from the pinned file**:
-
-```bash
-conda deactivate
-conda env remove -n viralconseq
 conda env create -n viralconseq -f environment.yml
 conda activate viralconseq
 pip install -e .
 ```
 
-If you cannot rebuild the env (for example, on a shared cluster install), the manual escape hatch is to fall back to the classic solver:
+## First-time setup
+
+After installing, run once:
 
 ```bash
-conda config --set solver classic
+viralconseq setup --pipelines all
 ```
 
-This is why `environment.yml` pins `conda<26` / `conda-libmamba-solver<26`: newer
-solvers query `repodata_shards.msgpack.zst` from bioconda (not published) and
-mishandle the resulting 404. If you hit environment-creation errors, set the
-classic solver as shown above.
+This builds the per-step tool environments, downloads the viralQC databases (Nextclade datasets and the NCBI RefSeq viral BLAST set) and downloads the Clair3 models that `viralconseq consensus nanopore` needs. Expect about 1 GB on disk for the databases and 15–60 minutes in total, depending on your connection. Every later run reuses the three caches:
 
-## Verify the installation
+| Cache | Default location | Override |
+|---|---|---|
+| Tool environments | `~/.cache/viralconseq/conda-envs/` | `--conda-prefix`, `$VIRALCONSEQ_CONDA_PREFIX` |
+| viralQC databases | `~/.cache/viralconseq/viralqc-db/` | `--viralqc-db`, `$VIRALCONSEQ_VIRALQC_DB` |
+| Clair3 models | `~/.cache/viralconseq/clair3-models/` | `--clair3-model-dir`, `$VIRALCONSEQ_CLAIR3_MODELS` |
+
+The environment variables are honoured by `viralconseq setup` and by every `viralconseq consensus` run, which is the simplest way to share the caches on a cluster. `viralconseq setup --pipelines consensus-illumina` builds only what the Illumina workflow needs; `--skip-viralqc-db` and `--skip-clair3-models` skip a download (run the pipeline with `--no-run-viralqc` if you skipped the databases). The [commands reference](commands.md#viralconseq-setup) lists every option.
+
+On a node without internet access, run the setup elsewhere and copy the three cache directories over. The consensus workflows then run offline, but the viralQC step still contacts the Nextclade server for a small index on every run, so pass `--no-run-viralqc` there.
+
+## Verify
 
 ```bash
 viralconseq --version
 viralconseq --help
 ```
 
-## First-time environment setup
+## Troubleshooting
 
-After installing viralconseq, build the per-rule conda environments once with:
+**Environment creation fails with a `repodata_shards.msgpack.zst` 404.** conda 26 queries a sharded repodata file that bioconda does not publish and mishandles the resulting 404 (`CreateCondaEnvironmentException` with a chained `HTTPError: 404` and `JSONDecodeError`). `environment.yml` pins `conda<26` and `conda-libmamba-solver<26` to avoid this, so rebuild the `viralconseq` environment from the pinned file:
 
 ```bash
-viralconseq setup --pipelines all
+conda deactivate
+conda env remove -n viralconseq
+conda env create -n viralconseq -f environment.yml
+conda activate viralconseq
+pip install viralconseq      # or pip install -e . from a checkout
 ```
 
-This downloads and resolves every workflow dependency into `~/.cache/viralconseq/conda-envs/` (override with `--conda-prefix PATH`, or set `$VIRALCONSEQ_CONDA_PREFIX`) and then downloads the viralQC databases (Nextclade datasets + the NCBI RefSeq viral BLAST set, about 1 GB on disk, several GB while downloading, typically 15–60 min) into `~/.cache/viralconseq/viralqc-db/` (override with `--viralqc-db PATH` or `$VIRALCONSEQ_VIRALQC_DB`). Future `viralconseq consensus` runs reuse both caches, which speeds up first runs and isolates env-creation and download failures from real pipeline runs.
+If you cannot rebuild the environment (a shared cluster install, for example), fall back to the classic solver with `conda config --set solver classic`.
 
-On a node without internet access, build the envs and databases elsewhere and copy the two cache directories over, and run the pipeline with `--no-run-viralqc`: the consensus workflows themselves are offline, but the viralQC step still contacts the Nextclade server for a small index on every run. To skip the database download entirely use `viralconseq setup --skip-viralqc-db`.
+**macOS with Apple Silicon.** The Nanopore variant caller, Clair3 2.x, pulls in a CPU build of PyTorch (1–2 GB) and is published by bioconda for linux-64 and osx-64 only. Create the environment with `micromamba env create -f environment.yml --platform osx-64` and build the tool environments once with `viralconseq setup`; the Illumina workflow is unaffected.
 
-Run `viralconseq setup --pipelines consensus-illumina --dry-run` first to inspect what would be built.
+**WSL.** Keep the caches on the Linux filesystem (the defaults under `~/.cache` already are), not under `/mnt/c`.
 
 ## Development install
 
-To work on viralconseq itself, install the optional `dev` extras (linters and tests):
+To work on viralconseq itself, install the `dev` extras (linters, type checker and the test suites) and read [CONTRIBUTING.md](https://github.com/InstitutoTodosPelaSaude/viralconseq/blob/main/CONTRIBUTING.md):
 
 ```bash
 pip install -e ".[dev]"
 ```
-
-See [CONTRIBUTING.md](https://github.com/InstitutoTodosPelaSaude/viralconseq/blob/main/CONTRIBUTING.md) for the full development workflow.

@@ -1,35 +1,54 @@
 # viralconseq Documentation
 
-**viralconseq** infers consensus genome sequences from viral high-throughput sequencing data. It is a Python package that validates inputs, writes a Snakemake configuration and launches one of four reference-guided consensus workflows (Illumina or Nanopore reads, single or segmented reference). All bioinformatics steps run inside per-rule conda environments managed by Snakemake.
-
-viralconseq runs on *nix systems and processes entire sequencing runs in minimal time on a regular computer.
+**viralconseq** infers consensus genome sequences from viral high-throughput sequencing data. Give it a sample sheet, a reference genome and, for amplicon data, a primer scheme; it validates the inputs and runs a reference-guided Snakemake workflow for Illumina paired-end or Nanopore reads, against a single or a segmented reference. It runs on Linux and macOS and processes a whole sequencing run on a regular computer.
 
 ## Main features
 
-- **Reference-guided consensus assembly** for Illumina paired-end and Nanopore long reads
+- **Reference-guided consensus assembly** for Illumina paired-end and Nanopore reads
 - **Amplicon support** — primer clipping from a BED scheme, with primer/reference consistency checks
 - **Segmented viruses** — a multi-record reference FASTA is split per segment and every segment is assembled in one run
+- **Consensus QC** — every consensus sequence is assigned a virus and clade and graded A–D by [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC)
 - **Intra-host variant calling** (Illumina, optional) with LoFreq
-- **Consensus QC** — every consensus sequence is assigned a virus and clade and scored A–D by [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC) (Nextclade + BLAST); opt out with `--no-run-viralqc`
-- **Content-level input validation** — truncated FASTQs, protein FASTAs or mismatched primer schemes are rejected before the run starts
+- **Input validation before the run starts** — truncated FASTQs, protein FASTAs or mismatched primer schemes are rejected up front
+- **Nanopore models resolved for you** — the Clair3 model is read from the basecalling tag in the reads; barcodes without mapped reads get an all-N consensus instead of failing the run
 - **One place to look** — `summary.tsv` with a status per sample, a share-ready `consensus/` directory and a self-contained interactive `report.html`
-- **Nanopore models resolved for you** — `--clair3-model auto` reads the basecalling model from the reads; models are cached by `viralconseq setup`; barcodes without mapped reads degrade to an all-N consensus instead of failing the run
-- **Reproducibility** — every run writes `versions.tsv`, a copy of its config, `benchmark.tsv` and a `run_manifest.json` with input checksums; `viralconseq rerun <run>/config.yml` replays it; per-rule conda environments are pinned
+- **Reproducible** — every run records tool versions, its configuration, input checksums and per-rule benchmarks, and can be replayed with `viralconseq rerun`
 
-## Documentation contents
+## Where to start
+
+New to viralconseq? Install it, then follow the [tutorial](tutorial/index.md): it takes you from a fresh install to finished consensus genomes on example data. The reference pages describe every command, option and output file. The developer pages describe how the package and the workflows are put together.
 
 ```{toctree}
 :maxdepth: 2
+:caption: Getting started
 
 installation
 tutorial/index
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Reference
+
 usage
 commands
+output
+notes
+```
+
+```{toctree}
+:maxdepth: 1
+:caption: For developers
+
 architecture
 workflow
 embedding
-output
-notes
+```
+
+```{toctree}
+:maxdepth: 1
+:caption: About
+
 citation
 ```
 

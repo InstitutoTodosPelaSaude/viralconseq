@@ -20,7 +20,7 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 ├── other/versions/                   # per-environment fragments behind versions.tsv
 ├── .snakemake/                       # Snakemake's own state (locks, metadata, transcripts)
 ├── assembly/
-│   ├── assembly_stats_summary.csv    # deprecated pre-0.2.0 shape of summary.tsv (removed in 0.3.0)
+│   ├── assembly_stats_summary.csv    # deprecated pre-0.2.0 shape of summary.tsv (to be removed)
 │   ├── coverage_stats/
 │   │   └── {sample}.table_cov_basewise.txt
 │   ├── consensus/                    # non-segmented
@@ -42,7 +42,7 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 │   ├── outputs/results.tsv           # one row per consensus sequence
 │   ├── outputs/...                   # viralQC's own sub-directories (nextclade_results/, blast_results/, gff_files/, ...)
 │   ├── per_sample/                   # per-sample slices of results.tsv
-│   └── viralqc_status.txt            # ok / partial / failed and why
+│   └── viralqc_status.txt            # ok / partial / failed / skipped and why
 ├── isnvs/isnvs_summary.tsv           # illumina + --run-isnv only
 ├── samples/
 │   └── sample-{sample_id}/           # symlinks to the per-sample results (note the prefix)
@@ -104,7 +104,7 @@ deleted once the run is finished.
 | File | Description |
 |------|-------------|
 | `summary.tsv` | One row per sample (per sample and segment when segmented): status, read counts, depth, breadth of coverage, consensus length and N content, iSNV count, viralQC virus / clade / grade, Clair3 model. The place to start; columns below |
-| `assembly/assembly_stats_summary.csv` | Deprecated: the pre-0.2.0 table (fractions 0–1, mean depth) derived from the same rows; removed in 0.3.0 |
+| `assembly/assembly_stats_summary.csv` | Deprecated: the pre-0.2.0 table (fractions 0–1, mean depth) derived from the same rows; still written, to be removed in a later release |
 | `report.html` | Interactive, self-contained report of the run (no external resources): headline figures, a sortable/filterable table of every `summary.tsv` row, a per-sample panel with the depth trace, masked regions, variant counts, read QC (Illumina) or Clair3 model and mapped-read gate (nanopore), and the viralQC verdict; footer with tool versions and run parameters. The page refuses to render numbers that disagree with `summary.tsv`. Rebuild it with `viralconseq create-report <run>` |
 | `consensus/consensus.fasta` | Every consensus pooled into one multi-FASTA (one-line sequences, no reference record); `consensus/consensus.cov<T>.fasta` keeps only the samples whose `coverage_min_depth` reaches `--consensus-coverage-threshold` (default 70 %), ready to share or submit. Segmented runs write one pair per segment |
 | `samples/sample-{id}/consensus.fasta` | Final consensus sequence |
@@ -114,7 +114,7 @@ deleted once the run is finished.
 | `assembly/coverage_stats/sample-{id}.table_cov_basewise.txt` | Per-base coverage table (`RNAME`, `POS`, `DEPTH`) |
 | `samples/sample-{id}/raw_mapped_reads.bam` | Reads mapped to the reference, before primer clipping |
 | `samples/sample-{id}/trimmed_mapped_reads.bam` | Primer-clipped BAM; the source of every depth statistic, the nanopore mapped-read gate and the iSNV calls |
-| `samples/sample-{id}/normalised_mapped_reads.bam` | The primer-clipped BAM capped at `--normalise-depth` records per position (strand ratio approximately preserved; with a scheme every amplicon keeps a share of an overlap, but not in the original proportions; see [Workflow: Depth normalisation](workflow.md#depth-normalisation)); what `samtools consensus` / Clair3 read, so allele fractions at capped positions are a sample of this many records. Identical to the trimmed BAM with `--normalise-depth 0` |
+| `samples/sample-{id}/normalised_mapped_reads.bam` | The primer-clipped BAM capped at `--normalise-depth` records per position; what the consensus caller read. Identical to the trimmed BAM with `--normalise-depth 0`. See [Workflow: Depth normalisation](workflow.md#depth-normalisation) |
 | `samples/sample-{id}/normalise_depth.tsv` | Per reference position: depth before and after normalisation, total and per strand |
 | `samples/sample-{id}/normalise_amplicons.tsv` | Per amplicon (per contig without a scheme): span, mean depth and record counts before and after, plus `unassigned` and `interior_primer` (skip-amplicon) rows |
 | `assembly/consensus/final_consensus/samples_alignment.fasta` | All consensus sequences aligned to the reference (MSA-ready) |
@@ -169,9 +169,9 @@ row, even when nothing was assembled for it.
 | `viralqc_dataset`, `viralqc_dataset_version` | Nextclade dataset and version behind the clade call |
 | `clair3_model` | Clair3 model used for this sample (nanopore), else `NA` |
 | `masked_variant_sites` | Nanopore: Clair3 calls the filter masked (written as `N`) because their allele ratio lay between 0.5 and `--af-threshold`, or they cleared the ratio but not the quality bar or the ALT-read floor; see `variant_filter.tsv`. `NA` on Illumina |
-| `normalise_target` | Records per position the consensus caller saw after depth normalisation (`--normalise-depth`); `0` when switched off. Neither this table nor the report says which calls were affected by the sampling; `samples/sample-{id}/normalise_depth.tsv` shows where the cap applied |
+| `normalise_target` | Records per position the consensus caller saw after depth normalisation (`--normalise-depth`); `0` when switched off |
 | `mapped_reads_normalised` | Primary mapped records left in the normalised BAM (`mapped_reads` counts the trimmed BAM) |
-| `pct_positions_capped` | Percentage of reference positions where the cap dropped reads, so the consensus there was called from a sample of at most `normalise_target` records and the sampling caveat applies; `NA` when normalisation is off |
+| `pct_positions_capped` | Percentage of reference positions where the cap dropped reads, i.e. where the consensus was called from a sample of `normalise_target` records; `NA` when normalisation is off |
 
 `status` values, in the order they are tested:
 
@@ -186,12 +186,8 @@ row, even when nothing was assembled for it.
 
 `samples/sample-<id>/stats.tsv` is the single-row per-sample statistics file the
 summary is built from (same statistics columns, no viralQC). The deprecated
-`assembly/assembly_stats_summary.csv` keeps the pre-0.2.0 header
-(`sample_name`, `number_of_reads`, `number_of_trim_paired_reads`,
-`number_of_mapped_reads`, `average_depth`, `percentage_above_{10,100,1000}x`,
-`horizontal_coverage`) with fractions 0–1; note that `number_of_reads` and
-`number_of_mapped_reads` now count both Illumina mates, where 0.1.x counted R1
-reads against mapped mates.
+`assembly/assembly_stats_summary.csv` keeps the pre-0.2.0 header with
+fractions 0–1 and is still written; it will be removed in a later release.
 
 ## viralQC results
 
@@ -215,7 +211,7 @@ The full column reference is in viralQC's [output documentation](https://viralqc
 `samples/sample-<id>/viralqc.tsv` holds the header plus that sample's rows (all
 segments in a segmented run).
 
-`qc/viralqc/viralqc_status.txt` records `status` (`ok`, `partial` or `failed`),
+`qc/viralqc/viralqc_status.txt` records `status` (`ok`, `partial`, `failed`, or `skipped` when no sequence had a called base),
 the `vqc` exit code, the number of input records and result rows, and the log
 path. If viralQC fails (a tool error, not a bad QC verdict) the run still
 completes and `results.tsv` is a placeholder with one row per sequence whose

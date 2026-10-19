@@ -1,5 +1,9 @@
 # Embedding viralconseq in a service
 
+```{note}
+Developer reference, for people integrating viralconseq into a service. Running the pipeline from the command line does not require any of this.
+```
+
 viralconseq is designed to be driven by a web service as its bioinformatics core.
 This page documents the integration seam: how to call it in-process, the input
 contract you must enforce, and what it emits for observability and provenance.
