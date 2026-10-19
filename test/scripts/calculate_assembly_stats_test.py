@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from viralconseq.scripts.python import calculate_assembly_stats as stats
+from viralconseq.scripts.python import normalise_depth as nd
 
 # Two records; the separator carries the read id and a one-base read has a "+"
 # quality line, both spec-legal traps for a "+"-counting approach.
@@ -168,11 +169,38 @@ class Test_BuildRow(unittest.TestCase):
         self.assertEqual(row["pct_positions_capped"], 55.24)
         self.assertEqual([c.args[0] for c in count.call_args_list], ["s.bam", "n.bam"])
 
-    def test_normalisation_off_summary_gives_target_zero(self):
-        summary = _write(os.path.join(self.tmp, "off.txt"), "mode\toff\ntarget\t0\n")
+    def test_normalisation_off_placeholder_gives_target_zero_and_na_capped(self):
+        # The real ``--normalise-depth 0`` record, written by the writer itself:
+        # every key is present and the numeric ones carry the literal ``NA``.
+        depth, amplicons, summary = (
+            os.path.join(self.tmp, n) for n in ("d.tsv", "a.tsv", "off.txt")
+        )
+        nd.write_placeholders(depth, amplicons, summary)
         self.assertEqual(stats.normalise_target(summary), 0)
         self.assertEqual(stats.normalise_pct_capped(summary), "NA")
-        self.assertEqual(stats.normalise_target(_write(os.path.join(self.tmp, "e.txt"), "")), "NA")
+        with patch.object(stats, "count_mapped_reads", side_effect=[30, 30]):
+            row = stats.build_row(
+                "sample-a",
+                None,
+                [self.r1],
+                None,
+                "s.bam",
+                self.cov,
+                self.fa,
+                20,
+                bam_normalised="n.bam",
+                normalise_summary=summary,
+            )
+        self.assertEqual(row["normalise_target"], 0)
+        self.assertEqual(row["pct_positions_capped"], "NA")
+
+    def test_normalisation_summary_non_numeric_or_missing_values_give_na(self):
+        odd = _write(os.path.join(self.tmp, "odd.txt"), "target\tfoo\npct_positions_capped\tfoo\n")
+        self.assertEqual(stats.normalise_pct_capped(odd), "NA")
+        self.assertEqual(stats.normalise_target(odd), "foo")
+        empty = _write(os.path.join(self.tmp, "e.txt"), "")
+        self.assertEqual(stats.normalise_target(empty), "NA")
+        self.assertEqual(stats.normalise_pct_capped(empty), "NA")
 
     def test_write_tsv_has_header_in_column_order(self):
         row = self._row([self.q1, self.q2])

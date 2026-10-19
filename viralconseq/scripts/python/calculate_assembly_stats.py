@@ -180,7 +180,10 @@ def normalise_pct_capped(summary: str) -> Value:
         for line in handle:
             key, _, value = line.rstrip("\n").partition("\t")
             if key == "pct_positions_capped":
-                return float(value)
+                try:
+                    return float(value)
+                except ValueError:
+                    return NA
     return NA
 
 
