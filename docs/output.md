@@ -60,7 +60,7 @@ After a successful run, the output directory (`<output>/<run_name>/`) is organis
 │       ├── viralqc.tsv               # unless --no-run-viralqc
 │       ├── raw_mapped_reads.bam
 │       ├── trimmed_mapped_reads.bam
-│       ├── normalised_mapped_reads.bam # depth-capped BAM the consensus caller saw (--normalise-depth)
+│       ├── normalised_mapped_reads.bam # what the consensus caller saw (depth-capped only with --normalise-depth)
 │       ├── normalise_depth.tsv       # depth before / after per position and strand
 │       └── normalise_amplicons.tsv   # reads and depth before / after per amplicon (or per contig)
 └── benchmark.tsv                     # per-task runtime
@@ -114,7 +114,7 @@ deleted once the run is finished.
 | `assembly/coverage_stats/sample-{id}.table_cov_basewise.txt` | Per-base coverage table (`RNAME`, `POS`, `DEPTH`) |
 | `samples/sample-{id}/raw_mapped_reads.bam` | Reads mapped to the reference, before primer clipping |
 | `samples/sample-{id}/trimmed_mapped_reads.bam` | Primer-clipped BAM; the source of every depth statistic, the nanopore mapped-read gate and the iSNV calls |
-| `samples/sample-{id}/normalised_mapped_reads.bam` | The primer-clipped BAM capped at `--normalise-depth` records per position; what the consensus caller read. Identical to the trimmed BAM with `--normalise-depth 0`. See [Workflow: Depth normalisation](workflow.md#depth-normalisation) |
+| `samples/sample-{id}/normalised_mapped_reads.bam` | What the consensus caller read: identical to the trimmed BAM by default, or capped at `--normalise-depth` records per position when a cap is set. See [Workflow: Depth normalisation](workflow.md#depth-normalisation) |
 | `samples/sample-{id}/normalise_depth.tsv` | Per reference position: depth before and after normalisation, total and per strand |
 | `samples/sample-{id}/normalise_amplicons.tsv` | Per amplicon (per contig without a scheme): span, mean depth and record counts before and after, plus `unassigned` and `interior_primer` (skip-amplicon) rows |
 | `assembly/consensus/final_consensus/samples_alignment.fasta` | All consensus sequences aligned to the reference (MSA-ready) |

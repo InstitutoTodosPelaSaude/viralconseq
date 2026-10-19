@@ -118,7 +118,7 @@ class Test_ConsensusIlluminaCommand(unittest.TestCase):
         self.assertEqual(args["af_isnv_threshold"], 0.0)
         self.assertFalse(args["run_isnv"])
         self.assertEqual(args["minimum_coverage"], 10)
-        self.assertEqual(args["normalise_depth"], 100)
+        self.assertEqual(args["normalise_depth"], 0)
         self.assertEqual(args["minimum_read_length"], 50)
         self.assertEqual(args["threads"], 1)
         self.assertEqual(args["threads_total"], detect_cores())
@@ -391,7 +391,7 @@ class Test_ConsensusNanoporeCommand(unittest.TestCase):
         )
         self.assertEqual(args["variant_quality"], 10)
         self.assertEqual(args["frameshift_variant_quality"], 50)
-        self.assertEqual(args["normalise_depth"], 100)
+        self.assertEqual(args["normalise_depth"], 0)
         self.assertEqual(args["variant_depth"], 10)
         self.assertEqual(args["minimum_map_quality"], 30)
 

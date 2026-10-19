@@ -168,7 +168,7 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--segmented-reference` | — | Per-segment reference: `SEGMENT=PATH` (repeatable). |
 | `--primer-scheme` | — | Primer scheme BED file (amplicon sequencing only). |
 | `--minimum-coverage` | `10` | Minimum depth for consensus base inclusion. |
-| `--normalise-depth` | `100` | Call the consensus from at most this many reads per reference position (after primer clipping; the statistics and iSNV calls still see every read). With a primer scheme every amplicon keeps a share of the positions it covers, so always pass the scheme for amplicon data. At a capped position the allele fraction is measured on that sample of reads, so a site near `--af-threshold` can land on either side; raise the cap or set `0` (off) when such sites matter. Must be `0` or at least `--minimum-coverage` and, on nanopore, `--variant-depth`. See [Workflow: Depth normalisation](workflow.md#depth-normalisation). |
+| `--normalise-depth` | `0` | Cap the reads the consensus is called from at this many per reference position (after primer clipping; the statistics and iSNV calls still see every read). `0`, the default, calls from every read. A cap such as `100` keeps deep amplicon runs fast; pass the primer scheme with it so every amplicon keeps a share of the positions it covers. At a capped position the allele fraction is measured on that sample of reads, so a site near `--af-threshold` can land on either side. A positive value must be at least `--minimum-coverage` and, on nanopore, `--variant-depth`. See [Workflow: Depth normalisation](workflow.md#depth-normalisation). |
 | `--minimum-read-length` | `50` | Minimum read length threshold. |
 | `--af-threshold` | `0.6` | Minimum allele fraction for a base to be written into the consensus; a position where no base reaches it becomes `N`. On Illumina it is the fraction of base counts at the position. On Nanopore it is ALT reads over REF plus ALT reads for a Clair3 call: a call below 0.5 is discarded (the reference is kept), one between 0.5 and the bar is masked as `N`. |
 | `--consensus-coverage-threshold` | `70` | Percent of reference positions at or above `--minimum-coverage` (`coverage_min_depth` in `summary.tsv`) a sample needs to enter `consensus/consensus.cov<T>.fasta`; 0–100. Every sample is always in `consensus/consensus.fasta`. |
@@ -372,7 +372,7 @@ viralconseq rerun <output>/config.yml                       # resume / finish an
 viralconseq rerun <output>/config.yml --dry-run             # show what would run
 viralconseq rerun <output>/config.yml --unlock              # release a stale Snakemake lock
 viralconseq rerun <output>/config.yml --set minimum_depth=30 --set af_threshold=0.6
-viralconseq rerun <output>/config.yml --set normalise_depth=0   # call from every read; diff the consensus
+viralconseq rerun <output>/config.yml --set normalise_depth=100 # cap the depth at 100; diff the consensus
 ```
 
 ### Options
@@ -383,7 +383,7 @@ viralconseq rerun <output>/config.yml --set normalise_depth=0   # call from ever
 | `--dry-run` | Plan only (`snakemake -n`). |
 | `--unlock` | Release the lock left by a run that was killed, then exit. |
 | `--keep-going` | Keep running independent jobs after one fails. |
-| `--set KEY=VALUE` | Change a config key (repeatable). The value is parsed as YAML (`30` is an integer, `true` a boolean, `'x'` a string). Only keys already in the file, or keys the current release requires for the data type (so a 0.2.x config can be completed with `--set normalise_depth=100` and, on nanopore, `--set frameshift_variant_quality=50`), may be set. The file is rewritten, with the previous copy kept as `CONFIG_FILE.bak`, so the config on disk always matches the run. |
+| `--set KEY=VALUE` | Change a config key (repeatable). The value is parsed as YAML (`30` is an integer, `true` a boolean, `'x'` a string). Only keys already in the file, or keys the current release requires for the data type (so a 0.2.x config can be completed with `--set normalise_depth=0` and, on nanopore, `--set frameshift_variant_quality=50`), may be set. The file is rewritten, with the previous copy kept as `CONFIG_FILE.bak`, so the config on disk always matches the run. |
 | `--conda-prefix` | Directory of the cached per-rule conda envs (`$VIRALCONSEQ_CONDA_PREFIX` or `~/.cache/viralconseq/conda-envs`). |
 
 The config is validated before Snakemake starts (required keys, types and
