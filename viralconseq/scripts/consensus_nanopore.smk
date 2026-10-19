@@ -18,7 +18,7 @@ rule sanitize_reference:
         set -euo pipefail
         exec > {log} 2>&1
         mkdir -p $(dirname {output.fasta})
-        sed '/^>/s/[\\/|,~ ]/_/g' {input} > {output.fasta}
+        LC_ALL=C sed '1s/^\\xef\\xbb\\xbf//; /^>/{{s/^>[[:space:]]*//; s/[[:space:]]*$//; s/[^A-Za-z0-9._-]/_/g; s/^/>/}}' {input:q} > {output.fasta:q}
         samtools faidx {output.fasta}
         """
 
@@ -50,6 +50,7 @@ def get_map_input_fastqs(wildcards):
     return reads
 
 include: "rules/alignment_nanopore.smk"
+include: "rules/normalise.smk"
 include: "rules/consensus_nanopore.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_nanopore_common.smk"
@@ -68,6 +69,8 @@ rule organize_files:
     input:
         vcf_files = expand(rules.infer_consensus_sequence.output.vcf, sample=config["samples"]),
         vcf_raw_files = expand(rules.infer_consensus_sequence.output.vcf_raw, sample=config["samples"]),
+        filter_files = expand(rules.infer_consensus_sequence.output.filter_tsv, sample=config["samples"]),
+        mask_files = expand(rules.infer_consensus_sequence.output.mask_bed, sample=config["samples"]),
         model_files = expand(rules.infer_consensus_sequence.output.model_txt, sample=config["samples"]),
         status_files = expand(rules.check_mapped_reads.output.status, sample=config["samples"]),
         stats_files = expand(rules.calculate_assembly_statistics.output.stats, sample=config["samples"]),
@@ -75,6 +78,9 @@ rule organize_files:
         consensus_files = expand(rules.rename_sequences.output.consensus_renamed, sample=config["samples"]),
         raw_mapped_reads = expand(rules.map_reads.output.bam, sample=config["samples"]),
         trimmed_mapped_reads = expand(rules.trim_primer_sequences.output.bam, sample=config["samples"]),
+        normalised_mapped_reads = expand(rules.normalise_depth.output.bam, sample=config["samples"]),
+        normalise_depth_tables = expand(rules.normalise_depth.output.depth, sample=config["samples"]),
+        normalise_amplicon_tables = expand(rules.normalise_depth.output.amplicons, sample=config["samples"]),
         viralqc_files = expand(rules.split_viralqc_results.output.tsv, sample=config["samples"]) if config.get("run_viralqc", True) else [],
     output:
         # Sentinel: the symlink tree has no single file to declare. benchmark.tsv
@@ -105,6 +111,14 @@ rule organize_files:
             ln -sf $_file {params.outdir}samples/$sample/raw.vcf.gz;
             ln -sf $_file.tbi {params.outdir}samples/$sample/raw.vcf.gz.tbi;
         done
+        for _file in {input.filter_files}; do
+            sample=$(basename $_file .variant_filter.tsv);
+            ln -sf "$_file" {params.outdir:q}samples/"$sample"/variant_filter.tsv;
+        done
+        for _file in {input.mask_files}; do
+            sample=$(basename $_file .mask.bed);
+            ln -sf "$_file" {params.outdir:q}samples/"$sample"/mask.bed;
+        done
         for _file in {input.model_files}; do
             sample=$(basename $(dirname $_file));
             ln -sf $_file {params.outdir}samples/$sample/clair3_model.txt;
@@ -134,6 +148,19 @@ rule organize_files:
             sample=$(basename $_file .sorted.bam);
             ln -sf $_file {params.outdir}samples/$sample/trimmed_mapped_reads.bam;
             ln -sf $_file.bai {params.outdir}samples/$sample/trimmed_mapped_reads.bam.bai;
+        done
+        for _file in {input.normalised_mapped_reads}; do
+            sample=$(basename $_file .sorted.bam);
+            ln -sf $_file {params.outdir}samples/$sample/normalised_mapped_reads.bam;
+            ln -sf $_file.bai {params.outdir}samples/$sample/normalised_mapped_reads.bam.bai;
+        done
+        for _file in {input.normalise_depth_tables}; do
+            sample=$(basename $_file .depth.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/normalise_depth.tsv;
+        done
+        for _file in {input.normalise_amplicon_tables}; do
+            sample=$(basename $_file .amplicons.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/normalise_amplicons.tsv;
         done
 
         for _file in {input.viralqc_files} ""; do

@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import click
 import yaml
 from click.testing import CliRunner
 
@@ -23,6 +24,7 @@ def _config(**overrides):
         "reference": "/ref.fa",
         "scheme": "NA",
         "minimum_depth": 20,
+        "normalise_depth": 100,
         "minimum_length": 50,
         "af_threshold": 0.51,
         "consensus_coverage_threshold": 70.0,
@@ -31,6 +33,7 @@ def _config(**overrides):
         "clair3_model_dir": "/models",
         "minimum_mapped_reads": 10,
         "variant_quality": 20,
+        "frameshift_variant_quality": 50,
         "variant_depth": 10,
         "minimum_map_quality": 30,
         "infer_consensus_sequence_ram": 2,
@@ -110,6 +113,15 @@ class Test_RerunCommand(unittest.TestCase):
         _, captured = self._invoke("--dry-run")
         self.assertTrue(captured["workflow"].endswith("consensus_nanopore_segmented.smk"))
 
+    def test_set_may_add_a_key_this_release_requires(self):
+        # A 0.2.x nanopore config predates frameshift_variant_quality: the
+        # documented migration is `rerun --set frameshift_variant_quality=50`.
+        old = {k: v for k, v in _config().items() if k != "frameshift_variant_quality"}
+        config = apply_overrides(dict(old), ["frameshift_variant_quality=50"])
+        self.assertEqual(config["frameshift_variant_quality"], 50)
+        with self.assertRaises(click.BadParameter):
+            apply_overrides(dict(old), ["frameshift_variant_qualty=50"])
+
     def test_set_rewrites_the_config_and_keeps_a_backup(self):
         self._write(_config())
         result, captured = self._invoke("--set", "minimum_depth=30", "--dry-run")
@@ -119,6 +131,24 @@ class Test_RerunCommand(unittest.TestCase):
         with open(self.config_path + ".bak") as fh:
             self.assertEqual(yaml.safe_load(fh)["minimum_depth"], 20)
         self.assertIn("# --- clair3 ---", open(self.config_path).read())
+
+    def test_set_normalise_depth_zero_switches_the_cap_off(self):
+        # The documented way to reproduce a pre-normalisation consensus.
+        self._write(_config())
+        result, captured = self._invoke("--set", "normalise_depth=0", "--dry-run")
+        self.assertEqual(result.exit_code, 0, result.output)
+        with open(self.config_path) as fh:
+            self.assertEqual(yaml.safe_load(fh)["normalise_depth"], 0)
+        self.assertIn("workflow", captured)
+
+    def test_set_normalise_depth_below_the_depth_gate_is_rejected(self):
+        self._write(_config(minimum_depth=10))
+        result, captured = self._invoke("--set", "normalise_depth=5", "--dry-run")
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("normalise", result.output)
+        self.assertNotIn("workflow", captured)
+        with open(self.config_path) as fh:
+            self.assertEqual(yaml.safe_load(fh)["normalise_depth"], 100)  # untouched
 
     def test_invalid_override_rejected_before_snakemake(self):
         self._write(_config())

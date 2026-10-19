@@ -5,6 +5,10 @@ channels:
 dependencies:
   - snakemake>=7.32,<8
   - pyyaml>=6.0
+  # FASTQ integrity checks run seqkit before Snakemake starts (viralconseq/seqkit.py).
+  # The verdict mapping was measured on 2.14.0; 2.8 is the oldest release with the
+  # same `seq --validate-seq --max-len` flags.
+  - seqkit>=2.8
   - python>=3.10,<3.12
   # Pinned to <26 because conda-libmamba-solver 26.x queries
   # `repodata_shards.msgpack.zst` from bioconda, which is not published,

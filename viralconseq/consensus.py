@@ -120,7 +120,8 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
     generator.add_consensus_settings(
         reference=args["reference"],
         primer_scheme=args.get("primer_scheme", "NA"),
-        minimum_coverage=args.get("minimum_coverage", 20),
+        minimum_coverage=args.get("minimum_coverage", 10),
+        normalise_depth=args.get("normalise_depth", 100),
         minimap2_consensus_align_flags=args.get(
             "minimap2_consensus_align_flags",
             "-a --sam-hit-only --secondary=no --score-N=0",
@@ -141,7 +142,8 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
             clair3_model=args.get("clair3_model", Clair3Models.AUTO),
             clair3_model_dir=args.get("clair3_model_dir") or Clair3Models.default_dir(),
             minimum_mapped_reads=int(args.get("minimum_mapped_reads", 10)),
-            variant_quality=args.get("variant_quality", 15),
+            variant_quality=args.get("variant_quality", 10),
+            frameshift_variant_quality=args.get("frameshift_variant_quality", 50),
             variant_depth=args.get("variant_depth", 10),
             minimum_map_quality=args.get("minimum_map_quality", 30),
         )
@@ -157,7 +159,7 @@ def generate_config_file(samples: Dict[str, list], args: Dict[str, Any]) -> None
             cut_tail_mean_quality=args.get("cut_tail_mean_quality", 10),
             cut_right_window_size=args.get("cut_right_window_size", 4),
             cut_right_mean_quality=args.get("cut_right_mean_quality", 15),
-            af_threshold=args.get("af_threshold", 0.51),
+            af_threshold=args.get("af_threshold", 0.6),
             af_isnv_threshold=args.get("af_isnv_threshold", 0),
             run_isnv=args.get("run_isnv", False),
         )

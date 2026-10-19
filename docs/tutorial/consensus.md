@@ -1,49 +1,38 @@
 # Consensus pipeline tutorial
 
-The consensus pipeline (`viralconseq consensus`) turns raw viral reads into a polished consensus genome per sample, aligned to a reference you supply. By the end of this page you will have run it end-to-end on Illumina and Nanopore SARS-CoV-2 data and you will know how to read each output file.
+`viralconseq consensus` turns raw viral reads into one consensus genome per sample, aligned to a reference you supply. By the end of this page you will have run it on Illumina and Nanopore SARS-CoV-2 data and you will know how to read each output file.
 
 ```{note}
-This page assumes you have completed [Setup](setup.md): viralconseq is installed, the per-rule environments are built, and you have generated `samples_illumina.csv` and `samples_nanopore.csv` from `my_test_data/`.
+This page assumes you have completed [Setup](setup.md): viralconseq is installed, `viralconseq setup` has run, and `samples_illumina.csv` and `samples_nanopore.csv` point at `my_test_data/`.
 ```
 
 ## When to use it
 
-Use `viralconseq consensus` when you already know what virus is in the sample and you have a reference genome for it. The pipeline maps reads, calls variants, and produces one consensus FASTA per sample plus a multi-sample alignment ready for tree-building. viralconseq does not perform taxonomic classification: if you do not know what is in the sample, profile it with a metagenomic classifier first.
+Use `viralconseq consensus` when you know which virus is in the sample and you have a reference genome for it. The pipeline maps the reads, calls variants, and writes one consensus FASTA per sample plus a multi-sample alignment ready for tree building. It does not classify reads taxonomically: if you do not know what is in a sample, profile it with a metagenomic classifier first.
 
 ## What it does
 
-The two data types share the same overall idea — *map → trim primers → call → consensus → align all samples to the reference* — but the variant caller and quality-control steps differ:
+Both data types follow the same idea — *map → clip primers → cap the depth → call → consensus → align all samples to the reference* — with a different variant caller:
 
 ```text
 Illumina:
-  raw FASTQ ──► fastp ──► minimap2 -x sr ──► samtools ampliconclip (BED primers)
-            ──► samtools consensus ──► per-base coverage ──► multi-sample alignment
-            └► [optional] LoFreq (iSNVs)
+  raw FASTQ ──► fastp ──► minimap2 ──► primer clipping ──► depth cap (100x)
+            ──► samtools consensus ──► coverage statistics ──► multi-sample alignment
+            └► [optional] LoFreq intra-host variants
 
 Nanopore:
-  raw FASTQ ──► (sanitize reference headers) ──► minimap2 -x map-ont
-            ──► samtools ampliconclip ──► Clair3 + bcftools (variants + consensus)
-            ──► per-base coverage ──► multi-sample alignment
+  raw FASTQ ──► minimap2 ──► primer clipping ──► depth cap (100x)
+            ──► Clair3 + variant filter + bcftools consensus
+            ──► coverage statistics ──► multi-sample alignment
 ```
 
-You do not pick these tools — they are wired in. You pick:
+The tools are wired in. What you choose is:
 
-- the **reference** (`--reference` — a multi-record FASTA is auto-split per segment for influenza-style genomes — or `--segmented-reference SEG=PATH` once per segment to name them yourself),
-- whether the data is **amplicon** (`--primer-scheme primers.bed` clips amplicon primers) or shotgun,
-- the **coverage and allele-frequency thresholds** that decide which bases become `N` (`--minimum-coverage`, `--af-threshold`).
+- the **reference** (`--reference`; a multi-record FASTA is treated as a segmented virus and split per segment),
+- whether the data is **amplicon** (`--primer-scheme primers.bed`) or shotgun,
+- the **depth and allele-fraction thresholds** that decide which positions become `N` (`--minimum-coverage`, `--af-threshold`).
 
 ## Worked example 1 — Illumina (SARS-CoV-2 amplicon)
-
-We will assemble the two paired-end samples in `my_test_data/illumina_data/`. The reference and primer scheme below assume the [ARTIC nCoV-2019](https://github.com/artic-network/primer-schemes) bundle, which is the source of `nCoV-2019.reference.fasta` (NCBI `MN908947.3`) and the matching `nCoV-2019.bed`. Substitute paths for whichever copies you have.
-
-### Sample sheet
-
-Already generated in [Setup](setup.md):
-
-```text
-itps-0001,my_test_data/illumina_data/itps-0001_R1.fastq.gz,my_test_data/illumina_data/itps-0001_R2.fastq.gz
-itps-0002,my_test_data/illumina_data/itps-0002_R1.fastq.gz,my_test_data/illumina_data/itps-0002_R2.fastq.gz
-```
 
 ### Run
 
@@ -55,230 +44,200 @@ viralconseq consensus illumina \
     --run-name      sarscov2 \
     --reference     databases/refs/nCoV-2019.reference.fasta \
     --primer-scheme databases/refs/nCoV-2019.bed \
-    --minimum-coverage 20 \
     --threads 2 \
     --threads-total 4
 ```
 
-What each flag does:
+- `--sample-sheet` — the CSV from Setup.
+- `--config-file` — where to write the run's configuration file; keep it with the results.
+- `--output` and `--run-name` — everything lands under `results/consensus_illumina/sarscov2/`.
+- `--reference` — the reference FASTA.
+- `--primer-scheme` — the primer BED. Omit it for shotgun data.
+- `--threads` and `--threads-total` — threads per step and cores for the whole run. Leave `--threads-total` out to use every core but one.
 
-- `--sample-sheet` — the CSV from above.
-- `--config-file` — where to write the generated Snakemake YAML config (handy to keep alongside the results for reproducibility).
-- `--output` — base directory for all results.
-- `--run-name` — appended to `--output`; everything lands under `results/consensus_illumina/sarscov2/`.
-- `--reference` — the reference FASTA. A single-record FASTA is used as-is; a multi-record FASTA is auto-split into one reference per segment (unless `--single-reference`). See [Segmented viruses](#segmented-viruses) below.
-- `--primer-scheme` — BED file of primer coordinates. Omit it for shotgun data; the primer-clipping step then becomes a pass-through.
-- `--minimum-coverage 20` — positions with fewer than 20 reads after primer clipping become `N` in the consensus.
-- `--threads 2 --threads-total 4` — 2 threads per task, 4 cores total across the workflow. Leave `--threads-total` out to use every core but one; a memory budget is detected from the machine too (`--max-memory` overrides it) so the memory-hungry steps never oversubscribe RAM.
+Snakemake prints one line per step as it runs; each tool's own output goes to a log under `logs/<step>/`, so a failure is diagnosed there. The two example samples finish in a few minutes on a laptop.
 
 ```{tip}
-Add `--create-config-only` to write the YAML config and stop. The file is organised in commented sections, so you can inspect or edit it before running `snakemake --configfile <config> -s "$(python -c 'import viralconseq, os; print(os.path.dirname(viralconseq.__file__))')/scripts/consensus_illumina.smk" --directory <output>/<run_name> --use-conda --conda-prefix ~/.cache/viralconseq/conda-envs -j 4` yourself.
+`--create-config-only` writes the configuration file and stops, so you can inspect it. `viralconseq rerun <config>` then runs it; `viralconseq rerun` is also how you resume an interrupted run.
 ```
-
-Snakemake prints a job table as each rule runs (`perform_qc`, `map_reads`, `trim_primer_sequences`, `infer_consensus_sequence`, `calculate_assembly_statistics`, `generate_multiqc_report`, `align_consensus_to_reference_genome`, …); the tools' own output goes to per-rule logs under `logs/<rule>/`, so the console stays readable and nothing is lost. On a typical laptop the bundled SARS-CoV-2 samples finish in a few minutes; consult `results/consensus_illumina/sarscov2/benchmark.tsv` after the run for per-rule timing.
 
 ### Tour the outputs
 
-After the run, the relevant paths under `results/consensus_illumina/sarscov2/` are:
+The files worth knowing under `results/consensus_illumina/sarscov2/`:
 
 ```text
-samples/sample-<id>/           # note the sample- prefix on every sample directory
-├── consensus.fasta            # final consensus sequence
-├── consensus.vcf.gz           # variants relative to the reference
-├── fastp.html                 # fastp QC report
-├── raw_mapped_reads.bam       # post-mapping, before primer clipping
-├── trimmed_mapped_reads.bam   # primer-clipped — the BAM used for consensus
-└── stats.tsv                  # this sample's row of the assembly statistics
-summary.tsv                              # START HERE: one row per sample, status + stats + viralQC
-assembly/
-├── coverage_stats/sample-<id>.table_cov_basewise.txt  # per-base depth
-└── consensus/final_consensus/
-    └── samples_alignment.fasta          # all samples + reference, MSA-ready
-qc/reports/multiqc_report.html           # combined fastp/QC report
-qc/viralqc/outputs/results.tsv           # viralQC: virus, clade, genome-quality grade per consensus
-samples/<sample>/viralqc.tsv             # that sample's rows of the viralQC table
-benchmark.tsv                            # wall time + memory per rule per sample
-versions.tsv                             # every tool's version, probed in its own env
-config.yml                               # the configuration this run used
-logs/run.log, logs/snakemake.log         # start/end lines and the Snakemake transcript
+summary.tsv                              # START HERE: one row per sample, status + stats + QC
+report.html                              # interactive report, opens in any browser
+consensus/
+├── sample-itps-0001.fasta               # one consensus per sample, ready to share
+├── consensus.fasta                      # all samples pooled
+└── consensus.cov70.fasta                # only samples covering >= 70 % of the genome
+samples/sample-<id>/                     # everything about one sample (note the sample- prefix)
+├── consensus.fasta
+├── consensus.vcf.gz                     # differences from the reference
+├── fastp.html                           # read QC report
+├── raw_mapped_reads.bam                 # as mapped
+├── trimmed_mapped_reads.bam             # primer-clipped; the source of the depth statistics
+├── normalised_mapped_reads.bam          # depth-capped; what the consensus was called from
+├── stats.tsv                            # this sample's statistics
+└── viralqc.tsv                          # this sample's consensus QC
+assembly/coverage_stats/sample-<id>.table_cov_basewise.txt   # depth at every position
+assembly/consensus/final_consensus/samples_alignment.fasta  # all samples + reference, aligned
+qc/reports/multiqc_report.html           # combined read QC
+qc/viralqc/outputs/results.tsv           # consensus QC for every sample
+benchmark.tsv, versions.tsv, config.yml  # runtime per step, tool versions, the configuration used
+logs/                                    # one directory per step
 ```
 
-How to read each one:
+**`summary.tsv`** is the place to start: one row per sample with a `status` (`ok`, or why not), read counts, mean and median depth, the percentage of the genome covered at the depth gate (`coverage_min_depth`), the N content of the consensus (`n_pct`), and the viralQC `virus`, `clade` and `genome_quality`. A low `coverage_min_depth` or a high `n_pct` tells you a sample is poorly covered without opening a BAM. Every column is described in [Output layout](../output.md#summarytsv-columns).
 
-**`samples/sample-<id>/consensus.fasta`** — your finished genome. Long runs of `N` indicate stretches with coverage below `--minimum-coverage` (or where every read disagreed with the reference but no allele exceeded `--af-threshold`). A first sanity check is the proportion of non-N bases — `summary.tsv` reports it as `coverage_min_depth` (and `n_pct`).
+**`report.html`** shows the same table interactively, with a depth trace per sample. It is a single file that works offline, so it can be mailed or archived with the run.
 
-**`samples/sample-<id>/consensus.vcf.gz`** — the differences between your sample and the reference, called from the consensus FASTA via GSAlign. Inspect with:
+**`consensus/`** holds the sequences you will share: one FASTA per sample, all samples pooled, and a pooled file restricted to the samples whose `coverage_min_depth` reaches `--consensus-coverage-threshold` (default 70 %).
+
+**`samples/sample-<id>/consensus.fasta`** is the sample's genome. Runs of `N` mark positions with fewer than `--minimum-coverage` reads, or where no base reached `--af-threshold`. The three BAMs show the reads at each stage: as mapped, after primer clipping (what the statistics count), and after the depth cap (what the consensus was called from).
+
+**`samples/sample-<id>/consensus.vcf.gz`** lists how the consensus differs from the reference:
 
 ```bash
 bcftools view results/consensus_illumina/sarscov2/samples/sample-itps-0001/consensus.vcf.gz | head -30
 ```
 
-**`assembly/coverage_stats/sample-<id>.table_cov_basewise.txt`** — three columns: `RNAME`, `POS`, `DEPTH`. Useful for spotting drop-outs:
+**`assembly/coverage_stats/sample-<id>.table_cov_basewise.txt`** has the depth at every reference position (`RNAME`, `POS`, `DEPTH`), handy for spotting drop-outs:
 
 ```bash
-awk '$3 < 20' results/consensus_illumina/sarscov2/assembly/coverage_stats/sample-itps-0001.table_cov_basewise.txt | head
+awk '$3 < 10' results/consensus_illumina/sarscov2/assembly/coverage_stats/sample-itps-0001.table_cov_basewise.txt | head
 ```
 
-**`samples/sample-<id>/{raw,trimmed}_mapped_reads.bam`** — both exist deliberately. `raw_mapped_reads.bam` is what minimap2 produced; `trimmed_mapped_reads.bam` is the same BAM after `samtools ampliconclip` removed primer sequences (only different when you passed `--primer-scheme`). The consensus is called from the trimmed BAM.
+**`assembly/consensus/final_consensus/samples_alignment.fasta`** is every consensus aligned to the reference, ready for a tree builder such as IQ-TREE.
 
-**`summary.tsv`** — one row per sample (`sample_id` carries the `sample-` prefix) with a `status`, read counts (`total_reads`, `qc_passed_reads`, `mapped_reads`, `pct_mapped`), depth (`mean_depth`, `median_depth`), breadth (`coverage_10x` … `coverage_min_depth`, in percent), the consensus `n_pct`, and the viralQC `virus`, `clade` and `genome_quality`. The quickest way to spot low-coverage or poorly-mapping samples without opening a single BAM; a `status` other than `ok` says what went wrong. The pre-0.2.0 `assembly/assembly_stats_summary.csv` is still written (deprecated).
-
-**`assembly/consensus/final_consensus/samples_alignment.fasta`** — all per-sample consensuses plus the reference, aligned (built by `minimap2` followed by `gofasta sam toMultiAlign`). Drop this straight into a tree-builder such as IQ-TREE for a quick phylogeny.
-
-**`benchmark.tsv`** — every rule execution's runtime, memory, and CPU (`sample` is `sample-<id>`, or `All` for run-level rules; `rule` names the Snakemake rule). Useful when you scale up to a real run.
-
-**`versions.tsv`** — the exact version of every tool that touched your data, read from inside its conda environment when it ran. Paste it into a methods section, or diff it against another run's when results differ.
-
-**`logs/`** — `run.log` records when the run started and how it ended; `snakemake.log` is the transcript Snakemake printed; the per-rule sub-directories hold each tool's output. When a rule fails, its log is the first thing to read.
+**`versions.tsv`** records the exact version of every tool that touched the data; paste it into a methods section. **`benchmark.tsv`** gives the runtime and memory of every step, useful when planning a larger run.
 
 ### Consensus QC (viralQC)
 
-The last rule of every run hands all consensus sequences to [viralQC](https://viralqc.readthedocs.io/), which identifies the virus, assigns a clade where a Nextclade dataset exists, and grades each genome. The headline table is `qc/viralqc/outputs/results.tsv`:
+The last step hands every consensus to [viralQC](https://viralqc.readthedocs.io/), which identifies the virus, assigns a clade where a Nextclade dataset exists, and grades the genome. The headline columns are already in `summary.tsv`; the full table is `qc/viralqc/outputs/results.tsv`:
 
 ```bash
-awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)c[$i]=i} {print $c["seqName"],$c["virus"],$c["clade"],$c["genomeQuality"],$c["coverage"],$c["inputSequenceStatus"]}' OFS='\t' \
-    results/consensus_illumina/sarscov2/qc/viralqc/outputs/results.tsv | column -t -s$'\t'
+cut -f 1-4 results/consensus_illumina/sarscov2/qc/viralqc/outputs/results.tsv | column -t -s$'\t'
 ```
 
-Columns worth checking first (names are stable; positions are not, hence the name-based `awk`):
+- **`virus` / `clade`** — a sanity check that the reference matched the sample. For the example data expect *Severe acute respiratory syndrome coronavirus 2* and a Pango lineage.
+- **`genomeQuality`** — A (complete, clean) to D (fragmentary or suspicious), from coverage, private mutations, frameshifts and premature stop codons. B is fine for most surveillance use, C means "look at the sample", D is not suitable for phylogenetics.
 
-- **`virus` / `clade`** — a sanity check that the reference matched the sample. For the example data expect *Severe acute respiratory syndrome coronavirus 2* and a Pango lineage / Nextstrain clade.
-- **`genomeQuality`** — A (complete, clean) to D (fragmentary or suspicious), derived from `genomeQualityScore`, which combines coverage, private-mutation counts, frameshifts and premature stop codons reported by Nextclade. Treat B as fine for most surveillance use, C as "look at the sample" and D as not suitable for phylogenetics.
-- **`coverage`** — should agree with `coverage_min_depth` in `summary.tsv` (there in percent).
-- **`inputSequenceStatus`** — empty for analysed sequences; set when viralQC could not analyse a record (e.g. all `N`).
+Pass `--no-run-viralqc` to skip the step, for instance on a machine without internet access (viralQC fetches a small Nextclade index on every run). If viralQC itself fails, the run still completes and `qc/viralqc/viralqc_status.txt` says why.
 
-`samples/<sample>/viralqc.tsv` contains the header plus that sample's rows. Pass `--no-run-viralqc` to skip the step (for instance on a node without the databases or without internet access: `nextclade sort` fetches a small index from the Nextclade server on every run); if viralQC itself fails, the run still completes and `qc/viralqc/viralqc_status.txt` says why. Because the step is then considered done, delete `qc/viralqc/` and rerun the same command to retry it after fixing the cause.
+### Optional: intra-host variants
 
-### Optional: intra-host SNVs
-
-If you care about within-sample variation (e.g., looking for sub-consensus mutations), add `--run-isnv`:
+To look for sub-consensus mutations within a sample, add `--run-isnv`:
 
 ```bash
 viralconseq consensus illumina \
-    --sample-sheet samples_illumina.csv \
-    --config-file  results/consensus_illumina_isnv/config.yml \
-    --output       results/consensus_illumina_isnv/ \
-    --reference    databases/refs/nCoV-2019.reference.fasta \
+    --sample-sheet  samples_illumina.csv \
+    --config-file   results/consensus_illumina_isnv/config.yml \
+    --output        results/consensus_illumina_isnv/ \
+    --run-name      sarscov2 \
+    --reference     databases/refs/nCoV-2019.reference.fasta \
     --primer-scheme databases/refs/nCoV-2019.bed \
     --run-isnv \
     --af-isnv-threshold 0.05 \
     --threads 2 --threads-total 4
 ```
 
-This adds a LoFreq pass on the primer-clipped BAM. The output VCFs land under `assembly/isnvs/<sample>.isnvs.vcf.gz`, and a per-sample tally is written to `isnvs/isnvs_summary.tsv`. `--af-isnv-threshold` sets the minimum allele frequency reported (LoFreq filters consensus-level variants out so this captures the sub-consensus range).
+This runs LoFreq on the primer-clipped reads of every sample. The variants land in `samples/sample-<id>/isnvs.vcf.gz`, the per-sample counts in `isnvs/isnvs_summary.tsv` and the `isnv_count` column of `summary.tsv`. Only sub-consensus alleles (frequency below 0.5) at or above `--af-isnv-threshold` are kept.
 
 ## Worked example 2 — Nanopore (SARS-CoV-2)
 
-Same virus, different chemistry. The reads are in `my_test_data/nanopore_data/`. Nanopore's higher per-base error rate calls for a deep-learning variant caller (Clair3) instead of the pileup-based consensus used for Illumina.
-
-### Sample sheet (2 columns)
-
-```text
-barcode05,my_test_data/nanopore_data/barcode05.itps-0003.fastq.gz
-barcode09,my_test_data/nanopore_data/barcode09.itps-0004.fastq.gz
-```
+Same virus, different chemistry. Nanopore's higher per-base error rate calls for a dedicated variant caller, Clair3, instead of the pileup-based consensus used for Illumina.
 
 ### Run
 
 ```bash
 viralconseq consensus nanopore \
-    --sample-sheet samples_nanopore.csv \
-    --config-file  results/consensus_nanopore/config.yml \
-    --output       results/consensus_nanopore/ \
-    --run-name     sarscov2 \
-    --reference    databases/refs/nCoV-2019.reference.fasta \
-    --clair3-model r941_prom_hac_g360+g422 \
-    --minimum-coverage 20 \
-    --minimum-map-quality 30 \
+    --sample-sheet  samples_nanopore.csv \
+    --config-file   results/consensus_nanopore/config.yml \
+    --output        results/consensus_nanopore/ \
+    --run-name      sarscov2 \
+    --reference     databases/refs/nCoV-2019.reference.fasta \
+    --primer-scheme databases/refs/nCoV-2019.bed \
+    --clair3-model  r941_prom_hac_g360+g422 \
     --threads 4 --threads-total 4
 ```
 
-The interesting differences from the Illumina invocation:
+What differs from the Illumina run:
 
-- No `fastp` step — the workflow skips QC entirely for Nanopore. The variant caller is expected to absorb noisy bases.
-- `--clair3-model` names the Clair3 model matching your basecaller. Leave it at its default, `auto`, for recent data: the pipeline reads the basecall model tag Dorado writes into every read header and picks the model for you, per sample. The tutorial reads are 2022 Guppy R9.4.1 reads that carry no such tag, so `auto` would stop with a message asking for a model, and `r941_prom_hac_g360+g422` is the right one for them. Whatever the model, it must be present in `~/.cache/viralconseq/clair3-models` (or `--clair3-model-dir`); `viralconseq setup` fetches the common R10.4.1 hac/sup models and this R9 one by default, and `viralconseq setup --clair3-models NAME` fetches any other name from the [Clair3 model zoo](https://github.com/HKU-BAL/Clair3#pre-trained-models).
-- `--minimum-map-quality 30` filters reads with MAPQ below 30 before variant calling. Tighten this for very noisy runs.
-- The pipeline silently sanitizes the reference's FASTA headers (replacing `/`, `|`, `,`, `~`, and spaces with `_`) before use — clair3 turns the seq ID into a directory name, so the sanitization avoids cryptic filesystem errors. The sanitized copy lands at `results/consensus_nanopore/sarscov2/reference/reference.sanitized.fasta`.
+- **No read QC step.** Nanopore reads go straight to the mapper; the variant caller is expected to absorb noisy bases.
+- **`--clair3-model`** names the Clair3 model matching your basecaller. Leave it at its default, `auto`, for recent data: the pipeline reads the basecalling model from the read headers and picks the model per sample. The tutorial reads were basecalled in 2022 with Guppy and carry no such tag, so `auto` would stop and ask for a model; `r941_prom_hac_g360+g422` is the right one for them. `viralconseq setup` downloads the common models; `viralconseq setup --clair3-models NAME` fetches any other.
+- **Reference contig names are made shell-safe.** Clair3 uses the contig name as a directory name, so every character other than letters, digits, `.`, `_` and `-` becomes `_`. If a downstream tool needs the exact contig names used in the BAM and VCF, read them from `reference/reference.sanitized.fasta` in the run directory. See [Notes](../notes.md#reference-header-sanitization).
 
 ### What is different in the output
 
-Most of the output layout matches the Illumina run, with a couple of additions and substitutions:
+The layout matches the Illumina run, with a few additions under `samples/sample-<id>/`:
 
-- `reference/reference.sanitized.fasta` — the sanitized reference used by every downstream rule. If you need the exact contig names that appear in the BAM and VCF, look here, not at your input FASTA.
-- `samples/<sample>/consensus.vcf.gz` — produced by Clair3 + `bcftools` rather than from the consensus directly. You will see `QUAL` values reflective of clair3's confidence.
-- No `fastp.html` per sample, no `multiqc_report.html`.
+- `raw.vcf.gz` — every call Clair3 made; `consensus.vcf.gz` — the calls that passed the filter and were written into the consensus.
+- `variant_filter.tsv` — every call with its verdict: written, masked as `N`, or discarded with the reference kept. `summary.tsv` counts the masked ones in `masked_variant_sites`.
+- `mask.bed` — the intervals written as `N`, from low depth or masked calls.
+- `clair3_model.txt` and `status.txt` — the model used, and whether the sample had enough mapped reads to be called at all. A barcode with fewer than `--minimum-mapped-reads` (default 10) mapped reads gets an all-N consensus and `status no_mapped_reads` in `summary.tsv`; the run continues.
 
-The headline `consensus.fasta` and `samples_alignment.fasta` files behave identically to the Illumina case.
-
-```{tip}
-`--af-threshold` means something slightly different on each platform. On Illumina it is the fraction of base counts at the position (`samtools consensus -c`) and defaults to `0.51`. On Nanopore it is ALT reads over REF plus ALT reads from Clair3's `AD` and defaults to `0.6`; reads showing a deletion at the site do not count, so a variant that creates a homopolymer is not lost to the reads that collapse it. Clair3 additionally filters calls by its own quality score (`--variant-quality`, `--variant-depth`). If you see too many heterozygous-looking sites in your consensus, raise the threshold: `--af-threshold 0.7` or higher.
-```
+There is no `fastp.html` or `multiqc_report.html`. `consensus.fasta` and `samples_alignment.fasta` behave exactly as on Illumina.
 
 ## Segmented viruses
 
-For multi-segment genomes (influenza, the bunyaviruses, etc.) the simplest way is
-to pass a single multi-record FASTA to `--reference`: viralconseq treats a
-reference with more than one record as segmented and splits it into one reference
-per record, taking segment names from the FASTA headers. Pass `--single-reference`
-to opt out (align all records together as one reference — e.g. a fragmented genome
-that should be treated as a single reference).
+For a multi-segment genome (influenza, the bunyaviruses, …), pass a single multi-record FASTA to `--reference`: viralconseq treats a reference with more than one record as segmented, splits it into one reference per record, and names the segments after the FASTA headers.
 
 ```bash
 viralconseq consensus illumina \
     --sample-sheet samples_flu.csv \
     --config-file  results/flu/config.yml \
     --output       results/flu/ \
+    --run-name     flu \
     --reference    refs/flu/influenza_all_segments.fasta \
     --threads 4 --threads-total 8
 ```
 
-To name segments yourself, or supply each from a separate file, repeat
-`--segmented-reference SEG=PATH` once per segment instead (mutually exclusive with
-`--reference`):
+To name the segments yourself, or supply each from its own file, repeat `--segmented-reference SEGMENT=PATH` instead (it replaces `--reference`):
 
 ```bash
 viralconseq consensus illumina \
     --sample-sheet samples_flu.csv \
     --config-file  results/flu/config.yml \
     --output       results/flu/ \
+    --run-name     flu \
     --segmented-reference HA=refs/flu/HA.fasta \
     --segmented-reference NA=refs/flu/NA.fasta \
     --segmented-reference PB1=refs/flu/PB1.fasta \
-    # … one per segment …
     --threads 4 --threads-total 8
 ```
 
-The workflow dispatches a specialised segmented variant that processes each segment in parallel. Outputs are keyed by segment under `assembly/<segment>/consensus/final_consensus/` and per-sample symlinks land under `samples/<sample>/<segment>/`.
-
-See [Notes — Segmented viruses](../notes.md#segmented-viruses) for the full discussion.
+Every segment is assembled in the same run. `summary.tsv` gets one row per sample and segment, `consensus/` one set of files per segment, and the per-sample files sit under `samples/sample-<id>/<segment>/`. Pass `--single-reference` when a multi-record FASTA is one genome in several contigs rather than several segments. See [Notes](../notes.md#segmented-viruses).
 
 ## Tuning consensus quality
 
-The three knobs you will reach for most often:
+The settings you will reach for most often:
 
-- **`--minimum-coverage`** (default `20`) — any reference position with fewer than this many reads after primer clipping becomes `N`. Lower it (e.g. `10`) for low-depth samples where you would rather see a tentative base than a hole; raise it for high-confidence assemblies.
-- **`--af-threshold`** (default `0.51` on Illumina, `0.6` on Nanopore) — minimum allele fraction to call a variant into the consensus. On Illumina it is a fraction of base counts, so `0.51` is the majority allele; on Nanopore it is ALT over REF plus ALT reads. Raise it (e.g. `0.7`) for noisier data; lower it to capture ambiguity codes.
-- **`--minimum-read-length`** (default `50`) — on Illumina, reads below this length are dropped by fastp at QC time and by `samtools ampliconclip --filter-len` after primer clipping; on Nanopore it is applied only by `samtools ampliconclip --filter-len`, i.e. only when a primer scheme is given.
+- **`--minimum-coverage`** (default `10`) — a position with fewer reads than this becomes `N`. Raise it (for example to `20`) for high-confidence assemblies; lower it only when you would rather see a tentative base than a hole.
+- **`--af-threshold`** (default `0.6`) — the fraction of reads a base needs to be written into the consensus. A position where no base reaches it becomes `N`. Raise it (for example to `0.7`) for noisier data.
+- **`--normalise-depth`** (default `100`) — the consensus is called from at most this many reads per position, which keeps deep amplicon runs fast. At a capped position the allele fraction is measured on that sample of reads, so a site close to `--af-threshold` can land on either side. Set it to `0` to call from every read; always pass `--primer-scheme` for amplicon data so every amplicon keeps its share.
+- **`--minimum-read-length`** (default `50`) — reads shorter than this are dropped after trimming and primer clipping.
 
-Nanopore has a few extra knobs:
+Nanopore has three more:
 
-- **`--variant-quality`** (default `15`) — Clair3 minimum QUAL. Calls below it are flagged `LowQual` and never reach the consensus.
-- **`--variant-depth`** (default `10`) — minimum alt-allele read support.
-- **`--chunk-size`** (default `10000`) — Clair3 chunk size; tune only if Clair3 runs out of memory on huge references.
+- **`--variant-quality`** (default `10`) — the Clair3 quality a call needs to be written. A call below it is masked as `N`, not silently reverted to the reference.
+- **`--frameshift-variant-quality`** (default `50`) — the same bar for an indel that shifts the reading frame. Such indels are rare in viral genomes and usually sequencing errors, so the bar is higher.
+- **`--variant-depth`** (default `10`) — the number of reads that must carry the variant. A call with fewer is masked.
 
-The full set is in the [Commands reference](../commands.md#viralconseq-consensus).
+Every option is in the [commands reference](../commands.md#viralconseq-consensus); the reasoning behind the filters is in the [workflow reference](../workflow.md).
 
 ## Common pitfalls
 
-- **Sample sheet columns must match the subcommand.** `consensus illumina` requires 3 columns and `consensus nanopore` 2; a mismatch is rejected with a `SampleSheetError` that names the offending row.
-- **Reference header sanitization is silent.** On Nanopore, if your downstream tooling expects the exact contig names used in the BAM/VCF, read them from `reference/reference.sanitized.fasta` (or `reference/<segment>.sanitized.fasta` in segmented runs), not your input FASTA.
-- **Primer scheme contig names must match the reference.** The BED file must use the same chromosome/contig names as the reference FASTA. viralconseq checks this before running and aborts with an `InputIntegrityError` if the primer BED chrom matches no reference contig (so `samtools ampliconclip` would clip nothing) — no more silently un-clipped runs.
-- **Inputs are content-validated before the run.** FASTQ, reference FASTA, and primer BED are streamed and checked (record structure, gzip integrity, nucleotide alphabet, chrom matching); a broken, truncated, or mismatched file stops the run up front rather than failing deep inside Snakemake. Pass `--skip-input-validation` to bypass.
+- **Sample sheet columns must match the subcommand.** `consensus illumina` needs three columns and `consensus nanopore` two; a mismatch is rejected with the offending row named.
+- **Primer scheme contig names must match the reference.** viralconseq checks this before running and stops if no primer matches any reference contig, instead of silently clipping nothing.
+- **Inputs are checked before the run.** Every FASTQ, the reference and the primer BED are read up front; a truncated or mislabelled file stops the run immediately rather than deep inside the workflow. `--skip-input-validation` bypasses the check.
 - **`--reference` and `--segmented-reference` are mutually exclusive.** Pass one or the other.
-- **`viralqc_database_not_found` at start-up.** viralQC is on by default and its databases live in `~/.cache/viralconseq/viralqc-db` (or `$VIRALCONSEQ_VIRALQC_DB`). Run `viralconseq setup` once (see [Setup §2](setup.md#2-build-per-rule-environments-download-the-viralqc-databases-and-the-clair3-models)) or pass `--no-run-viralqc`.
+- **`viralqc_database_not_found` at start.** The consensus QC databases are missing: run `viralconseq setup` once, or pass `--no-run-viralqc`.
+- **Reading contig names after a Nanopore run.** Use the names in `reference/reference.sanitized.fasta`, not those in your input FASTA.
 
 ## Reference
 
-- [Commands reference — `viralconseq consensus`](../commands.md#viralconseq-consensus): the complete flag table.
-- [Output layout](../output.md): the full output tree.
-- [Notes — Segmented viruses](../notes.md#segmented-viruses): more on multi-segment runs and the segmented output layout.
+- [Commands reference — `viralconseq consensus`](../commands.md#viralconseq-consensus): every option.
+- [Output layout](../output.md): every output file and column.
+- [Notes](../notes.md): segmented viruses, amplicon handling, header sanitisation, consensus QC.

@@ -109,10 +109,20 @@ _COMMON_OPTIONS = [
     ),
     click.option(
         "--minimum-coverage",
-        default=20,
+        default=10,
         show_default=True,
         type=int,
         help="Minimum coverage depth for consensus base inclusion.",
+    ),
+    click.option(
+        "--normalise-depth",
+        default=100,
+        show_default=True,
+        type=click.IntRange(min=0),
+        help="Cap the read depth handed to the consensus caller at this many records per "
+        "reference position after primer clipping, approximately keeping the strand ratio "
+        "and, with a primer scheme, giving every amplicon a share of the positions it covers. "
+        "0 switches normalisation off.",
     ),
     click.option(
         "--consensus-coverage-threshold",
@@ -317,10 +327,11 @@ def consensus() -> None:
 )
 @click.option(
     "--af-threshold",
-    default=0.51,
+    default=0.6,
     show_default=True,
     type=float,
-    help="Minimum allele frequency to call a variant into consensus.",
+    help="Minimum fraction of base counts for a base to be written into the consensus "
+    "(samtools consensus -c); a position whose top base is below it becomes N.",
 )
 @click.option(
     "--af-isnv-threshold",
@@ -344,6 +355,7 @@ def consensus_illumina(
     segmented_reference: Tuple[str, ...],
     primer_scheme: Optional[str],
     minimum_coverage: int,
+    normalise_depth: int,
     minimum_read_length: int,
     threads: int,
     threads_total: int,
@@ -386,6 +398,7 @@ def consensus_illumina(
         segmented_reference=_parse_segmented_reference(segmented_reference),
         primer_scheme=primer_scheme,
         minimum_coverage=minimum_coverage,
+        normalise_depth=normalise_depth,
         minimum_read_length=minimum_read_length,
         threads=threads,
         threads_total=threads_total,
@@ -459,10 +472,22 @@ def consensus_illumina(
 )
 @click.option(
     "--variant-quality",
-    default=15,
+    default=10,
     show_default=True,
     type=int,
-    help="Minimum variant quality (clair3).",
+    help="Minimum Clair3 QUAL for a SNV or in-frame indel to enter the consensus; a call "
+    "below it whose allele ratio passed is masked (N) rather than written as the "
+    "reference base.",
+)
+@click.option(
+    "--frameshift-variant-quality",
+    default=50,
+    show_default=True,
+    type=click.IntRange(min=0),
+    help="Minimum Clair3 QUAL for an indel that shifts the reading frame (length change "
+    "not a multiple of 3); such calls are rare in viruses and far more often errors, so "
+    "the bar is higher than --variant-quality. A frameshifting indel below it is masked "
+    "(N), not written.",
 )
 @click.option(
     "--variant-depth",
@@ -487,6 +512,7 @@ def consensus_nanopore(
     segmented_reference: Tuple[str, ...],
     primer_scheme: Optional[str],
     minimum_coverage: int,
+    normalise_depth: int,
     minimum_read_length: int,
     threads: int,
     threads_total: int,
@@ -499,6 +525,7 @@ def consensus_nanopore(
     chunk_size: int,
     clair3_model: str,
     variant_quality: int,
+    frameshift_variant_quality: int,
     variant_depth: int,
     minimum_map_quality: int,
     **kwargs: Any,
@@ -526,6 +553,7 @@ def consensus_nanopore(
         segmented_reference=_parse_segmented_reference(segmented_reference),
         primer_scheme=primer_scheme,
         minimum_coverage=minimum_coverage,
+        normalise_depth=normalise_depth,
         minimum_read_length=minimum_read_length,
         threads=threads,
         threads_total=threads_total,
@@ -538,6 +566,7 @@ def consensus_nanopore(
         chunk_size=chunk_size,
         clair3_model=clair3_model,
         variant_quality=variant_quality,
+        frameshift_variant_quality=frameshift_variant_quality,
         variant_depth=variant_depth,
         minimum_map_quality=minimum_map_quality,
     )

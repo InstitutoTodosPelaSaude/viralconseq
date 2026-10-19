@@ -44,7 +44,7 @@ rule sanitize_reference:
         set -euo pipefail
         exec > {log} 2>&1
         mkdir -p $(dirname {output.fasta})
-        sed '/^>/s/[\\/|,~ ]/_/g' {input} > {output.fasta}
+        LC_ALL=C sed '1s/^\\xef\\xbb\\xbf//; /^>/{{s/^>[[:space:]]*//; s/[[:space:]]*$//; s/[^A-Za-z0-9._-]/_/g; s/^/>/}}' {input:q} > {output.fasta:q}
         samtools faidx {output.fasta}
         """
 
@@ -58,6 +58,7 @@ REFERENCE = rules.sanitize_reference.output.fasta
 SEGMENT_WILDCARD = "{segment}/"
 
 include: "rules/alignment_nanopore.smk"
+include: "rules/normalise.smk"
 include: "rules/consensus_nanopore.smk"
 include: "rules/stats.smk"
 include: "rules/consensus_nanopore_common.smk"
@@ -75,6 +76,14 @@ rule organize_files:
         ),
         vcf_raw_files = expand(
             rules.infer_consensus_sequence.output.vcf_raw,
+            sample=config["samples"], segment=SEGMENTS.keys()
+        ),
+        filter_files = expand(
+            rules.infer_consensus_sequence.output.filter_tsv,
+            sample=config["samples"], segment=SEGMENTS.keys()
+        ),
+        mask_files = expand(
+            rules.infer_consensus_sequence.output.mask_bed,
             sample=config["samples"], segment=SEGMENTS.keys()
         ),
         model_files = expand(
@@ -103,6 +112,18 @@ rule organize_files:
         ),
         trimmed_mapped_reads = expand(
             rules.trim_primer_sequences.output.bam,
+            sample=config["samples"], segment=SEGMENTS.keys()
+        ),
+        normalised_mapped_reads = expand(
+            rules.normalise_depth.output.bam,
+            sample=config["samples"], segment=SEGMENTS.keys()
+        ),
+        normalise_depth_tables = expand(
+            rules.normalise_depth.output.depth,
+            sample=config["samples"], segment=SEGMENTS.keys()
+        ),
+        normalise_amplicon_tables = expand(
+            rules.normalise_depth.output.amplicons,
             sample=config["samples"], segment=SEGMENTS.keys()
         ),
         viralqc_files = expand(
@@ -143,6 +164,18 @@ rule organize_files:
             sample=$(basename $_file .raw.vcf.gz);
             ln -sf $_file {params.outdir}samples/$sample/$segment/raw.vcf.gz;
             ln -sf $_file.tbi {params.outdir}samples/$sample/$segment/raw.vcf.gz.tbi;
+        done
+        for _file in {input.filter_files}; do
+            outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
+            segment=$(echo "$rel" | cut -d'/' -f1);
+            sample=$(basename $_file .variant_filter.tsv);
+            ln -sf "$_file" {params.outdir:q}samples/"$sample"/$segment/variant_filter.tsv;
+        done
+        for _file in {input.mask_files}; do
+            outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
+            segment=$(echo "$rel" | cut -d'/' -f1);
+            sample=$(basename $_file .mask.bed);
+            ln -sf "$_file" {params.outdir:q}samples/"$sample"/$segment/mask.bed;
         done
         for _file in {input.model_files}; do
             outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
@@ -186,6 +219,25 @@ rule organize_files:
             sample=$(basename $_file .sorted.bam);
             ln -sf $_file {params.outdir}samples/$sample/$segment/trimmed_mapped_reads.bam;
             ln -sf $_file.bai {params.outdir}samples/$sample/$segment/trimmed_mapped_reads.bam.bai;
+        done
+        for _file in {input.normalised_mapped_reads}; do
+            outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
+            segment=$(echo \"$rel\" | cut -d'/' -f1);
+            sample=$(basename $_file .sorted.bam);
+            ln -sf $_file {params.outdir}samples/$sample/$segment/normalised_mapped_reads.bam;
+            ln -sf $_file.bai {params.outdir}samples/$sample/$segment/normalised_mapped_reads.bam.bai;
+        done
+        for _file in {input.normalise_depth_tables}; do
+            outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
+            segment=$(echo \"$rel\" | cut -d'/' -f1);
+            sample=$(basename $_file .depth.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/$segment/normalise_depth.tsv;
+        done
+        for _file in {input.normalise_amplicon_tables}; do
+            outdir="{params.outdir}"; rel=${{_file#$outdir}}; rel=${{rel#assembly/}};
+            segment=$(echo \"$rel\" | cut -d'/' -f1);
+            sample=$(basename $_file .amplicons.tsv);
+            ln -sf $_file {params.outdir}samples/$sample/$segment/normalise_amplicons.tsv;
         done
 
         for _file in {input.viralqc_files} ""; do

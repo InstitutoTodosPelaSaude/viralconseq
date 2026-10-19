@@ -6,9 +6,10 @@ upload, a corrupt gzip, a protein FASTA, or a primer BED whose chrom names don't
 match the reference all pass an existence check and then fail deep inside
 Snakemake -- or, worse, silently produce wrong results (``samtools ampliconclip``
 clips nothing when no BED chrom matches a mapped contig). This module adds
-streaming, dependency-free validators for the three consensus input formats
-(FASTQ, FASTA, BED) so bad inputs are rejected up front with clear, structured
-errors.
+streaming validators for the three consensus input formats (FASTQ, FASTA, BED)
+so bad inputs are rejected up front with clear, structured errors. FASTA and
+BED are pure stdlib; FASTQ detection is delegated to ``seqkit`` (see
+:func:`validate_fastq`), with the stdlib scanner as the diagnoser.
 
 Each validator returns an :class:`IntegrityReport` that *collects*
 :class:`IntegrityIssue` objects rather than raising, so the orchestration layer
@@ -18,11 +19,17 @@ enough that hand-rolled streaming parsers are both easy and give full control ov
 error codes and messages.
 """
 
+import concurrent.futures
 import gzip
+import logging
 import re
 import zlib
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set
+
+from viralconseq import seqkit
+
+logger = logging.getLogger(__name__)
 
 # Cap the number of issues recorded per file. A file with more than this many
 # problems is clearly broken; reporting the first N keeps error payloads bounded
@@ -37,11 +44,35 @@ _GZIP_MAGIC = b"\x1f\x8b"
 _IUPAC_NT: Set[str] = set("ACGTURYSWKMBDHVN")
 
 # Mirrors the nanopore ``rule sanitize_reference`` sed
-# (``sed '/^>/s/[\\/|,~ ]/_/g'`` in consensus_nanopore*.smk): backslash, '/', '|',
-# ',', '~' and space are replaced with '_' across the whole header. Because spaces
-# are removed, the sanitized header is a single token, so it becomes the BAM @SQ
-# contig name in the nanopore pipeline.
-_NANOPORE_SANITIZE_RE = re.compile(r"[/\\|,~ ]")
+# (``LC_ALL=C sed '/^>/{s/^>//; s/[^A-Za-z0-9._-]/_/g; s/^/>/}'`` in
+# consensus_nanopore.smk and consensus_nanopore_segmented.smk) and the copy in
+# scripts/python/build_report.py (``NANOPORE_UNSAFE``); the three must move
+# together (test/rule_inventory_test.py pins the pattern). Every byte outside
+# ``[A-Za-z0-9._-]`` becomes one '_' across the whole header: Clair3 hands contig
+# names to /bin/sh unquoted (``clair3.sh`` feeds them to GNU parallel as
+# ``--ctgName {1} ... ::: ${CHR[@]}``), so parentheses, quotes, ';' and the like
+# break the run, and it builds ``samtools`` region strings ``contig:start-end``,
+# so ':' is unsafe too. Only this set is safe in both places. The substitution
+# runs on UTF-8 bytes (sed under LC_ALL=C) so the result is locale-independent.
+# Because spaces are removed, the sanitized header is a single token, so it
+# becomes the BAM @SQ contig name in the nanopore pipeline.
+_NANOPORE_SANITIZE_RE = re.compile(rb"[^A-Za-z0-9._-]")
+# What the sed's ``[[:space:]]`` strips under LC_ALL=C; str.strip() would also
+# drop Unicode whitespace that the sed rewrites to ``_``.
+_ASCII_WHITESPACE = " \t\r\n\v\f"
+
+# Headers that match this get a ``fasta_header_sanitized`` warning: they carry a
+# character the pre-0.3 rule left alone, so their BAM contig name is not what an
+# earlier release produced (and would have crashed Clair3). The old set, ``/ \ |
+# , ~`` and space, is left out on purpose: those have always been rewritten, the
+# docs say so, and the stock SARS-CoV-2 RefSeq header carries a comma.
+_NANOPORE_WARN_RE = re.compile(r"[^A-Za-z0-9._ /\\|,~-]")
+
+# The primer-name convention normalise_depth.py pairs primers by (its
+# ``PRIMER_NAME``; build_report.py carries the same pattern). A BED whose names
+# do not follow it and that has no +/- strand column still clips fine, but the
+# depth normaliser cannot build amplicons from it and normalises by strand only.
+_PRIMER_NAME_RE = re.compile(r"^(?P<prefix>.+)_(?P<n>\d+)_(?P<side>LEFT|RIGHT)(?:_.*)?$")
 
 # A FASTA/mapper contig id is the first WHITESPACE-delimited token of the header.
 # This must match how minimap2/samtools name the BAM @SQ contig and how the
@@ -173,11 +204,16 @@ def header_token(header: str) -> str:
 def sanitize_nanopore_contig(header: str) -> str:
     """Return the BAM contig name the nanopore pipeline derives from *header*.
 
-    The nanopore workflow sanitizes reference headers (``/ \\ | , ~`` and spaces
-    become ``_``) before mapping, so the mapped contig name is the whole
-    sanitized header rather than just the accession.
+    The nanopore workflow sanitizes reference headers (every byte outside
+    ``[A-Za-z0-9._-]`` becomes one ``_``) before mapping, so the mapped contig
+    name is the whole sanitized header rather than just the accession.
+    *header* is the text after the ``>`` marker, as :func:`validate_fasta`
+    stores it (a second ``>`` is content); ASCII whitespace at either end is
+    dropped first, exactly what the ``sed`` trims (``[[:space:]]`` under
+    ``LC_ALL=C``), so a CRLF or trailing-space header gives the same name.
     """
-    return _NANOPORE_SANITIZE_RE.sub("_", header.lstrip(">").strip())
+    stripped = header.strip(_ASCII_WHITESPACE).encode("utf-8")
+    return _NANOPORE_SANITIZE_RE.sub(b"_", stripped).decode("ascii")
 
 
 def _strip_eol(line: str) -> str:
@@ -280,15 +316,17 @@ def _check_fastq_record(record: List[str], start_line: int, add: _Adder) -> None
         )
 
 
-def validate_fastq(path: str) -> IntegrityReport:
-    """Full streaming integrity scan of a (optionally gzipped) FASTQ file.
+def scan_fastq(path: str) -> IntegrityReport:
+    """Full streaming integrity scan of a (optionally gzipped) FASTQ file in
+    pure Python: the diagnoser behind :func:`validate_fastq`.
 
     Reads the whole file once, verifying 4-line record structure, the ``@``/``+``
     marker lines, matching sequence/quality lengths, and valid sequence and
     quality characters. Blank lines (a common, benign artifact) are tolerated so
     they do not desynchronize record grouping. A trailing partial record is
     reported as truncation; a read/decode error (truncated or corrupt gzip,
-    non-text bytes) is reported as unreadable.
+    non-text bytes) is reported as unreadable. About 1 s per 10 MB of gzip, so
+    :func:`validate_fastq` only calls it on a file seqkit did not pass.
     """
     report = IntegrityReport(path=path, kind="fastq")
     add = _make_adder(report)
@@ -339,6 +377,85 @@ def validate_fastq(path: str) -> IntegrityReport:
     return report
 
 
+def validate_fastq(path: str) -> IntegrityReport:
+    """Integrity report for one FASTQ: seqkit as the detector, Python as the
+    diagnoser.
+
+    ``seqkit seq --validate-seq`` (:mod:`viralconseq.seqkit`) reads the file
+    about four times faster than :func:`scan_fastq`; when it finds nothing
+    the report is empty and the file is not read again. ``empty`` and
+    ``unreadable`` verdicts map straight onto ``fastq_empty`` and
+    ``fastq_unreadable``; anything else seqkit flags (a truncated record, a
+    length mismatch, a bad marker line, a non-DNA letter, a zero-length read
+    at the end) is handed to :func:`scan_fastq`, which names the exact issue
+    code with its line number. The issue codes, messages and severities are
+    therefore the same as the pure-Python scanner's; a file seqkit flags but
+    the scanner clears gets a ``fastq_seqkit_flagged`` warning. A quality character
+    outside ASCII 33-126 or whitespace inside a sequence line is invisible to
+    seqkit and only reported when the file is diagnosed for another reason.
+
+    Raises :class:`~viralconseq.seqkit.SeqkitMissingError` when seqkit is not
+    on ``PATH``; it is a required dependency of the CLI environment.
+    """
+    report = IntegrityReport(path=path, kind="fastq")
+    add = _make_adder(report)
+    result = seqkit.detect(path)
+    if result.verdict == seqkit.VERDICT_CLEAN:
+        return report
+    if result.verdict == seqkit.VERDICT_EMPTY:
+        add("fastq_empty", "FASTQ file is empty.")
+        return report
+    if result.verdict == seqkit.VERDICT_UNREADABLE:
+        add(
+            "fastq_unreadable",
+            f"Could not read FASTQ (possibly a truncated or corrupt gzip): {result.message}",
+        )
+        return report
+    logger.debug("seqkit flagged %s (%s); scanning it in Python", path, result.message or "rc")
+    report = scan_fastq(path)
+    if not report.errors:
+        # seqkit saw something the scanner did not name: do not let the file
+        # through silently, and keep seqkit's own words.
+        if result.message:
+            cause = result.message
+        elif result.returncode == 0:
+            cause = "a zero-length read"
+        else:
+            cause = "no error message"
+        _make_adder(report, "warning")(
+            "fastq_seqkit_flagged",
+            f"seqkit flagged this file (exit status {result.returncode}: {cause}) but the "
+            "record scan found no problem; check the file by hand.",
+        )
+    return report
+
+
+def validate_fastq_files(paths: Sequence[str], workers: int = 1) -> List[IntegrityReport]:
+    """One :func:`validate_fastq` report per path, in input order.
+
+    Every file is independent, so they are checked in a process pool of
+    ``workers`` (capped at the number of distinct files; serial for one file
+    or one worker). A file listed twice is scanned once. A worker exception
+    propagates; a pool that dies (a worker killed by the OOM killer) is logged
+    and the files are rescanned serially rather than reported as broken.
+    """
+    unique = list(dict.fromkeys(paths))
+    count = min(max(1, int(workers)), len(unique))
+    by_path: Dict[str, IntegrityReport] = {}
+    if count > 1:
+        try:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=count) as pool:
+                by_path = dict(zip(unique, pool.map(validate_fastq, unique)))
+        except concurrent.futures.process.BrokenProcessPool:
+            logger.warning(
+                "The FASTQ check's process pool died (out of memory?); rescanning serially"
+            )
+            by_path = {}
+    if not by_path:
+        by_path = {path: validate_fastq(path) for path in unique}
+    return [by_path[path] for path in paths]
+
+
 # ---------------------------------------------------------------------------
 # FASTA
 # ---------------------------------------------------------------------------
@@ -378,7 +495,7 @@ def validate_fasta(path: str, require_nucleotide: bool = True) -> IntegrityRepor
                 if line.startswith(">"):
                     _close_record()
                     n_records += 1
-                    current_header = line[1:].strip()
+                    current_header = line[1:].strip(_ASCII_WHITESPACE)
                     current_header_line = line_no
                     current_has_seq = False
                     token = header_token(line)
@@ -463,12 +580,17 @@ def validate_bed(
     whole-scheme BED reused on a subset of segments). ``accession_map`` (nanopore
     only: raw accession -> sanitized full header) always yields a blocking fix-it
     error when a chrom matches the accession but not the sanitized header the
-    pipeline will use. An out-of-range strand column is a warning.
+    pipeline will use. An out-of-range strand column is a warning, and so is a
+    file whose primer names do not follow ``<prefix>_<n>_LEFT/RIGHT`` while a
+    row lacks a ``+``/``-`` strand (``bed_primers_unpairable``: the depth
+    normaliser then works by strand only).
     """
     report = IntegrityReport(path=path, kind="bed")
     add = _make_adder(report)
     n_features = 0
     matched_any = False
+    first_unparsed_name: Optional[str] = None
+    strand_missing = False
     # Deferred plain-mismatch rows: their severity depends on whether ANY chrom
     # matched (see below), which is only known after the whole file is read.
     unmatched: List[tuple] = []
@@ -512,6 +634,11 @@ def validate_bed(
                         line_no,
                     )
 
+                name = cols[3] if len(cols) > 3 else ""
+                if first_unparsed_name is None and not _PRIMER_NAME_RE.match(name):
+                    first_unparsed_name = name
+                if len(cols) < 6 or cols[5] not in ("+", "-"):
+                    strand_missing = True
                 if len(cols) >= 6 and cols[5] not in ("+", "-", "."):
                     add(
                         "bed_bad_strand",
@@ -542,6 +669,16 @@ def validate_bed(
 
     if n_features == 0:
         add("bed_no_features", "Primer BED file contains no intervals.")
+    elif first_unparsed_name is not None and strand_missing:
+        add(
+            "bed_primers_unpairable",
+            f"Primer name {first_unparsed_name!r} does not follow <prefix>_<n>_LEFT/RIGHT and "
+            "the strand column is missing or not +/- on some row: primer clipping works, but "
+            "depth normalisation cannot pair primers into amplicons and will cap by strand "
+            "only (position mode). Rename the primers or fill the strand column to normalise "
+            "per amplicon.",
+            severity="warning",
+        )
 
     # A chrom that matches NO reference contig means those primers are silently
     # ignored by ampliconclip. If NONE of the BED's chroms match, the scheme is

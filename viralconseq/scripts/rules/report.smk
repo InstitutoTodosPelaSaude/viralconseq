@@ -69,6 +69,11 @@ rule report:
             if REPORT_DATA == "nanopore"
             else []
         ),
+        masked_variants = (
+            _per_sample(rules.infer_consensus_sequence.output.variant_mask_bed)
+            if REPORT_DATA == "nanopore"
+            else []
+        ),
         scheme = REPORT_SCHEME if REPORT_SCHEME != "NA" else [],
     output:
         report = config["output"] + "report.html",

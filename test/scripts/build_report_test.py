@@ -319,6 +319,22 @@ class Test_DepthTrace(_RunDir):
         self.assertEqual(trace["bins"][0], round((10 + 50 + 10) / 3, 1))
         self.assertEqual(trace["mask"], [])
 
+    def test_masked_calls_join_the_depth_mask(self):
+        self.spine([ok_row("sample-a")])
+        rows = "".join(f"MN908947.3\t{i + 1}\t{0 if i < 2 else 100}\n" for i in range(30))
+        write_text(self.path("assembly", "coverage_stats", "sample-a.table_cov_basewise.txt"), rows)
+        write_text(
+            self.path("assembly", "consensus", "final_consensus", "sample-a.masked_variants.bed"),
+            "MN908947.3\t2\t3\nMN908947.3\t9\t12\nother\t0\t5\n",
+        )
+        trace = self.doc()["coverage"]["sample-a"]
+        # depth mask 1-2 joins the masked SNV at 3 (BED [2,3)); 10-12 from [9,12);
+        # a BED contig the table does not know is ignored.
+        self.assertEqual(trace["mask"], [[1, 3], [10, 12]])
+        self.assertEqual(
+            build_report.merge_ranges([[5, 6]], [[1, 2], [7, 9], [3, 3]]), [[1, 3], [5, 9]]
+        )
+
     def test_mask_runs_are_split_and_closed_at_the_end(self):
         self.assertEqual(
             build_report.depth_mask([0, 0, 30, 30, 5, 30, 1], 20), [[1, 2], [5, 5], [7, 7]]
@@ -677,12 +693,15 @@ class Test_PrimerScheme(_RunDir):
 
     def test_nanopore_runs_sanitise_bed_chromosome_names(self):
         self.spine([ok_row("sample-a")])
-        rows = "".join(f"hCoV-19_Wuhan_2019\t{i + 1}\t100\n" for i in range(100))
+        # The coverage table carries the contig as the workflow's sed rewrote it:
+        # '/', '|', '(' and ')' all became '_'.
+        rows = "".join(f"hCoV-19_Wuhan_2019_B.1_\t{i + 1}\t100\n" for i in range(100))
         rows += "".join(f"other_contig\t{i + 1}\t100\n" for i in range(50))
         write_text(self.path("assembly", "coverage_stats", "sample-a.table_cov_basewise.txt"), rows)
         bed = write_text(
             os.path.join(self._tmp.name, "scheme.bed"),
-            "hCoV-19/Wuhan|2019\t10\t30\tx_1_LEFT\n" "hCoV-19/Wuhan|2019\t70\t90\tx_1_RIGHT\n",
+            "hCoV-19/Wuhan|2019(B.1)\t10\t30\tx_1_LEFT\n"
+            "hCoV-19/Wuhan|2019(B.1)\t70\t90\tx_1_RIGHT\n",
         )
         # unsanitised, the chrom matches nothing on a two-contig reference: no extent
         self.assertEqual(self.doc("--scheme", bed, data_type="illumina")["run"]["extents"], {})

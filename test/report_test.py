@@ -9,7 +9,8 @@ import unittest
 
 import yaml
 
-from viralconseq import report
+from viralconseq import consensus_cli, report
+from viralconseq.constants import ReportDefaults
 from viralconseq.exceptions import ConfigurationError, ReportError
 from viralconseq.scripts.python import build_report, build_summary
 
@@ -129,11 +130,23 @@ class Test_ReportArgv(_RunDir):
     def test_defaults_without_config_and_label_override(self):
         argv = self._argv({}, label="My run")
         self.assertEqual(self._value(argv, "--data-type"), "illumina")
-        self.assertEqual(self._value(argv, "--min-depth"), "20")
+        self.assertEqual(self._value(argv, "--min-depth"), "10")
         self.assertEqual(self._value(argv, "--consensus-coverage-threshold"), "70.0")
         self.assertEqual(self._value(argv, "--label"), "My run")
         for flag in ("--segments", "--scheme", "--clair3-model", "--minimum-map-quality"):
             self.assertNotIn(flag, argv)
+
+    def test_fallbacks_match_the_consensus_cli_defaults(self):
+        # ReportDefaults promises parity with ``viralconseq consensus``: a run
+        # directory without config.yml must be rendered with the same depth
+        # gate and coverage threshold the CLI would have used.
+        for command in (consensus_cli.consensus_illumina, consensus_cli.consensus_nanopore):
+            defaults = {p.name: p.default for p in command.params}
+            self.assertEqual(ReportDefaults.MIN_DEPTH, defaults["minimum_coverage"])
+            self.assertEqual(
+                ReportDefaults.CONSENSUS_COVERAGE_THRESHOLD,
+                defaults["consensus_coverage_threshold"],
+            )
 
     def test_data_type_inferred_from_clair3_layout(self):
         os.makedirs(os.path.join(self.run_dir, "assembly", "clair3", "sample-a"))

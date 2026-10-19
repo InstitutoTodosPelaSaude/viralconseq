@@ -1,8 +1,24 @@
 # Commands Reference
 
+## Global options
+
+These go before the subcommand:
+
+| Option | Description |
+|--------|-------------|
+| `--version` | Print the viralconseq version and exit. |
+| `--log-level` | `DEBUG`, `INFO` (default), `WARNING` or `ERROR`. |
+| `--json-logs` | Write one JSON object per log line instead of text. |
+
+```bash
+viralconseq --log-level DEBUG consensus illumina ...
+```
+
+---
+
 ## `viralconseq setup`
 
-Pre-builds the per-rule conda environments declared in the Snakemake workflows into a shared cache directory and downloads the viralQC databases into a second cache directory. Run once after installing viralconseq (or after upgrading); subsequent `viralconseq consensus` runs reuse both caches. Rerunning is a no-op once everything is in place.
+Builds the per-step conda environments the workflows run in, downloads the viralQC databases and downloads the Clair3 models, each into its own cache directory. Run it once after installing or upgrading viralconseq; every later `viralconseq consensus` run reuses the caches, and rerunning it is a no-op once everything is in place. See [Installation](installation.md#first-time-setup) for the cache locations.
 
 ```bash
 viralconseq setup --pipelines all
@@ -17,7 +33,7 @@ viralconseq setup --pipelines all
 | `--threads` | `4` | Cores given to Snakemake while materializing envs and downloading databases. |
 | `--viralqc-db` | `$VIRALCONSEQ_VIRALQC_DB` or `~/.cache/viralconseq/viralqc-db` | Directory where the viralQC databases (Nextclade datasets + BLAST reference set) are downloaded. `viralconseq consensus` reads the same location by default. |
 | `--skip-viralqc-db` | off | Only build conda envs; do not download the viralQC databases. |
-| `--clair3-models` | `r1041_e82_400bps_sup_v500 r1041_e82_400bps_hac_v500 r941_prom_hac_g360+g422` | Clair3 models to download (repeatable or comma-separated; `all` fetches the whole manifest, 29 models). About 20 MB each, from the Clair3 authors' server with the ARTIC mirror as fallback; each model is validated before it is put in place, and a model already present is not fetched again. |
+| `--clair3-models` | `r1041_e82_400bps_sup_v500 r1041_e82_400bps_hac_v500 r941_prom_hac_g360+g422` | Clair3 models to download (repeatable or comma-separated; `all` fetches every model in the manifest). About 20 MB each; a model already present is not fetched again. |
 | `--clair3-model-dir` | `$VIRALCONSEQ_CLAIR3_MODELS` or `~/.cache/viralconseq/clair3-models` | Directory the models go into; `viralconseq consensus nanopore` reads the same location by default. |
 | `--skip-clair3-models` | off | Do not download Clair3 models. |
 | `--dry-run` | off | Print the envs, databases and models that would be created and exit without invoking conda or downloading anything. |
@@ -87,8 +103,9 @@ viralconseq create-samplesheet --input /path/to/run/ --output samples.csv
 | `--prefix` | — | Prepend `PREFIX_` to every sample ID (a run code, so `barcode05` from two runs stays distinct: `RUN1_barcode05`). Must be a plain identifier. |
 
 Finder and Windows droppings next to the reads (`.DS_Store`, `._*`, `__MACOSX/`,
-`*Zone.Identifier`, `*.temp`, `*.tmp`, `*.part`) are ignored: they neither
-become samples nor count as a sample's files.
+`Thumbs.db`, `desktop.ini`, `*Zone.Identifier`, `*.temp`, `*.tmp`, `*.part`,
+`*.crdownload`) are ignored: they neither become samples nor count as a
+sample's files.
 
 ### Output format
 
@@ -150,76 +167,70 @@ The consensus pipeline takes raw reads to processed consensus genome sequences w
 | `--single-reference` | off | Treat a multi-record `--reference` as a single reference (align all records together in one pass) instead of auto-splitting it into segments. |
 | `--segmented-reference` | — | Per-segment reference: `SEGMENT=PATH` (repeatable). |
 | `--primer-scheme` | — | Primer scheme BED file (amplicon sequencing only). |
-| `--minimum-coverage` | `20` | Minimum depth for consensus base inclusion. |
+| `--minimum-coverage` | `10` | Minimum depth for consensus base inclusion. |
+| `--normalise-depth` | `100` | Call the consensus from at most this many reads per reference position (after primer clipping; the statistics and iSNV calls still see every read). With a primer scheme every amplicon keeps a share of the positions it covers, so always pass the scheme for amplicon data. At a capped position the allele fraction is measured on that sample of reads, so a site near `--af-threshold` can land on either side; raise the cap or set `0` (off) when such sites matter. Must be `0` or at least `--minimum-coverage` and, on nanopore, `--variant-depth`. See [Workflow: Depth normalisation](workflow.md#depth-normalisation). |
 | `--minimum-read-length` | `50` | Minimum read length threshold. |
-| `--af-threshold` | `0.51` Illumina, `0.6` Nanopore | Minimum allele fraction to call a variant into consensus. Illumina: the fraction of base counts (`samtools consensus -c`). Nanopore: ALT reads over REF plus ALT reads at the site from Clair3's `AD`; reads showing a deletion or a third base there do not count, so a variant that creates a homopolymer is not lost to the reads that collapse it. |
+| `--af-threshold` | `0.6` | Minimum allele fraction for a base to be written into the consensus; a position where no base reaches it becomes `N`. On Illumina it is the fraction of base counts at the position. On Nanopore it is ALT reads over REF plus ALT reads for a Clair3 call: a call below 0.5 is discarded (the reference is kept), one between 0.5 and the bar is masked as `N`. |
 | `--consensus-coverage-threshold` | `70` | Percent of reference positions at or above `--minimum-coverage` (`coverage_min_depth` in `summary.tsv`) a sample needs to enter `consensus/consensus.cov<T>.fasta`; 0–100. Every sample is always in `consensus/consensus.fasta`. |
 | `--run-name` | `undefined` | Name for the sequencing run. |
 | `--threads` | `1` | Threads per individual task (at least 1); the baseline every rule uses unless a `--<rule>-cpus` override is given. |
-| `--threads-total` | cores available minus one | Total cores Snakemake may use at once across all running jobs (at least 1). Detected from the CPUs available to the process (affinity, so container and cgroup limits are honoured), leaving one core free. |
-| `--max-memory` | detected | Memory budget in GB for the rules that declare memory (Clair3 and viralQC): they run concurrently only while their declared RAM fits it. Detected as `MemTotal` capped by the cgroup limit, minus 10 % headroom; `0` disables the budget. Refused when positive but below the largest per-rule figure. |
+| `--threads-total` | cores available minus one | Total cores Snakemake may use at once across all running jobs (at least 1). Container and cgroup limits are honoured. |
+| `--max-memory` | detected | Memory budget in GB for the steps that declare memory (Clair3 and viralQC): they run concurrently only while their declared RAM fits it. Detected from the machine (cgroup limit honoured) minus 10 % headroom; `0` disables the budget. A positive value below the largest per-step figure is refused. |
 | `--create-config-only` | off | Only generate the config file; do not run the workflow. |
-| `--skip-input-validation` | off | Skip content-level integrity checks of the input files (FASTQ/FASTA/BED). Existence checks still run. |
+| `--skip-input-validation` | off | Skip the content checks of the input files (FASTQ, FASTA, BED). Existence checks still run. Also the only way to run without `seqkit` on `PATH`. |
 | `--conda-prefix` | `~/.cache/viralconseq/conda-envs` | Cache directory for per-rule conda envs. Picked up from `$VIRALCONSEQ_CONDA_PREFIX` if set. Pre-warm with `viralconseq setup`. |
 | `--run-viralqc` / `--no-run-viralqc` | on | Run viralQC on the final consensus sequences (virus and clade assignment plus genome-quality scoring via Nextclade + BLAST). |
-| `--report` / `--no-report` | on | Write `<run>/report.html`, a self-contained interactive page built from `summary.tsv`: run-level figures, a sortable and filterable sample table, per-sample depth traces with the masked regions, primer extents when a scheme was given, viralQC verdicts, tool versions. Opens offline in any browser. |
+| `--report` / `--no-report` | on | Write `<run>/report.html`, a self-contained interactive page built from `summary.tsv`: run-level figures, a sortable sample table, per-sample depth traces with the masked regions, viralQC verdicts and tool versions. Opens offline in any browser. |
 | `--viralqc-db` | `~/.cache/viralconseq/viralqc-db` | Directory with the viralQC databases. Picked up from `$VIRALCONSEQ_VIRALQC_DB` if set. Populate once with `viralconseq setup`. Ignored with `--no-run-viralqc`. |
 
 ### Input integrity validation
 
-Before writing the config, the consensus pipeline validates the *content* (not
-just the existence) of its critical inputs and refuses to start on a file that
-would break the run or silently produce wrong results:
+Before writing the config, the pipeline reads its inputs and refuses to start
+on a file that would break the run or silently produce wrong results:
 
-- **FASTQ** (sample reads) — streamed end to end: 4-line record structure, the
-  `@`/`+` marker lines, matching sequence/quality lengths, valid sequence and
-  quality characters, and gzip integrity. Catches truncated uploads and corrupt
-  archives.
+- **FASTQ** (sample reads) — record structure, matching sequence and quality
+  lengths, the DNA alphabet and gzip integrity, checked by `seqkit` with up to
+  `--threads-total` files at once. Truncated uploads and corrupt archives are
+  caught here. A line-wrapped (multi-line) FASTQ is rejected too, because
+  fastp cannot read it; unwrap it with `seqkit seq -w 0`.
 - **Reference FASTA** — at least one record, unique contig ids, non-empty
-  sequences, and a nucleotide-only (IUPAC) alphabet — so a protein FASTA or a
-  mislabeled file is rejected up front.
-- **Primer BED** (when provided) — ≥3 columns, valid integer intervals, and
-  chrom names that match the reference contigs. If *no* chrom matches any
-  reference contig it is a hard error (the whole scheme is wrong for this
-  reference, and `samtools ampliconclip` would silently trim nothing); if some
-  chroms match, the unmatched rows are downgraded to warnings (e.g. a
-  whole-scheme BED reused on a subset of segments). On Nanopore the reference
-  headers are sanitized before mapping, so a BED chrom that matches only the bare
-  accession is reported with a fix-it hint.
+  sequences and a nucleotide-only alphabet, so a protein FASTA or a mislabelled
+  file is rejected.
+- **Primer BED** (when given) — at least three columns, valid integer intervals,
+  and chrom names that match the reference contigs. If no chrom matches any
+  contig the run stops (the scheme is wrong for this reference); if some match,
+  the unmatched rows are reported as warnings, which is what you see when a
+  whole-scheme BED is reused on a subset of segments.
 
-All problems in a file are reported together. Pass `--skip-input-validation` to
-bypass these checks (existence checks still run).
+All problems in a file are reported together, with the file and line named.
+Pass `--skip-input-validation` to bypass these checks (existence checks still
+run).
 
 ### Consensus QC (viralQC)
 
-Unless `--no-run-viralqc` is given, the last step of every run merges all final
-consensus sequences into one FASTA and runs [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC)
-on it. viralQC identifies the virus of each sequence (Nextclade datasets first,
-BLAST against the NCBI RefSeq viral set for anything else), assigns a clade
-where a dataset exists, and scores each genome A–D from coverage, private
-mutations, frameshifts and stop codons. Results land in `qc/viralqc/outputs/results.tsv`
-(one row per consensus sequence) with a per-sample slice symlinked at
-`samples/sample-<id>/viralqc.tsv`; see [Output layout](output.md#viralqc-results).
+Unless `--no-run-viralqc` is given, the last step of every run hands all
+consensus sequences to [viralQC](https://github.com/InstitutoTodosPelaSaude/viralQC),
+which identifies the virus of each sequence (Nextclade datasets first, BLAST
+against the NCBI RefSeq viral set for anything else), assigns a clade where a
+dataset exists, and grades each genome A–D from coverage, private mutations,
+frameshifts and stop codons. The headline columns go into `summary.tsv`; the
+full table is `qc/viralqc/outputs/results.tsv`, with a per-sample slice at
+`samples/sample-<id>/viralqc.tsv` (see [Output layout](output.md#viralqc-results)).
 
 The step needs the databases downloaded by `viralconseq setup`. If the
-`--viralqc-db` directory is missing or incomplete, the run aborts **before any
-work starts** with error code `viralqc_database_not_found` naming the directory
-and the exact `viralconseq setup --viralqc-db ...` command to run. This check is
-an existence check, so it is not bypassed by `--skip-input-validation` and it
-also runs under `--create-config-only`; `--no-run-viralqc` is the only opt-out.
+`--viralqc-db` directory is missing or incomplete the run stops before any
+work starts with error code `viralqc_database_not_found` and the exact
+`viralconseq setup` command to run; `--no-run-viralqc` is the only way around
+the check. It also needs outbound HTTPS even with the databases in place
+(`nextclade sort` fetches a small index on every run), so use
+`--no-run-viralqc` on an air-gapped node.
 
 If viralQC itself fails at run time (a tool error, not a poor QC verdict), the
-run still completes: a placeholder `results.tsv` is written (one row per
-sequence, `inputSequenceStatus` explaining the failure), `qc/viralqc/viralqc_status.txt`
-records the outcome, and a `WARNING` is printed. QC verdicts themselves are data
-in the `genomeQuality` column and never affect the exit code. Snakemake then
-considers the step complete: to retry viralQC after fixing the cause, delete
-`<output>/<run_name>/qc/viralqc/` and rerun the same command.
-
-Note that the step needs outbound HTTPS even with the databases in place:
-`nextclade sort` downloads its reference minimizer index from
-`data.clades.nextstrain.org` on every run. On an air-gapped node use
-`--no-run-viralqc`.
+run still completes: `results.tsv` is a placeholder, `qc/viralqc/viralqc_status.txt`
+records what happened and a warning is printed. QC verdicts are data in the
+`genome_quality` column and never affect the exit code. To retry viralQC after
+fixing the cause, delete `<output>/<run_name>/qc/viralqc/` and rerun the same
+command.
 
 ### Options — Illumina only
 
@@ -240,12 +251,13 @@ Note that the step needs outbound HTTPS even with the databases in place:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--chunk-size` | `10000` | Chunk size for clair3 processing. |
-| `--clair3-model` | `auto` | Clair3 model for variant calling. `auto` reads the basecall model tag Dorado/MinKNOW write into every read header (`basecall_model_version_id=` or `RG:Z:`) from the first reads of each sample and picks the matching model per sample, the way ARTIC's `choose_model` does (a run whose samples were basecalled with different models gets a per-sample mapping in the config). Reads without a tag (Guppy-era, re-headered, SRA dumps) fail before any work starts with a message naming this option; pass the model yourself, e.g. `r941_prom_hac_g360+g422` for R9.4.1 Guppy hac reads. Move-table (`*_with_mv`) models are refused. |
-| `--clair3-model-dir` | `~/.cache/viralconseq/clair3-models` | Directory with one sub-directory per model (`pileup.pt` + `full_alignment.pt`). Picked up from `$VIRALCONSEQ_CLAIR3_MODELS` if set. Every model the run needs must be present and complete or the run stops before any work with the exact `viralconseq setup --clair3-models NAME` command to fetch it. |
-| `--variant-quality` | `15` | Minimum variant quality (clair3). Clair3 flags calls below it `LowQual` and the consensus ignores them. |
-| `--variant-depth` | `10` | Minimum alt allele depth (clair3). |
+| `--clair3-model` | `auto` | Clair3 model for variant calling. `auto` reads the basecalling model tag that Dorado and MinKNOW write into every read header and picks the matching model per sample. Reads without a tag (Guppy-era, re-headered, SRA dumps) stop the run before any work starts with a message naming this option; pass the model yourself then, e.g. `r941_prom_hac_g360+g422` for R9.4.1 Guppy hac reads. Move-table (`*_with_mv`) models are refused. |
+| `--clair3-model-dir` | `~/.cache/viralconseq/clair3-models` | Directory holding the downloaded models, one sub-directory each. Picked up from `$VIRALCONSEQ_CLAIR3_MODELS` if set. A model the run needs but that is not there stops the run before any work starts, with the `viralconseq setup --clair3-models NAME` command to fetch it. |
+| `--variant-quality` | `10` | Minimum Clair3 QUAL for a SNV or in-frame indel to enter the consensus. A call below it is masked (`N`), not reverted to the reference base. |
+| `--frameshift-variant-quality` | `50` | The same bar for an indel that shifts the reading frame. Such calls are rare in viruses and usually errors, so the bar is higher. A frameshifting indel below it is masked (`N`). |
+| `--variant-depth` | `10` | Minimum number of reads carrying the variant (counted in the depth-capped BAM) for a Clair3 call to enter the consensus; a call below it is masked (`N`). `--normalise-depth` must be `0` or at least this value. |
 | `--minimum-map-quality` | `30` | Minimum mapping quality (clair3). |
-| `--minimum-mapped-reads` | `10` | Samples with fewer primary mapped reads than this are not sent to Clair3: they get an all-N consensus, header-only VCFs and `status no_mapped_reads` in `assembly/status/<sample>.txt`, and the run continues (a barcode with zero reads is a warning, not an error, on nanopore). A crash guard for (near-)empty barcodes, not a QC threshold; `0` disables it. |
+| `--minimum-mapped-reads` | `10` | A sample with fewer primary mapped reads than this is not sent to Clair3: it gets an all-N consensus and `status no_mapped_reads` in `summary.tsv`, and the run continues. A crash guard for (near-)empty barcodes, not a QC threshold; `0` disables it. |
 
 ### Examples
 
@@ -319,7 +331,7 @@ Behavior notes for a multi-contig single reference:
   viralQC columns report the contig with the highest coverage.
 - **Consensus** keeps one record per contig (contigs are never fused).
 - The cross-sample alignment is written **per contig** under
-  `consensus/final_consensus/per_contig_alignments/<contig>.fasta` (one MSA each).
+  `assembly/consensus/final_consensus/per_contig_alignments/<contig>.fasta` (one MSA each).
   A concatenation of all of them is also kept as `samples_alignment.fasta` (one
   padded block per contig, not a single rectangular alignment) for backward
   compatibility.
@@ -360,6 +372,7 @@ viralconseq rerun <output>/config.yml                       # resume / finish an
 viralconseq rerun <output>/config.yml --dry-run             # show what would run
 viralconseq rerun <output>/config.yml --unlock              # release a stale Snakemake lock
 viralconseq rerun <output>/config.yml --set minimum_depth=30 --set af_threshold=0.6
+viralconseq rerun <output>/config.yml --set normalise_depth=0   # call from every read; diff the consensus
 ```
 
 ### Options
@@ -370,7 +383,7 @@ viralconseq rerun <output>/config.yml --set minimum_depth=30 --set af_threshold=
 | `--dry-run` | Plan only (`snakemake -n`). |
 | `--unlock` | Release the lock left by a run that was killed, then exit. |
 | `--keep-going` | Keep running independent jobs after one fails. |
-| `--set KEY=VALUE` | Change a config key (repeatable). The value is parsed as YAML (`30` is an integer, `true` a boolean, `'x'` a string). Only keys already in the file may be set. The file is rewritten, with the previous copy kept as `CONFIG_FILE.bak`, so the config on disk always matches the run. |
+| `--set KEY=VALUE` | Change a config key (repeatable). The value is parsed as YAML (`30` is an integer, `true` a boolean, `'x'` a string). Only keys already in the file, or keys the current release requires for the data type (so a 0.2.x config can be completed with `--set normalise_depth=100` and, on nanopore, `--set frameshift_variant_quality=50`), may be set. The file is rewritten, with the previous copy kept as `CONFIG_FILE.bak`, so the config on disk always matches the run. |
 | `--conda-prefix` | Directory of the cached per-rule conda envs (`$VIRALCONSEQ_CONDA_PREFIX` or `~/.cache/viralconseq/conda-envs`). |
 
 The config is validated before Snakemake starts (required keys, types and
@@ -451,15 +464,10 @@ file with `--create-config-only` rather than writing it from scratch.
 Three levels bound a run:
 
 1. `--threads-total` — the cores Snakemake may use at once (default: available cores minus one).
-2. `--threads` — the threads each rule gets (default 1).
-3. `--<rule>-cpus` — an override for one computationally significant rule. Precedence is `--<rule>-cpus` > `--threads`; the config carries `<rule>_cpus` only when you set it.
+2. `--threads` — the threads each step gets (default 1).
+3. `--<rule>-cpus` — an override for one computationally significant step (flags replace `_` with `-`). Precedence is `--<rule>-cpus` > `--threads`. Illumina: `perform_qc`, `map_reads`, `trim_primer_sequences`, `normalise_depth`, `detect_isnv`, `run_viralqc`. Nanopore: `map_reads`, `trim_primer_sequences`, `normalise_depth`, `infer_consensus_sequence`, `run_viralqc`.
 
-The rules with a `--<rule>-cpus` option (flags replace `_` with `-`):
-
-- **Illumina** — `perform_qc`, `map_reads`, `trim_primer_sequences`, `detect_isnv`, `run_viralqc`.
-- **Nanopore** — `map_reads`, `trim_primer_sequences`, `infer_consensus_sequence`, `run_viralqc`.
-
-Memory is handled separately, and only where it was measured. Two rules declare memory and have a `--<rule>-ram` option (GB): `--infer-consensus-sequence-ram` (Clair3, default **2**) and `--run-viralqc-ram` (viralQC, default **1**). The declarations bind: Snakemake is given the `--max-memory` budget and runs those jobs concurrently only while their declared RAM fits it (with the default budget on a 16 GB machine, Clair3 runs at most 7 samples at once). Every other rule peaked well under 200 MB on the test data and declares nothing. The values land in the `# --- resources ---` section of the config as `<rule>_ram`, `threads_total`, `max_memory_mb` and `memory_detected_mb`.
+Memory is declared only where it was measured: `--infer-consensus-sequence-ram` (Clair3, default **2** GB) and `--run-viralqc-ram` (viralQC, default **1** GB). Those two steps run concurrently only while their declared RAM fits the `--max-memory` budget; every other step peaked well under 200 MB on the test data and declares nothing.
 
 ```bash
 viralconseq consensus nanopore ... \
@@ -467,4 +475,4 @@ viralconseq consensus nanopore ... \
     --infer-consensus-sequence-cpus 4 --infer-consensus-sequence-ram 3
 ```
 
-The run summary line printed at start (`resources: 16 core(s) for Snakemake | memory budget 24.0 GB ...`) shows what was resolved.
+The summary line printed at start (`resources: 16 core(s) for Snakemake | memory budget 24.0 GB ...`) shows what was resolved. The [workflow reference](workflow.md#resources) explains how the values reach Snakemake.

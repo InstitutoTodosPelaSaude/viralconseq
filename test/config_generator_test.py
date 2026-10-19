@@ -137,6 +137,25 @@ class Test_Save(unittest.TestCase):
         leftovers = [f for f in os.listdir(os.path.dirname(gen.config_path)) if f != "config.yml"]
         self.assertEqual(leftovers, [])
 
+    def test_frameshift_variant_quality_defaults_into_clair3_section(self):
+        gen = self._full_generator()
+        self.assertEqual(gen.config["frameshift_variant_quality"], 50)
+        self.assertEqual(gen.section_for("frameshift_variant_quality"), "clair3")
+        gen2 = ConfigGenerator(os.path.join(self.tmp, "c.yml"))
+        gen2.add_consensus_nanopore_settings(
+            50, 0.51, 10000, "model", 20, 10, 30, frameshift_variant_quality=40
+        )
+        self.assertEqual(gen2.config["frameshift_variant_quality"], 40)
+
+    def test_normalise_depth_defaults_into_consensus_section(self):
+        gen = self._full_generator()
+        self.assertEqual(gen.config["normalise_depth"], 100)
+        self.assertEqual(gen.section_for("normalise_depth"), "consensus")
+        gen2 = ConfigGenerator(os.path.join(self.tmp, "c.yml"))
+        gen2.add_consensus_settings("/ref.fa", "NA", 10, normalise_depth=0)
+        self.assertEqual(gen2.config["normalise_depth"], 0)
+        self.assertEqual(gen2.section_for("normalise_depth"), "consensus")
+
     def test_per_sample_clair3_models_are_rekeyed_like_samples(self):
         gen = ConfigGenerator(os.path.join(self.tmp, "c.yml"))
         gen.add_consensus_nanopore_settings(
