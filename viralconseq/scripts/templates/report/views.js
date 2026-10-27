@@ -1,39 +1,43 @@
 "use strict";
 
-const KPI_TILES = [
+function fact(label, value) {
+  return { label, value };
+}
+
+const GRADED_ROWS = ROWS.filter(gradeOf);
+
+// The run at a glance, in the cards the sample detail uses: label/value rows, the explanation in each tooltip.
+const RUN_FACT_GROUPS = [
   {
-    label: "Samples processed",
-    value: SAMPLE_IDS.length,
-    foot: `${formatNumber(TOTAL_READS)} reads sequenced`,
-  },
-  {
-    label: `≥${COVERAGE_THRESHOLD}% covered at ≥${MIN_DEPTH}×`,
-    value: COMPLETE_ROWS.length,
-    foot: `${(100 * COMPLETE_ROWS.length / (ROWS.length || 1)).toFixed(0)}% of ${ROWS.length} ${ROWS_NOUN}`,
-  },
-  HAS_VIRALQC && {
-    label: "viralQC grade A or B",
-    value: GOOD_GRADE_ROWS.length,
-    foot: `${ROWS.filter(gradeOf).length} graded genomes`,
-  },
-  {
-    label: "Median depth",
-    value: formatDecimal(MEDIAN_DEPTH),
-    unit: "×",
-    foot: "across rows with depth",
-  },
-  FACET_KIND !== "none" && {
-    label: `${FACET_PLURAL} detected`,
-    value: FACET_COUNTS.length,
-    foot: FACET_COUNTS.map(([facet, count]) => `${facet} ${count}`).join(" · ") || "none",
+    label: "Samples",
+    tip: "Samples in the sample sheet and the reads sequenced across them."
+      + (FACET_KIND === "none" ? "" : ` ${FACET_PLURAL} detected, with the rows each one has: `
+        + `${FACET_COUNTS.map(([facet, count]) => `${facet} ${count}`).join(", ") || "none"}.`),
+    facts: [
+      fact("Processed", formatNumber(SAMPLE_IDS.length)),
+      fact("Reads sequenced", formatNumber(TOTAL_READS)),
+      FACET_KIND !== "none" && fact(`${FACET_PLURAL} detected`, formatNumber(FACET_COUNTS.length)),
+    ].filter(Boolean),
   },
   {
-    label: "Median % mapped",
-    value: formatDecimal(MEDIAN_PCT_MAPPED),
-    unit: "%",
-    foot: "of reads, per row",
+    label: "Genomes",
+    tip: `Of the ${ROWS.length} ${ROWS_NOUN}: those with ≥${COVERAGE_THRESHOLD}% of reference positions at ≥${MIN_DEPTH}×, which enter the filtered multi-FASTA`
+      + (HAS_VIRALQC ? "; and the genomes viralQC graded A or B, out of those it graded." : "."),
+    facts: [
+      fact(`Covered ≥${COVERAGE_THRESHOLD}% at ≥${MIN_DEPTH}×`,
+        `${formatNumber(COMPLETE_ROWS.length)} of ${formatNumber(ROWS.length)} · ${(100 * COMPLETE_ROWS.length / (ROWS.length || 1)).toFixed(0)}%`),
+      HAS_VIRALQC && fact("viralQC grade A or B", `${formatNumber(GOOD_GRADE_ROWS.length)} of ${formatNumber(GRADED_ROWS.length)}`),
+    ].filter(Boolean),
   },
-].filter(Boolean);
+  {
+    label: "Depth & mapping",
+    tip: "Medians across rows: the median depth over the rows that have depth, and the share of each row's reads that mapped to the reference.",
+    facts: [
+      fact("Median depth", isMissing(MEDIAN_DEPTH) ? MISSING : `${formatDecimal(MEDIAN_DEPTH)}×`),
+      fact("Median % mapped", isMissing(MEDIAN_PCT_MAPPED) ? MISSING : `${formatDecimal(MEDIAN_PCT_MAPPED)}%`),
+    ],
+  },
+];
 
 const FUNNEL_STAGES = [
   {
@@ -74,8 +78,53 @@ const FUNNEL_NOTE = IS_SEGMENTED
 
 const DIM_DASH_HTML = `<span class="dim">${MISSING}</span>`;
 
-function pillHtml(tone, text) {
-  return `<span class="pill ${tone}"><i class="dot"></i>${escapeHtml(text)}</span>`;
+// Icons from the Nimbus design (vuesax linear arrows, the filled info badge), drawn in currentColor so they follow the theme.
+const ICON_ARROW_LEFT = '<svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 13.28L5.65333 8.93333C5.14 8.42 5.14 7.58 5.65333 7.06667L10 2.72" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round" stroke="currentColor"/></svg>';
+const ICON_ARROW_RIGHT = '<svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5.94 13.28L10.2867 8.93333C10.8 8.42 10.8 7.58 10.2867 7.06667L5.94 2.72" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round" stroke="currentColor"/></svg>';
+const ICON_SUN = '<svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5V2.5M8 13.5V14.5M1.5 8H2.5M13.5 8H14.5M3.4 3.4L4.1 4.1M11.9 11.9L12.6 12.6M3.4 12.6L4.1 11.9M11.9 4.1L12.6 3.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+const ICON_MOON = '<svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.6 10.1A5.9 5.9 0 0 1 5.9 2.4 5.9 5.9 0 1 0 13.6 10.1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+const ICON_SEARCH = '<svg class="icon" width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M7.66665 14C11.1644 14 14 11.1644 14 7.66665C14 4.16884 11.1644 1.33331 7.66665 1.33331C4.16884 1.33331 1.33331 4.16884 1.33331 7.66665C1.33331 11.1644 4.16884 14 7.66665 14Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.6666 14.6666L13.3333 13.3333" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_INFO = '<svg class="icon" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="9" fill="currentColor"/><circle cx="9" cy="5.45" r="1.1" fill="#fff"/><path d="M9 8.15V12.75" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const ICON_CHEVRON_DOWN = '<svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.28 5.96667L8.93333 10.3133C8 11.2467 8 11.2467 7.06667 10.3133L2.72 5.96667" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round" stroke="currentColor"/></svg>';
+const ICON_ARROW_DOWN = '<svg class="icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 2.33333L7 11.6667M3.5 8.16667L7 11.6667L10.5 8.16667" stroke-linecap="round" stroke-linejoin="round" stroke="currentColor"/></svg>';
+
+// Centred below its icon, slid sideways to stay inside the window; the arrow keeps pointing at the icon.
+const TOOLTIP_MARGIN = 16;
+
+function placeTooltip(info) {
+  const tip = info.querySelector(".tip");
+  const icon = info.getBoundingClientRect();
+  const iconCentre = icon.left + icon.width / 2;
+  const viewportWidth = document.documentElement.clientWidth;
+  const left = Math.min(Math.max(iconCentre - tip.offsetWidth / 2, TOOLTIP_MARGIN), viewportWidth - TOOLTIP_MARGIN - tip.offsetWidth);
+  tip.style.left = `${left - icon.left}px`;
+  tip.style.setProperty("--arrow-x", `${iconCentre - left}px`);
+}
+
+// A figure cut short by its card shows its full text in a tooltip; a figure below its threshold always does.
+function revealCutValue(figure) {
+  const value = figure.querySelector(".value");
+  figure.dataset.tip = value.scrollWidth > value.clientWidth || figure.classList.contains("low") ? "on" : "off";
+  placeTooltip(figure);
+}
+
+// The tabs' sliding pill sits under the pressed tab, on its row when the tabs wrap; it only animates
+// once it has been placed.
+function placeTabIndicator(tabs) {
+  const pressed = tabs.querySelector('.tab[aria-pressed="true"]');
+  if (!pressed) return;
+  tabs.style.setProperty("--indicator-x", `${pressed.offsetLeft}px`);
+  tabs.style.setProperty("--indicator-y", `${pressed.offsetTop}px`);
+  tabs.style.setProperty("--indicator-width", `${pressed.offsetWidth}px`);
+  requestAnimationFrame(() => { tabs.dataset.ready = "true"; });
+}
+
+function pillHtml(tone, text, icon = "") {
+  return `<span class="pill ${tone}">${icon}${escapeHtml(text)}</span>`;
+}
+
+function lowCoveragePillHtml(row) {
+  return row.cov_min !== null && !isComplete(row) ? pillHtml("warning", "Low coverage", ICON_ARROW_DOWN) : "";
 }
 
 function statusPillHtml(status) {
@@ -85,7 +134,8 @@ function statusPillHtml(status) {
 
 function gradePillHtml(grade, suffix = "") {
   if (!grade) return DIM_DASH_HTML;
-  return `<span class="pill grade grade-${escapeHtml(grade.toLowerCase())}"><i class="dot"></i>${escapeHtml(grade)}${suffix}</span>`;
+  const badge = `<span class="badge grade-${escapeHtml(grade.toLowerCase())}">${escapeHtml(grade)}</span>`;
+  return suffix ? `<span class="badge-wrap">${badge}<span class="score">${escapeHtml(suffix)}</span></span>` : badge;
 }
 
 const VERDICT_TONES = { good: "good", pass: "good", mediocre: "warning", warn: "warning", bad: "critical", fail: "critical" };
@@ -111,10 +161,10 @@ function numericCell(value, text) {
 
 function coverageCell(row) {
   if (row.cov_min === null) return { className: "num", html: DIM_DASH_HTML };
-  const width = Math.max(2, row.cov_min);
-  const colour = isComplete(row) ? "var(--ord-3)" : "var(--seq-mid)";
-  const meter = `<span class="track"><i class="fill" style="width:${width}%;background:${colour}"></i></span>`;
-  return { className: "num", html: `<span class="meter">${meter}<span class="val">${row.cov_min.toFixed(1)}%</span></span>` };
+  const value = `${row.cov_min.toFixed(1)}%`;
+  if (isComplete(row)) return { className: "num", html: `<span class="cov">${value}</span>` };
+  const title = `below the ${COVERAGE_THRESHOLD}% consensus threshold`;
+  return { className: "num", html: `<span class="cov low" title="${title}">${value}${ICON_ARROW_DOWN}</span>` };
 }
 
 const TABLE_COLUMNS = [
@@ -230,76 +280,77 @@ function gradeScoreSuffix(viralqc) {
   return viralqc && viralqc.score !== null ? ` · ${formatDecimal(viralqc.score)}/24` : "";
 }
 
-function headlineFigures(row) {
+// The sample's figures as cards of label/value rows, one card per stage of the pipeline, the short Reads card
+// last; each card's tooltip says what its figures mean. Run-wide settings (the read QC and variant-calling floors) sit with the stage they govern.
+function factGroups(row) {
+  const withShare = (count, share) => (isMissing(count) ? MISSING : `${formatNumber(count)} · ${share}`);
+  const atLeast = (value, unit = "") => (isMissing(value) ? MISSING : `≥ ${typeof value === "number" ? formatNumber(value) : value}${unit}`);
+  const fastp = row.fastp;
   return [
-    { label: "Reads", value: formatNumber(row.total_reads) },
     IS_ILLUMINA && {
-      label: "QC-passed",
-      value: formatNumber(row.qc_passed_reads),
-      note: row.total_reads ? `${formatShare(row.qc_passed_reads, row.total_reads)} of reads` : "",
+      label: "Read QC",
+      tip: "fastp on the read pairs, before and after adapter and quality trimming; the mapped and depth figures are computed from the reads that passed.",
+      empty: fastp ? null : "No fastp report for this sample.",
+      facts: fastp ? [
+        fact("Reads in", formatNumber(fastp.total_reads_before)),
+        fact("Reads out", withShare(fastp.total_reads_after, `${formatShare(fastp.total_reads_after, fastp.total_reads_before)} kept`)),
+        fact("Q30", isMissing(fastp.q30_before) ? formatFraction(fastp.q30_after) : `${formatFraction(fastp.q30_after)} · before ${formatFraction(fastp.q30_before)}`),
+        fact("Duplication", formatFraction(fastp.duplication)),
+        fact("Mean length R1 / R2", `${formatNumber(fastp.read1_mean_length)} / ${formatNumber(fastp.read2_mean_length)} bp`),
+        fact("Low quality removed", formatNumber(fastp.low_quality)),
+        fact("Too short removed", formatNumber(fastp.too_short)),
+        fact("Adapter trimmed", formatNumber(fastp.adapter_trimmed)),
+      ] : [],
     },
-    { label: "Mapped", value: formatNumber(row.mapped_reads), note: `${formatPercent(row.pct_mapped)} of reads` },
     {
-      label: "Depth",
-      value: formatDecimal(row.median_depth) + "<small>× median</small>",
-      note: `mean ${formatDecimal(row.mean_depth)}×, zeros included`,
+      label: "Depth & coverage",
+      tip: `Depth is read depth over every reference position, zeros included. Coverage is the share of reference positions at or above each depth; positions below ${MIN_DEPTH}× are masked to N in the consensus, and a genome enters the filtered multi-FASTA at ≥${COVERAGE_THRESHOLD}% covered at ${MIN_DEPTH}×.`,
+      facts: [
+        fact("Median depth", isMissing(row.median_depth) ? MISSING : `${formatDecimal(row.median_depth)}×`),
+        fact("Mean depth", isMissing(row.mean_depth) ? MISSING : `${formatDecimal(row.mean_depth)}×`),
+        {
+          ...fact(`Covered ≥${MIN_DEPTH}×`, formatPercent(row.cov_min)),
+          low: row.cov_min !== null && !isComplete(row),
+          lowNote: `below the ${COVERAGE_THRESHOLD}% consensus threshold`,
+        },
+        fact("Covered ≥10×", formatPercent(row.cov10)),
+        fact("Covered ≥100×", formatPercent(row.cov100)),
+      ],
     },
     {
-      label: `Covered at ≥${MIN_DEPTH}×`,
-      value: formatPercent(row.cov_min),
-      note: `10×: ${formatPercent(row.cov10)} · 100×: ${formatPercent(row.cov100)}`,
-    },
-    row.consensus && {
       label: "Consensus",
-      value: formatNumber(row.consensus.length) + "<small> bp</small>",
-      note: `${formatNumber(row.consensus.n)} N (${formatPercent(row.consensus.n_pct)})`,
+      tip: "The consensus sequence and its N count; variant records are the lines of the final VCF"
+        + (row.isnv_count !== null && PARAMS.af_threshold !== null ? `; iSNVs are intra-host variants at allele frequency ≥ ${PARAMS.af_threshold}.` : "."),
+      facts: [
+        row.consensus && fact("Length", `${formatNumber(row.consensus.length)} bp`),
+        row.consensus && fact("N", withShare(row.consensus.n, formatPercent(row.consensus.n_pct))),
+        row.variants && fact("Variant records", formatNumber(row.variants.records)),
+        row.isnv_count !== null && fact("iSNVs", formatNumber(row.isnv_count)),
+      ].filter(Boolean),
+      empty: row.consensus || row.variants || row.isnv_count !== null ? null : "No consensus figures for this row.",
     },
-    row.variants && { label: "Variant records", value: formatNumber(row.variants.records), note: "lines in the final VCF" },
-    row.isnv_count !== null && {
-      label: "iSNVs",
-      value: formatNumber(row.isnv_count),
-      note: PARAMS.af_threshold !== null ? `AF ≥ ${PARAMS.af_threshold}` : "",
+    !IS_ILLUMINA && {
+      label: "Variant calling",
+      tip: `Clair3, with the model shown, calls on reads passing the length and mapping-quality floors; the consensus applies variants whose allele fraction, ALT over REF plus ALT reads, is at or above the threshold shown, and masks positions below ${MIN_DEPTH}×. Every setting but the model is run-wide and also listed under Provenance.`,
+      facts: [
+        fact("Model", row.clair3_model || PARAMS.clair3_model || MISSING),
+        fact("MAPQ", atLeast(PARAMS.minimum_map_quality)),
+        fact("Allele fraction", atLeast(PARAMS.af_threshold === null ? null : String(PARAMS.af_threshold))),
+        fact("Read length", atLeast(PARAMS.minimum_length, " bp")),
+      ],
     },
-    row.clair3_model && { label: "Clair3 model", value: `<small>${escapeHtml(row.clair3_model)}</small>` },
+    {
+      label: "Reads",
+      tip: IS_ILLUMINA
+        ? "Reads in the sample's FASTQ files. QC-passed reads survived fastp trimming; mapped reads are QC-passed reads aligned to the reference, as a share of all reads."
+        : "Reads in the sample's FASTQ file; mapped reads aligned to the reference, as a share of all reads.",
+      facts: [
+        fact("Total", formatNumber(row.total_reads)),
+        IS_ILLUMINA && fact("QC-passed", withShare(row.qc_passed_reads, formatShare(row.qc_passed_reads, row.total_reads))),
+        fact("Mapped", withShare(row.mapped_reads, formatPercent(row.pct_mapped))),
+      ].filter(Boolean),
+    },
   ].filter(Boolean);
-}
-
-function readQcFigures(fastp) {
-  return [
-    { label: "Reads in", value: formatNumber(fastp.total_reads_before) },
-    {
-      label: "Reads out",
-      value: formatNumber(fastp.total_reads_after),
-      note: `${formatShare(fastp.total_reads_after, fastp.total_reads_before)} kept`,
-    },
-    {
-      label: "Q30 rate",
-      value: formatFraction(fastp.q30_after),
-      note: isMissing(fastp.q30_before) ? "" : `before: ${formatFraction(fastp.q30_before)}`,
-    },
-    { label: "Duplication", value: formatFraction(fastp.duplication) },
-    {
-      label: "Mean length",
-      value: `${formatNumber(fastp.read1_mean_length)}<small> / ${formatNumber(fastp.read2_mean_length)} bp</small>`,
-      note: "R1 / R2 after trimming",
-    },
-    { label: "Low quality", value: formatNumber(fastp.low_quality), note: "reads removed" },
-    { label: "Too short", value: formatNumber(fastp.too_short), note: "reads removed" },
-    { label: "Adapter trimmed", value: formatNumber(fastp.adapter_trimmed), note: "reads" },
-  ];
-}
-
-function variantCallingFigures(row) {
-  return [
-    { label: "Clair3 model", value: `<small>${escapeHtml(row.clair3_model || PARAMS.clair3_model || MISSING)}</small>` },
-    { label: "MAPQ floor", value: formatNumber(PARAMS.minimum_map_quality) },
-    { label: "Allele fraction", value: PARAMS.af_threshold === null ? MISSING : String(PARAMS.af_threshold) },
-    {
-      label: "Min read length",
-      value: PARAMS.minimum_length === null ? MISSING : formatNumber(PARAMS.minimum_length) + "<small> bp</small>",
-    },
-    { label: "Variant records", value: row.variants ? formatNumber(row.variants.records) : MISSING },
-  ];
 }
 
 function mappedReadsFloorNote(row) {
@@ -328,8 +379,38 @@ function alignmentCoverage(viralqc) {
   return viralqc.coverage !== null ? (100 * viralqc.coverage).toFixed(1) + "%" : MISSING;
 }
 
+// The segment table in the detail: every row of the selected sample, one per segment.
+const SEGMENT_COLUMNS = [
+  { title: "Segment", cell: (row) => ({ className: "strong", html: row.facet ? facetChipHtml(row.facet) : DIM_DASH_HTML }) },
+  { title: "Status", cell: (row) => ({ className: "", html: statusPillHtml(row.status) }) },
+  { title: "Mapped", cell: (row) => numericCell(row.mapped_reads, formatNumber(row.mapped_reads)) },
+  {
+    title: "Median depth",
+    cell: (row) => numericCell(row.median_depth, row.median_depth === null ? MISSING : formatDecimal(row.median_depth) + "×"),
+  },
+  { title: `Coverage ≥${MIN_DEPTH}×`, cell: coverageCell },
+  {
+    title: "N %",
+    cell: (row) => numericCell(row.consensus ? row.consensus.n_pct : null,
+                               row.consensus ? formatPercent(row.consensus.n_pct) : MISSING),
+  },
+  HAS_VIRALQC && { title: "Quality", cell: (row) => ({ className: "", html: gradePillHtml(gradeOf(row)) }) },
+].filter(Boolean);
+
+function segmentRowsOf(row) {
+  return IS_SEGMENTED ? ROWS.filter((candidate) => candidate.id === row.id) : [];
+}
+
+// The consensus quality-control table: the overall verdict, then each check viralQC reported.
+function qcTableRows(viralqc) {
+  return [["Overall quality", viralqc.overall, true], ...viralqcCheckVerdicts(viralqc).map(([check, verdict]) => [check, verdict, false])];
+}
+
 function viralqcCheckVerdicts(viralqc) {
-  const humanName = (check) => check.replace(/([A-Z])/g, " $1").toLowerCase();
+  const humanName = (check) => {
+    const words = check.replace(/([A-Z])/g, " $1").toLowerCase();
+    return (words.charAt(0).toUpperCase() + words.slice(1)).replace(/\bsnp\b/i, "SNP");
+  };
   return Object.entries(viralqc.checks || {})
     .filter(([, verdict]) => verdict)
     .map(([check, verdict]) => [humanName(check), verdict]);

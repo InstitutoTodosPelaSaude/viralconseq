@@ -31,6 +31,64 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   behaves as before.
   Served over HTTP with a `data.json` beside it, the raw template renders on
   its own, for work on the page.
+- The report follows the Nimbus design system: its colour palette (light and
+  dark), Inter type scale, and one table style for every table (a grey frame
+  holding the header, rounded white body, 56 px rows, the selected row
+  tinted). Status and verdict pills are tinted chips, viralQC grades are
+  quality badges, and a coverage below the consensus threshold reads in
+  warning ink with a down arrow instead of a meter bar. The sample detail
+  gains a "Segment results" table (every segment of the sample, click to
+  switch) on segmented runs, shows viralQC's checks as a "Consensus quality
+  control" table, and draws its charts on a sunk panel. Unsegmented runs
+  draw their charts in the primary blue instead of grey.
+- Report: the depth trace has its own full-width block ("Segment detail" on
+  segmented runs) with a Segment select that switches the detailed segment, a
+  Log10 switch that puts the depth axis on a linear scale when off, and a
+  legend for the trace, the bands masked to N, the dashed minimum-depth line,
+  the primer extent and contig boundaries. Masked bands are tinted instead of
+  grey, so they stay distinct from the primer-extent bands.
+- Report: the theme and Log10 choices are remembered in the browser
+  (`localStorage`) and restored when a report is opened again; with storage
+  unavailable the page falls back to the system theme and a log axis.
+- Report: closed tooltips no longer widen the page (they gave it a sideways
+  scroll at every width).
+- Report: the dark theme sits on near-black neutral surfaces with lighter
+  text; every text pair is at least AA (4.5:1), the muted text on cards now
+  8.9:1 and the card labels 13.6:1.
+- Report: the sample table's filters are Nimbus tabs (a grey track, a white
+  pill that slides under the selected filter, "All (48)"-style labels), and
+  the search is a rounded field with a magnifier that stays on the right of
+  the same row at every width; the fields it searches are in its tooltip.
+- Report: table bodies round all four corners again; the top two were square
+  (Alpine's `<template>` is the body's first child, so `:first-child` never
+  matched), most visibly with a single row.
+- Report: the text explaining what a section shows (the overview charts, the
+  sample table's columns, and each block of the sample detail) moves into a
+  tooltip behind an info icon beside the section title, opened on hover,
+  keyboard focus or tap, always below the icon with its arrow on it (the
+  Nimbus tooltip: slate surface, white text). Text that carries run data
+  stays on the page.
+- Report: the sample detail's figures are grouped into cards of label/value
+  rows -- Read QC (Illumina; the former "Read QC (fastp)" block), Depth &
+  coverage, Consensus, Variant calling (nanopore; the former block of that
+  name) and Reads -- each with an info tooltip in place of the
+  old per-figure notes. Each figure stays on one line; a value cut short by a
+  narrow card shows in full in a tooltip on hover. A coverage below the
+  consensus threshold reads in warning ink with a down arrow, as in the
+  tables, and its tooltip names the threshold. The Segment select's list
+  follows the dark theme.
+- Report: the run's six KPI tiles are three cards in the same label/value
+  style (Samples, Genomes, Depth & mapping), each with an info tooltip that
+  carries the tiles' footnotes and the per-segment or per-virus counts. The
+  header is a floating rounded card in the style of the cards below it,
+  aligned with the content, carrying a
+  "viralconseq · run report" eyebrow over the
+  run label, the platform (primary-tinted) and pipeline version as chips
+  beside the generation date, and a sun/moon switch (amber sun, blue moon)
+  in place of the "Dark theme" button; its Samples and Genomes figures, now in the cards, are not
+  repeated there. The explanatory subtitles of "Sample detail" and
+  "Provenance" move into info tooltips, and the "Run overview" heading, which
+  only restated the page's title, is gone.
 
 ### Fixed
 

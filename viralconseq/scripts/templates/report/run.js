@@ -93,6 +93,7 @@ function isDark() {
 }
 
 function facetColor(facet) {
+  if (FACET_KIND === "none") return "var(--cat-1)";
   const slot = FACETS.indexOf(facet);
   return slot < 0 ? "var(--muted)" : `var(--cat-${(slot % 8) + 1})`;
 }

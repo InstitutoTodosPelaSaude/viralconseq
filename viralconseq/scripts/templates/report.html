@@ -11,50 +11,46 @@
 
 <header class="masthead">
   <div class="wrap">
-    <div>
-      <!-- the run label is a bare text node: the stylesheet dims every <span> in the title -->
-      <h1 id="run-title" x-init="$el.prepend(DATA.run.label + ' ')"><span>run report</span></h1>
-      <p class="sub" id="run-sub" x-text="`viralconseq consensus genomes · ${PLATFORM} · generated ${DATA.run.generated}`"></p>
+    <div class="mast-id">
+      <div class="mast-text">
+      <p class="eyebrow">viralconseq · run report</p>
+      <h1 id="run-title" x-text="DATA.run.label"></h1>
+      <p class="sub" id="run-sub"><span class="pill platform" id="run-platform" x-text="PLATFORM"></span><span class="pill neutral"
+        id="run-pipeline" x-text="'viralconseq ' + PIPELINE_VERSION"></span><span x-text="`consensus genomes · generated ${DATA.run.generated}`"></span></p>
+      </div>
     </div>
-    <div class="mast-meta" id="mast-meta">
-      <div>Platform<b><span class="platform" x-text="PLATFORM"></span></b></div>
-      <div>Samples<b x-text="SAMPLE_IDS.length"></b></div>
-      <div><span x-text="`Genomes ≥${COVERAGE_THRESHOLD}%`"></span><b x-text="COMPLETE_ROWS.length"></b></div>
-      <div>Pipeline<b x-text="'viralconseq ' + PIPELINE_VERSION"></b></div>
+    <div class="theme-switch" id="theme" role="radiogroup" aria-label="Colour theme" :data-dark="String($store.ui.dark)">
+      <button type="button" role="radio" aria-label="Light theme" :aria-checked="String(!$store.ui.dark)" @click="$store.ui.setTheme('light')" x-html="ICON_SUN"></button>
+      <button type="button" role="radio" aria-label="Dark theme" :aria-checked="String($store.ui.dark)" @click="$store.ui.setTheme('dark')" x-html="ICON_MOON"></button>
     </div>
-    <button class="theme-toggle" type="button" id="theme" aria-label="Switch colour theme"
-      @click="$store.ui.toggleTheme()" x-text="$store.ui.dark ? 'Light theme' : 'Dark theme'"></button>
   </div>
 </header>
 
 <div class="wrap">
 
   <section id="kpi-section">
-    <div class="kpis" id="kpis" :data-n="KPI_TILES.length">
-      <template x-for="tile in KPI_TILES">
-        <div class="kpi">
-          <div class="label" x-text="tile.label"></div>
-          <div class="value"><span x-text="tile.value"></span><template x-if="tile.unit"><span class="unit" x-text="tile.unit"></span></template></div>
-          <div class="foot" x-text="tile.foot"></div>
+    <div class="facts on-page" id="kpis">
+      <template x-for="(group, index) in RUN_FACT_GROUPS" :key="group.label">
+        <div class="fact-card" role="group" :aria-label="group.label">
+          <div class="fact-title"><h4 x-text="group.label"></h4><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn"
+            :aria-label="`About ${group.label.toLowerCase()}`" :aria-describedby="`tip-run-${index}`" x-html="ICON_INFO"></button><span class="tip" role="tooltip"
+            :id="`tip-run-${index}`"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span x-text="group.tip"></span></span></span></div>
+          <dl class="fact-list">
+            <template x-for="item in group.facts">
+              <div class="fact"><dt x-text="item.label"></dt><dd class="info" data-tip="off" @mouseenter="revealCutValue($el)"><span class="value" x-text="item.value"></span><span class="tip"
+                role="tooltip"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span x-text="item.value"></span></span></dd></div>
+            </template>
+          </dl>
         </div>
       </template>
     </div>
-  </section>
-
-  <section>
-    <div class="sec-head">
-      <h2>Run overview</h2>
-      <p>What the run yielded, where samples were lost, and how depth converts into a genome.</p>
-    </div>
-    <div class="grid-3">
+    <div class="grid-3" id="overview-charts">
       <div class="card">
-        <h3>From sample to genome</h3>
-        <p class="note" id="funnel-note" x-text="FUNNEL_NOTE"></p>
+        <div class="title-row"><h3>From sample to genome</h3><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-funnel" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-funnel"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span id="funnel-note" x-text="FUNNEL_NOTE"></span></span></span></div>
         <div id="funnel" x-init="mountChart($el, FUNNEL_CHART)"></div>
       </div>
       <div class="card">
-        <h3>Genome completeness, ranked</h3>
-        <p class="note" id="ranked-note" x-text="`Percent of reference positions with depth ≥${MIN_DEPTH}×. Masking and variant filters also affect the consensus.`"></p>
+        <div class="title-row"><h3>Genome completeness, ranked</h3><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-ranked" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-ranked"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span id="ranked-note" x-text="`Percent of reference positions with depth ≥${MIN_DEPTH}×. Masking and variant filters also affect the consensus.`"></span></span></span></div>
         <div id="ranked" x-init="mountChart($el, RANKED_CHART)"></div>
         <div class="chart-foot"><span x-text="`${RANKED_ROWS.length} rows with coverage, best first`"></span><span
           x-text="`${COMPLETE_ROWS.length} clear the threshold`"></span></div>
@@ -65,9 +61,8 @@
         </div>
       </div>
       <div class="card">
-        <h3>Depth against completeness</h3>
-        <p class="note">Median depth over every reference position, zeros included.
-          The relationship shown is descriptive and does not establish the cause of low coverage.</p>
+        <div class="title-row"><h3>Depth against completeness</h3><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-scatter" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-scatter"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Median depth over every reference position, zeros included.
+          The relationship shown is descriptive and does not establish the cause of low coverage.</span></span></div>
         <div id="scatter" x-init="mountChart($el, SCATTER_CHART)"></div>
         <div class="legend" id="scatter-legend">
           <template x-for="[facet, count] in FACET_COUNTS">
@@ -80,18 +75,31 @@
 
   <section>
     <div class="sec-head">
-      <h2>Samples</h2>
+      <div class="title-row"><h2>Samples</h2><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About the sample table" aria-describedby="table-foot" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="table-foot"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>
+        <b x-text="`Cov ≥${MIN_DEPTH}×`"></b> is the share of reference positions at or above the masking depth;
+        positions below it are <code>N</code> in the consensus. A row enters the filtered multi-FASTA at
+        <span x-text="`≥${COVERAGE_THRESHOLD}%.`"></span>
+        <template x-if="HAS_VIRALQC"><span> <b>Grade</b> is viralQC's A–D genome quality.</span></template>
+        <template x-if="IS_ILLUMINA"><span> <b>QC-passed</b> counts reads surviving fastp.</span></template></span></span></div>
       <p id="table-caption" x-text="`${$store.ui.visibleRows.length} of ${ROWS.length} ${ROWS_NOUN}. Click a row for its detail.`"></p>
     </div>
     <div class="filters" id="filters">
-      <template x-for="filter in TABLE_FILTERS">
-        <button class="fbtn" type="button" :data-f="filter.key" :aria-pressed="String(filter.key === $store.ui.filter)"
-          @click="$store.ui.filter = filter.key"><span x-text="filter.title"></span><span class="n" x-text="filter.count"></span></button>
-      </template>
-      <input type="search" id="q" :placeholder="SEARCH_PLACEHOLDER" aria-label="Filter samples" x-model="$store.ui.query">
+      <div class="tabs" role="group" aria-label="Show rows" x-effect="$store.ui.filter; $nextTick(() => placeTabIndicator($el))"
+        @resize.window="placeTabIndicator($el)">
+        <span class="tabs-indicator" aria-hidden="true"></span>
+        <template x-for="filter in TABLE_FILTERS">
+          <button class="tab" type="button" :data-f="filter.key" :aria-pressed="String(filter.key === $store.ui.filter)"
+            @click="$store.ui.filter = filter.key" x-text="`${filter.title} (${filter.count})`"></button>
+        </template>
+      </div>
+      <label class="search">
+        <span x-html="ICON_SEARCH"></span>
+        <input type="search" id="q" placeholder="Search samples" :title="SEARCH_PLACEHOLDER" :aria-description="SEARCH_PLACEHOLDER"
+          aria-label="Search samples" x-model="$store.ui.query">
+      </label>
     </div>
     <div class="tablewrap">
-      <table class="data" id="table">
+      <table class="data sortable" id="table">
         <thead><tr id="thead-row">
           <template x-for="column in TABLE_COLUMNS">
             <th :data-k="column.key" :class="column.numeric ? 'num' : ''" scope="col" @click="$store.ui.sortBy(column.key)"
@@ -102,7 +110,7 @@
         </tr></thead>
         <tbody id="tbody">
           <template x-for="row in $store.ui.visibleRows" :key="row.key">
-            <tr :data-id="row.key" :aria-selected="String(row.key === $store.ui.selectedKey)" tabindex="0"
+            <tr class="clickable" :data-id="row.key" :aria-selected="String(row.key === $store.ui.selectedKey)" tabindex="0"
               @click="$store.ui.select(row.key)" @keydown.enter.prevent="$store.ui.select(row.key)" @keydown.space.prevent="$store.ui.select(row.key)">
               <template x-for="column in TABLE_COLUMNS"><td :class="column.cell(row).className" x-html="column.cell(row).html"></td></template>
             </tr>
@@ -110,19 +118,11 @@
         </tbody>
       </table>
     </div>
-    <p class="note" style="margin-top:8px" id="table-foot">
-      <b x-text="`Cov ≥${MIN_DEPTH}×`"></b> is the share of reference positions at or above the masking depth;
-      positions below it are <code>N</code> in the consensus. A row enters the filtered multi-FASTA at
-      <span x-text="`≥${COVERAGE_THRESHOLD}%.`"></span>
-      <template x-if="HAS_VIRALQC"><span> <b>Grade</b> is viralQC's A–D genome quality.</span></template>
-      <template x-if="IS_ILLUMINA"><span> <b>QC-passed</b> counts reads surviving fastp.</span></template>
-    </p>
   </section>
 
   <section>
     <div class="sec-head">
-      <h2>Sample detail</h2>
-      <p>Select any row above.</p>
+      <div class="title-row"><h2>Sample detail</h2><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About the sample detail" aria-describedby="tip-detail" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-detail"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>The row selected in the sample table. Select any row above; Prev and Next walk the table in its current order and filter.</span></span></div>
     </div>
     <div class="card" id="detail">
       <template x-if="!$store.ui.selectedRow"><p class="note">Select a sample from the table above.</p></template>
@@ -131,21 +131,57 @@
         <div style="display: contents">
 
           <div class="detail-head">
-            <h3 x-text="row.id"></h3>
+            <h3 x-text="`Sample ${row.id}`"></h3>
             <span x-html="statusPillHtml(row.status)"></span>
+            <template x-if="lowCoveragePillHtml(row)"><span x-html="lowCoveragePillHtml(row)"></span></template>
             <span x-html="facetChipHtml(row.facet)"></span>
             <template x-if="gradeOf(row)"><span x-html="gradePillHtml(gradeOf(row), gradeScoreSuffix(row.viralqc))"></span></template>
             <div class="detail-nav">
-              <button type="button" id="prev" :disabled="!$store.ui.hasPrevious" @click="$store.ui.selectNeighbour(-1)">← Previous</button>
-              <button type="button" id="next" :disabled="!$store.ui.hasNext" @click="$store.ui.selectNeighbour(1)">Next →</button>
+              <button class="button" type="button" id="prev" :disabled="!$store.ui.hasPrevious" @click="$store.ui.selectNeighbour(-1)"
+                ><span x-html="ICON_ARROW_LEFT"></span>Prev</button>
+              <button class="button" type="button" id="next" :disabled="!$store.ui.hasNext" @click="$store.ui.selectNeighbour(1)"
+                >Next<span x-html="ICON_ARROW_RIGHT"></span></button>
             </div>
           </div>
 
-          <div class="statstrip">
-            <template x-for="figure in headlineFigures(row)">
-              <div class="s"><div class="k" x-text="figure.label"></div><div class="v" x-html="figure.value"></div><template x-if="figure.note"><div class="n" x-text="figure.note"></div></template></div>
+          <div class="facts" id="facts">
+            <template x-for="(group, index) in factGroups(row)" :key="group.label">
+              <div class="fact-card" role="group" :aria-label="group.label">
+                <div class="fact-title"><h4 x-text="group.label"></h4><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn"
+                  :aria-label="`About ${group.label.toLowerCase()}`" :aria-describedby="`tip-fact-${index}`" x-html="ICON_INFO"></button><span class="tip" role="tooltip"
+                  :id="`tip-fact-${index}`"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span x-text="group.tip"></span></span></span></div>
+                <dl class="fact-list">
+                  <template x-for="item in group.facts">
+                    <div class="fact"><dt x-text="item.label"></dt><dd class="info" :class="item.low ? 'low' : ''" :data-tip="item.low ? 'on' : 'off'" @mouseenter="revealCutValue($el)"><span class="value" x-text="item.value"></span><template
+                      x-if="item.low"><span x-html="ICON_ARROW_DOWN"></span></template><span class="tip" role="tooltip"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span x-text="item.low ? `${item.value}, ${item.lowNote}` : item.value"></span></span></dd></div>
+                  </template>
+                </dl>
+                <template x-if="group.empty"><p class="note" x-text="group.empty"></p></template>
+              </div>
             </template>
           </div>
+
+          <template x-if="segmentRowsOf(row).length > 1">
+            <div class="detail-block">
+              <div class="title-row"><h3 class="sub-h3">Segment results</h3><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-segments" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-segments"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Every segment of <span x-text="row.id"></span>; the highlighted row is the one detailed on this card. Click a segment to show it.</span></span></div>
+              <div class="tablewrap">
+                <table class="data" id="segment-table">
+                  <thead><tr><template x-for="column in SEGMENT_COLUMNS"><th scope="col" x-text="column.title"></th></template></tr></thead>
+                  <tbody>
+                    <template x-for="segmentRow in segmentRowsOf(row)" :key="segmentRow.key">
+                      <tr class="clickable" :aria-selected="String(segmentRow.key === row.key)" tabindex="0"
+                        @click="$store.ui.select(segmentRow.key, { scrollIntoView: false })"
+                        @keydown.enter.prevent="$store.ui.select(segmentRow.key, { scrollIntoView: false })">
+                        <template x-for="column in SEGMENT_COLUMNS"><td :class="column.cell(segmentRow).className" x-html="column.cell(segmentRow).html"></td></template>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </template>
+
+          <div style="height:20px"></div>
 
           <template x-if="row.status === 'no_mapped_reads'">
             <p class="callout">Assembly was not attempted: <b x-text="formatNumber(row.gate?.mapped_reads ?? row.mapped_reads)"></b> reads mapped to
@@ -168,60 +204,58 @@
             <p class="callout">Status <b x-text="row.status"></b>.</p>
           </template>
 
-          <div class="grid-2">
-            <template x-if="IS_ILLUMINA">
-              <div>
-                <h3 class="sub-h3">Read QC (fastp)</h3>
-                <p class="note">Paired reads before and after adapter and quality trimming; the mapped and
-                  depth figures above are computed from the reads that passed.</p>
-                <template x-if="row.fastp">
-                  <div class="statstrip">
-                    <template x-for="figure in readQcFigures(row.fastp)">
-                      <div class="s"><div class="k" x-text="figure.label"></div><div class="v" x-html="figure.value"></div><template x-if="figure.note"><div class="n" x-text="figure.note"></div></template></div>
-                    </template>
-                  </div>
+          <div class="detail-block" id="depth-detail" style="margin-top:0">
+            <div class="block-head">
+              <div class="title-row"><h3 class="sub-h3" x-text="IS_SEGMENTED ? 'Segment detail' : 'Depth along the genome'"></h3><template x-if="coverageOf(row)"><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-depth" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-depth"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Mean depth in <span x-text="formatNumber(coverageOf(row).bin_bp)"></span> bp windows from <code>table_cov_basewise.txt</code>,
+                on a <span x-text="$store.ui.logDepth ? 'log10' : 'linear'"></span> axis.
+                Wheel to zoom, drag to pan, double-click for the whole genome. Shaded bands are ranges below <span x-text="MIN_DEPTH"></span>× and masked to <code>N</code><span
+                x-text="depthTraceNotes(row)"></span>.</span></span></template></div>
+              <div class="block-controls">
+                <template x-if="segmentRowsOf(row).length > 1">
+                  <label class="select">
+                    <span class="select-label">Segment</span>
+                    <span class="select-box">
+                      <select id="segment-select" aria-label="Segment" @change="$store.ui.select($event.target.value, { scrollIntoView: false })">
+                        <template x-for="segmentRow in segmentRowsOf(row)" :key="segmentRow.key">
+                          <option :value="segmentRow.key" :selected="segmentRow.key === row.key" x-text="segmentRow.facet"></option>
+                        </template>
+                      </select>
+                      <span x-html="ICON_CHEVRON_DOWN"></span>
+                    </span>
+                  </label>
                 </template>
-                <template x-if="!row.fastp"><p class="note">No fastp report for this sample.</p></template>
+                <template x-if="coverageOf(row)">
+                  <button type="button" class="switch" role="switch" id="log-switch" :aria-checked="String($store.ui.logDepth)"
+                    @click="$store.ui.toggleLogDepth()"><span class="track"><span class="knob"></span></span><span class="switch-label">Log10</span></button>
+                </template>
               </div>
-            </template>
-            <template x-if="!IS_ILLUMINA">
-              <div>
-                <h3 class="sub-h3">Variant calling</h3>
-                <p class="note">Clair3 calls on reads passing the length and mapping-quality floors; the consensus
-                  applies variants whose allele fraction, ALT over REF plus ALT reads, is at or above the
-                  threshold below, and masks positions below <span x-text="MIN_DEPTH"></span>×.</p>
-                <div class="statstrip">
-                  <template x-for="figure in variantCallingFigures(row)">
-                    <div class="s"><div class="k" x-text="figure.label"></div><div class="v" x-html="figure.value"></div><template x-if="figure.note"><div class="n" x-text="figure.note"></div></template></div>
-                  </template>
-                </div>
-              </div>
-            </template>
-
-            <div>
-              <h3 class="sub-h3">Depth along the genome</h3>
-              <template x-if="coverageOf(row)">
-                <p class="note">Mean depth in <span x-text="formatNumber(coverageOf(row).bin_bp)"></span> bp windows from <code>table_cov_basewise.txt</code>.
-                  Wheel to zoom, drag to pan, double-click for the whole genome. Grey bands are ranges below <span x-text="MIN_DEPTH"></span>× and masked to <code>N</code><span
-                  x-text="depthTraceNotes(row)"></span>.</p>
-              </template>
-              <template x-if="coverageOf(row)">
-                <div id="covtrace" x-init="mountChart($el, depthTraceChart(row))"></div>
-              </template>
-              <template x-if="!coverageOf(row)">
-                <p class="note">No per-position depth table for this row.</p>
-              </template>
             </div>
+            <template x-if="coverageOf(row)">
+              <div class="chart-card"><div id="covtrace" x-init="mountChart($el, depthTraceChart(row))"></div></div>
+            </template>
+            <template x-if="coverageOf(row)">
+              <div class="legend" id="depth-legend">
+                <span class="chip"><i class="sw" :style="{ background: facetColor(row.facet) }"></i>depth per window</span>
+                <span class="chip"><i class="sw" style="background:var(--mask-band)"></i><span x-text="`masked to N (below ${MIN_DEPTH}×)`"></span></span>
+                <span class="chip"><i class="sw sw-dashed"></i><span x-text="`min threshold ${MIN_DEPTH}×`"></span></span>
+                <template x-if="primerExtentOf(row)"><span class="chip"><i class="sw" style="background:var(--outside-band)"></i>outside primer extent</span></template>
+                <template x-if="(coverageOf(row).contigs || []).length > 1"><span class="chip"><i class="sw sw-contig"></i>contig boundary</span></template>
+              </div>
+            </template>
+            <template x-if="!coverageOf(row)">
+              <p class="note">No per-position depth table for this row.</p>
+            </template>
           </div>
 
           <template x-if="ampliconDepthsOf(row)">
-            <div style="margin-top:18px">
-              <h3 class="sub-h3">Amplicon coverage</h3>
-              <p class="note">Mean depth over each amplicon of <code x-text="PARAMS.primer_scheme || 'the primer scheme'"></code>,
+            <div class="detail-block">
+              <div class="title-row"><h3 class="sub-h3">Amplicon coverage</h3><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-amplicons" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-amplicons"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Mean depth over each amplicon of <code x-text="PARAMS.primer_scheme || 'the primer scheme'"></code>,
                 from the same per-position table. A mean above <span x-text="MIN_DEPTH"></span>× does not guarantee every position
-                in the amplicon met the masking threshold; use the trace for that.</p>
-              <div id="sampleamp" x-init="mountChart($el, ampliconDepthChart(row))"></div>
-              <div class="chart-foot"><span x-text="ampliconCaption(row)"></span></div>
+                in the amplicon met the masking threshold; use the trace for that.</span></span></div>
+              <div class="chart-card">
+                <div id="sampleamp" x-init="mountChart($el, ampliconDepthChart(row))"></div>
+                <div class="chart-foot"><span x-text="ampliconCaption(row)"></span></div>
+              </div>
               <div class="legend">
                 <span class="chip"><i class="sw" :style="{ background: facetColor(row.facet) }"></i><span x-text="`at or above ${MIN_DEPTH}×`"></span></span>
                 <span class="chip"><i class="sw" style="background:var(--accent)"></i><span x-text="`mean below ${MIN_DEPTH}×`"></span></span>
@@ -229,26 +263,33 @@
             </div>
           </template>
 
+
           <template x-if="row.viralqc">
-            <div style="margin-top:18px">
-              <h3 class="sub-h3">viralQC</h3>
-              <p class="note">Virus <b x-text="row.viralqc.virus || MISSING"></b><span x-text="row.viralqc.species ? ` (${row.viralqc.species})` : ''"></span> ·
+            <div class="detail-block">
+              <div class="title-row"><h3 class="sub-h3">Consensus quality control</h3><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-viralqc" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-viralqc"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Grades and QC statuses are reported from the selected viralQC
+                dataset. Inspect the individual checks alongside coverage and missing sites; coverage alone does
+                not replace the other quality checks.</span></span></div>
+              <p class="note">viralQC · virus <b x-text="row.viralqc.virus || MISSING"></b><span x-text="row.viralqc.species ? ` (${row.viralqc.species})` : ''"></span> ·
                 clade <b x-text="row.viralqc.clade || MISSING"></b> · lineage <b x-text="row.viralqc.lineage || MISSING"></b>.</p>
-              <div class="legend" style="margin-top:8px">
-                <span class="chip">Grade <span x-html="gradePillHtml(gradeOf(row), gradeScoreSuffix(row.viralqc))"></span></span>
-                <span class="chip">Overall <span x-html="verdictPillHtml(row.viralqc.overall)"></span></span>
-                <template x-for="[check, verdict] in viralqcCheckVerdicts(row.viralqc)">
-                  <span class="chip"><span x-text="check"></span> <span x-html="verdictPillHtml(verdict)"></span></span>
-                </template>
+              <div class="tablewrap">
+                <table class="data" id="qc-table">
+                  <thead><tr><th scope="col" style="width:60%">Category</th><th scope="col">Status</th><th scope="col">Grade</th></tr></thead>
+                  <tbody>
+                    <template x-for="[category, verdict, isOverall] in qcTableRows(row.viralqc)">
+                      <tr>
+                        <td :class="isOverall ? 'strong' : ''" x-text="category"></td>
+                        <td x-html="verdictPillHtml(verdict)"></td>
+                        <td x-html="isOverall ? gradePillHtml(gradeOf(row), gradeScoreSuffix(row.viralqc)) : ''"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
               </div>
               <p class="note" style="margin-top:8px">Alignment coverage <span x-text="alignmentCoverage(row.viralqc)"></span> ·
                 <span x-text="formatNumber(row.viralqc.substitutions)"></span> substitutions · <span x-text="formatNumber(row.viralqc.deletions)"></span> deletions ·
                 <span x-text="formatNumber(row.viralqc.missing)"></span> missing sites ·
                 dataset <b x-text="row.viralqc.dataset || MISSING"></b><template x-if="row.viralqc.dataset_version"><span> <b x-text="row.viralqc.dataset_version"></b></span></template>.<template
                 x-if="row.viralqc.input_status"><span> Input sequence status: <b x-text="row.viralqc.input_status"></b>.</span></template></p>
-              <p class="note" style="margin-top:8px">Grades and QC statuses are reported from the selected viralQC
-                dataset. Inspect the individual checks alongside coverage and missing sites; coverage alone does
-                not replace the other quality checks.</p>
             </div>
           </template>
 
@@ -258,7 +299,7 @@
   </section>
 
   <footer>
-    <div class="sec-head"><h2>Provenance</h2><p>Everything the page reports comes from these versions and settings.</p></div>
+    <div class="sec-head"><div class="title-row"><h2>Provenance</h2><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About the provenance" aria-describedby="tip-provenance" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-provenance"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Everything the page reports comes from these versions and settings.</span></span></div></div>
     <div class="prov" id="prov">
       <template x-for="[name, value] in PROVENANCE_ROWS">
         <div class="row"><span x-text="name"></span><b x-text="value"></b></div>

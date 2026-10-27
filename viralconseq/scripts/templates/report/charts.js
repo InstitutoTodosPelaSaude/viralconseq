@@ -75,7 +75,9 @@ function decadeTicks(max) {
 }
 
 function thresholdLine(value, label) {
-  const line = { type: "line", yMin: value, yMax: value, borderColor: resolveColor("var(--accent)"), borderWidth: 1 };
+  const line = {
+    type: "line", yMin: value, yMax: value, borderColor: resolveColor("var(--accent)"), borderWidth: 1, borderDash: [4, 3],
+  };
   if (!label) return line;
   return {
     ...line,
@@ -321,17 +323,26 @@ function depthTraceChart(row) {
   };
 }
 
-// A log axis has no zero, so depth is plotted as depth + 1 and its ticks read back as depth.
+// A log axis has no zero, so on it depth is plotted as depth + 1 and its ticks read back as depth.
 function depthTraceConfig(row) {
   const coverage = coverageOf(row);
   const genomeLength = coverage.genome_length;
-  const plottedMax = Math.max(10, ...coverage.bins) + 1;
+  const isLog = Alpine.store("ui").logDepth;
+  const offset = isLog ? 1 : 0;
+  const plottedMax = Math.max(10, ...coverage.bins) + offset;
   const color = resolveColor(facetColor(row.facet));
+  const yAxis = isLog
+    ? axisOptions({
+      type: "logarithmic", min: 1, max: plottedMax,
+      afterBuildTicks: decadeTicks(plottedMax),
+      ticks: { callback: (value) => (value === 1 ? "0" : formatCompact(value)) },
+    })
+    : axisOptions({ type: "linear", min: 0, ticks: { maxTicksLimit: 5, callback: formatCompact } });
   return {
     type: "line",
     data: {
       datasets: [{
-        data: coverage.bins.map((depth, index) => ({ x: index * coverage.bin_bp, y: depth + 1 })),
+        data: coverage.bins.map((depth, index) => ({ x: index * coverage.bin_bp, y: depth + offset })),
         borderColor: color,
         borderWidth: 2,
         backgroundColor: withOpacity(color, 0.1),
@@ -353,14 +364,10 @@ function depthTraceConfig(row) {
           title: `Genome position (bp)${contigSummary(coverage.contigs || [])}`,
           ticks: { callback: formatCompact, maxRotation: 0, includeBounds: false },
         }),
-        y: axisOptions({
-          type: "logarithmic", min: 1, max: plottedMax,
-          afterBuildTicks: decadeTicks(plottedMax),
-          ticks: { callback: (value) => (value === 1 ? "0" : formatCompact(value)) },
-        }),
+        y: yAxis,
       },
       plugins: {
-        annotation: { annotations: depthTraceAnnotations(row, coverage, plottedMax) },
+        annotation: { annotations: depthTraceAnnotations(row, coverage, plottedMax, offset) },
         zoom: {
           zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: "x" },
           pan: { enabled: true, mode: "x" },
@@ -381,7 +388,7 @@ function contigSummary(contigs) {
   return "";
 }
 
-function depthTraceAnnotations(row, coverage, plottedMax) {
+function depthTraceAnnotations(row, coverage, plottedMax, offset) {
   const genomeLength = coverage.genome_length;
   const extent = primerExtentOf(row);
   const contigs = coverage.contigs || [];
@@ -390,11 +397,11 @@ function depthTraceAnnotations(row, coverage, plottedMax) {
     drawTime: "beforeDatasetsDraw",
   });
   const outsidePrimers = extent
-    ? [band(0, extent.start, "var(--surface-sunk)"), band(extent.end, genomeLength, "var(--surface-sunk)")]
+    ? [band(0, extent.start, "var(--outside-band)"), band(extent.end, genomeLength, "var(--outside-band)")]
     : [];
-  const masked = (coverage.mask || []).map(([first, last]) => band(first - 1, last, "var(--grid)"));
+  const masked = (coverage.mask || []).map(([first, last]) => band(first - 1, last, "var(--mask-band)"));
   const contigMarkers = contigs.length > 1 ? contigBoundaries(contigs).concat(contigNames(contigs, genomeLength, plottedMax)) : [];
-  return [...outsidePrimers, ...masked, ...contigMarkers, thresholdLine(MIN_DEPTH + 1, `${MIN_DEPTH}×`)];
+  return [...outsidePrimers, ...masked, ...contigMarkers, thresholdLine(MIN_DEPTH + offset, `${MIN_DEPTH}× min`)];
 }
 
 function contigBoundaries(contigs) {
