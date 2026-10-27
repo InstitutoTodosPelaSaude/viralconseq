@@ -401,9 +401,44 @@ function segmentRowsOf(row) {
   return IS_SEGMENTED ? ROWS.filter((candidate) => candidate.id === row.id) : [];
 }
 
-// The consensus quality-control table: the overall verdict, then each check viralQC reported.
-function qcTableRows(viralqc) {
-  return [["Overall quality", viralqc.overall, true], ...viralqcCheckVerdicts(viralqc).map(([check, verdict]) => [check, verdict, false])];
+// viralQC's figures for the genome, in the detail's card style; its per-check statuses follow as a table.
+function viralqcFactGroups(row) {
+  const qc = row.viralqc;
+  const grade = gradeOf(row);
+  const score = gradeScoreSuffix(qc);
+  return [
+    {
+      label: "Genome quality",
+      tip: "viralQC's genome grade (A best, D worst) with its score out of 24, the overall QC status, the share of the reference the consensus aligned to, and the input sequence's status.",
+      facts: [
+        { label: "Grade", value: grade ? `${grade}${score}` : MISSING, html: grade ? gradePillHtml(grade, score) : null },
+        { label: "Overall status", value: qc.overall || MISSING, html: qc.overall ? verdictPillHtml(qc.overall) : null },
+        fact("Alignment coverage", alignmentCoverage(qc)),
+        qc.input_status && fact("Input sequence", qc.input_status),
+      ].filter(Boolean),
+    },
+    {
+      label: "Classification",
+      tip: "The virus, clade and lineage viralQC assigned, and the dataset it compared the consensus against.",
+      facts: [
+        fact("Virus", qc.virus || MISSING),
+        qc.species && fact("Species", qc.species),
+        fact("Clade", qc.clade || MISSING),
+        fact("Lineage", qc.lineage || MISSING),
+        fact("Dataset", qc.dataset || MISSING),
+        qc.dataset_version && fact("Dataset version", qc.dataset_version),
+      ].filter(Boolean),
+    },
+    {
+      label: "Differences",
+      tip: "What viralQC found in the consensus against the dataset's reference: substitutions, deletions and missing sites.",
+      facts: [
+        fact("Substitutions", formatNumber(qc.substitutions)),
+        fact("Deletions", formatNumber(qc.deletions)),
+        fact("Missing sites", formatNumber(qc.missing)),
+      ],
+    },
+  ];
 }
 
 function viralqcCheckVerdicts(viralqc) {

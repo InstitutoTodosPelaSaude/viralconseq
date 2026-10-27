@@ -52,6 +52,16 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   unavailable the page falls back to the system theme and a log axis.
 - Report: closed tooltips no longer widen the page (they gave it a sideways
   scroll at every width).
+- Report: the sample detail's viralQC block shows its figures as cards
+  (Genome quality with the grade and overall status, Classification,
+  Differences) and keeps only the per-check statuses in its table; the
+  table's Grade column, filled on one row only, is gone.
+- Report: the header's platform chip tells the platforms apart: Nanopore in
+  the primary blue, Illumina in violet.
+- Report: the sample detail's viralQC block shows its figures as cards
+  (Genome quality with the grade and overall status, Classification,
+  Differences) and keeps only the per-check statuses in its table; the
+  table's Grade column, filled on one row only, is gone.
 - Report: the dark theme sits on near-black neutral surfaces with lighter
   text; every text pair is at least AA (4.5:1), the muted text on cards now
   8.9:1 and the card labels 13.6:1.
@@ -72,7 +82,9 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   rows -- Read QC (Illumina; the former "Read QC (fastp)" block), Depth &
   coverage, Consensus, Variant calling (nanopore; the former block of that
   name) and Reads -- each with an info tooltip in place of the
-  old per-figure notes. Each figure stays on one line; a value cut short by a
+  old per-figure notes. The four cards run 4 across, then 2x2, then one
+  column, and three-card rows 3 across, then one column, so no card is left
+  alone on a row. Each figure stays on one line; a value cut short by a
   narrow card shows in full in a tooltip on hover. A coverage below the
   consensus threshold reads in warning ink with a down arrow, as in the
   tables, and its tooltip names the threshold. The Segment select's list

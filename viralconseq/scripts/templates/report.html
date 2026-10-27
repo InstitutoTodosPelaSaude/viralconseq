@@ -15,7 +15,7 @@
       <div class="mast-text">
       <p class="eyebrow">viralconseq · run report</p>
       <h1 id="run-title" x-text="DATA.run.label"></h1>
-      <p class="sub" id="run-sub"><span class="pill platform" id="run-platform" x-text="PLATFORM"></span><span class="pill neutral"
+      <p class="sub" id="run-sub"><span class="pill platform" id="run-platform" :data-platform="IS_ILLUMINA ? 'illumina' : 'nanopore'" x-text="PLATFORM"></span><span class="pill neutral"
         id="run-pipeline" x-text="'viralconseq ' + PIPELINE_VERSION"></span><span x-text="`consensus genomes · generated ${DATA.run.generated}`"></span></p>
       </div>
     </div>
@@ -152,7 +152,7 @@
                   :id="`tip-fact-${index}`"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span x-text="group.tip"></span></span></span></div>
                 <dl class="fact-list">
                   <template x-for="item in group.facts">
-                    <div class="fact"><dt x-text="item.label"></dt><dd class="info" :class="item.low ? 'low' : ''" :data-tip="item.low ? 'on' : 'off'" @mouseenter="revealCutValue($el)"><span class="value" x-text="item.value"></span><template
+                    <div class="fact"><dt x-text="item.label"></dt><dd class="info" :class="item.low ? 'low' : ''" :data-tip="item.low ? 'on' : 'off'" @mouseenter="revealCutValue($el)"><span class="value" x-html="item.html ?? escapeHtml(item.value)"></span><template
                       x-if="item.low"><span x-html="ICON_ARROW_DOWN"></span></template><span class="tip" role="tooltip"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span x-text="item.low ? `${item.value}, ${item.lowNote}` : item.value"></span></span></dd></div>
                   </template>
                 </dl>
@@ -269,27 +269,34 @@
               <div class="title-row"><h3 class="sub-h3">Consensus quality control</h3><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-viralqc" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-viralqc"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Grades and QC statuses are reported from the selected viralQC
                 dataset. Inspect the individual checks alongside coverage and missing sites; coverage alone does
                 not replace the other quality checks.</span></span></div>
-              <p class="note">viralQC · virus <b x-text="row.viralqc.virus || MISSING"></b><span x-text="row.viralqc.species ? ` (${row.viralqc.species})` : ''"></span> ·
-                clade <b x-text="row.viralqc.clade || MISSING"></b> · lineage <b x-text="row.viralqc.lineage || MISSING"></b>.</p>
-              <div class="tablewrap">
-                <table class="data" id="qc-table">
-                  <thead><tr><th scope="col" style="width:60%">Category</th><th scope="col">Status</th><th scope="col">Grade</th></tr></thead>
-                  <tbody>
-                    <template x-for="[category, verdict, isOverall] in qcTableRows(row.viralqc)">
-                      <tr>
-                        <td :class="isOverall ? 'strong' : ''" x-text="category"></td>
-                        <td x-html="verdictPillHtml(verdict)"></td>
-                        <td x-html="isOverall ? gradePillHtml(gradeOf(row), gradeScoreSuffix(row.viralqc)) : ''"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
+              <div class="facts" id="qc-facts">
+                <template x-for="(group, index) in viralqcFactGroups(row)" :key="group.label">
+                  <div class="fact-card" role="group" :aria-label="group.label">
+                    <div class="fact-title"><h4 x-text="group.label"></h4><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn"
+                      :aria-label="`About ${group.label.toLowerCase()}`" :aria-describedby="`tip-qc-${index}`" x-html="ICON_INFO"></button><span class="tip" role="tooltip"
+                      :id="`tip-qc-${index}`"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span x-text="group.tip"></span></span></span></div>
+                    <dl class="fact-list">
+                      <template x-for="item in group.facts">
+                        <div class="fact"><dt x-text="item.label"></dt><dd class="info" data-tip="off" @mouseenter="revealCutValue($el)"><span class="value"
+                          x-html="item.html ?? escapeHtml(item.value)"></span><span class="tip" role="tooltip"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg><span x-text="item.value"></span></span></dd></div>
+                      </template>
+                    </dl>
+                  </div>
+                </template>
               </div>
-              <p class="note" style="margin-top:8px">Alignment coverage <span x-text="alignmentCoverage(row.viralqc)"></span> ·
-                <span x-text="formatNumber(row.viralqc.substitutions)"></span> substitutions · <span x-text="formatNumber(row.viralqc.deletions)"></span> deletions ·
-                <span x-text="formatNumber(row.viralqc.missing)"></span> missing sites ·
-                dataset <b x-text="row.viralqc.dataset || MISSING"></b><template x-if="row.viralqc.dataset_version"><span> <b x-text="row.viralqc.dataset_version"></b></span></template>.<template
-                x-if="row.viralqc.input_status"><span> Input sequence status: <b x-text="row.viralqc.input_status"></b>.</span></template></p>
+              <template x-if="viralqcCheckVerdicts(row.viralqc).length">
+                <div class="tablewrap" style="margin-top:12px">
+                  <table class="data" id="qc-table">
+                    <thead><tr><th scope="col" style="width:70%">Check</th><th scope="col">Status</th></tr></thead>
+                    <tbody>
+                      <template x-for="[check, verdict] in viralqcCheckVerdicts(row.viralqc)">
+                        <tr><td x-text="check"></td><td x-html="verdictPillHtml(verdict)"></td></tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
+              <template x-if="!viralqcCheckVerdicts(row.viralqc).length"><p class="note">viralQC reported no per-check statuses for this genome.</p></template>
             </div>
           </template>
 

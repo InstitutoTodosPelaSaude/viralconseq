@@ -37,6 +37,8 @@
   --info-icon:      #3f505a;   /* the info badge, as the tooltip it opens */
   --sun:            #d18f00;   /* the theme switch's icons */
   --segment:        #ffffff;   /* the selected tab's pill */
+  --illumina-bg:    #e7ddfb;   /* the Illumina platform chip, 9.7:1 */
+  --illumina-ink:   #3b2470;
   --moon:           #1961ac;
 
   --cat-1:          #1961ac;
@@ -100,6 +102,8 @@
     --info-icon:      #7f939c;   /* 6.3:1 on the page, 3.2:1 under its white glyph */
     --sun:            #f2b632;
     --segment:        #2c373d;
+    --illumina-bg:    #2d2147;
+    --illumina-ink:   #e3d6ff;
     --moon:           #9cc3ea;
 
     --cat-1:          #5b9be0;
@@ -162,6 +166,8 @@
     --info-icon:      #7f939c;   /* 6.3:1 on the page, 3.2:1 under its white glyph */
     --sun:            #f2b632;
     --segment:        #2c373d;
+    --illumina-bg:    #2d2147;
+    --illumina-ink:   #e3d6ff;
     --moon:           #9cc3ea;
 
     --cat-1:          #5b9be0;
@@ -317,7 +323,9 @@ section { margin-top: 32px; }
 .pill.critical { background: var(--critical-bg); color: var(--critical-ink); }
 .pill.neutral  { background: var(--neutral-bg);  color: var(--ink-2); }
 /* the run's platform, in the primary blue's active tint */
+/* the run's platform: Nanopore in the primary blue's active tint, Illumina in violet -- hues with no status meaning */
 .pill.platform { background: var(--brand-active); color: var(--ink); }
+.pill.platform[data-platform="illumina"] { background: var(--illumina-bg); color: var(--illumina-ink); }
 
 /* viralQC genome grades A-D: the design's Quality Badge, an ordinal set from good through critical */
 .badge-wrap { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -435,8 +443,15 @@ table.data .bar-cell { width: 100%; }
 .detail-block > .note + .tablewrap, .detail-block > .note + .chart-card { margin-top: 12px; }
 
 /* the sample's figures: one card per pipeline stage, label/value rows in the type and inks of the tables */
-/* 272px fits a Clair3 model name beside its label */
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(272px, 100%), 1fr)); gap: 12px; margin: 4px 0 8px; }
+/* Fixed layouts by card count, so a card never sits alone on a row: four cards run 4 across, then 2x2, then
+   one column; three cards run 3 across, then one column. The breakpoints keep each card about 300px wide,
+   so a value as long as a Clair3 model name fits beside its label. */
+.facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 4px 0 8px; }
+@media (min-width: 720px)  { .facts:has(> .fact-card:nth-of-type(4)) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1320px) { .facts:has(> .fact-card:nth-of-type(4)) { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .facts:not(#qc-facts):not(:has(> .fact-card:nth-of-type(4))) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* viralQC's Classification card holds the long dataset name, so it takes the wider middle column */
+@media (min-width: 1100px) { #qc-facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr); } }
 .fact-card { background: var(--surface-sunk); border-radius: 12px; padding: 12px 16px 8px; min-width: 0; }
 .fact-title { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .fact-title h4 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.1px; color: var(--ink); }
