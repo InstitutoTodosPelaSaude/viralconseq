@@ -199,6 +199,13 @@
     --neutral-bg:     #1a2024;
   }
 
+/* Alpine removes x-cloak once it has rendered the page; until then only the themed background shows, and
+   the page then fades in rather than blinking on */
+[x-cloak] { visibility: hidden; }
+body:not([x-cloak]) { animation: page-in 160ms ease-out; }
+@keyframes page-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { body:not([x-cloak]) { animation: none; } }
+
 * { box-sizing: border-box; }
 html { background: var(--page); }
 body {
@@ -231,7 +238,33 @@ svg.icon { display: block; flex: none; }
   .masthead .wrap { padding: 0 16px; }
 }
 /* the theme switch stays beside the title at every width */
+/* the title on the left; the settings menu and the theme switch on the right */
 .masthead .wrap { padding-bottom: 0; display: flex; align-items: flex-start; gap: 16px 40px; }
+.mast-settings { margin-left: auto; flex: none; display: flex; align-items: center; gap: 12px; }
+.mast-settings .theme-switch { margin-left: 0; }
+.settings-menu { position: relative; }
+#settings-button .chevron { display: inline-flex; transition: transform 150ms ease; }
+#settings-button[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+.settings-panel {
+  position: absolute; z-index: 50; top: calc(100% + 8px); right: 0; width: 340px; max-width: calc(100vw - 32px);
+  padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  box-shadow: 0 12px 32px rgba(16, 23, 26, 0.14), 0 2px 6px rgba(16, 23, 26, 0.08);
+}
+.setting-row {
+  display: flex; align-items: center; gap: 16px; width: 100%; padding: 10px 12px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.setting-row + .setting-row { margin-top: 2px; }
+.setting-row:hover { background: var(--row-hover); }
+.setting-row:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.setting-text { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.setting-name { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0.1px; }
+.setting-help { font-size: 12px; line-height: 16px; letter-spacing: 0.4px; color: var(--muted); }
+.setting-row .switch { flex: none; cursor: inherit; }
+.setting-row[aria-checked="true"] .switch .track { background: var(--brand); }
+.setting-row[aria-checked="true"] .switch .knob { left: 20px; }
+@media (max-width: 660px) { .mast-settings { gap: 8px; } }
+}
 .masthead .wrap > .mast-id { min-width: 0; display: flex; align-items: center; gap: 16px; }
 .mast-text { min-width: 0; }
 .masthead .eyebrow { margin: 0 0 2px; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.4px; color: var(--muted); }
@@ -266,6 +299,7 @@ svg.icon { display: block; flex: none; }
   border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--ink);
 }
 .button:hover:not(:disabled) { background: var(--row-hover); }
+.button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .button:disabled { opacity: 0.4; cursor: default; }
 
 /* --- sections --- */
@@ -572,8 +606,33 @@ footer { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border
 .prov .row b { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
 footer .fine { font-size: 12px; letter-spacing: 0.4px; color: var(--muted); margin-top: 18px; line-height: 1.6; overflow-wrap: anywhere; }
 
+/* --- "Open in modal": the detail section becomes a modal over the page --- */
+#detail-section.as-modal:not(.is-open) { display: none; }
+#detail-section.as-modal.is-open {
+  position: fixed; inset: 0; z-index: 60; margin: 0; padding: 40px 24px; overflow-y: auto; overscroll-behavior: contain;
+  background: color-mix(in srgb, var(--brand-deep) 55%, transparent); animation: modal-backdrop-in 150ms ease-out;
+}
+#detail-section.as-modal > .sec-head { display: none; }
+#detail-section.as-modal.is-open #detail {
+  max-width: 1240px; margin: 0 auto; border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.12); animation: modal-in 180ms ease-out;
+}
+:root.modal-open { overflow: hidden; }
+.button.icon-button { padding: 8px; width: 36px; }
+@keyframes modal-backdrop-in { from { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { #detail-section.as-modal.is-open, #detail-section.as-modal.is-open #detail { animation: none; } }
+@media (max-width: 660px) { #detail-section.as-modal.is-open { padding: 16px 8px; } }
+
+/* --- embedded (?sample=<id>): the sample's detail card alone, ready to sit in an iframe --- */
+:root[data-embed], :root[data-embed] body { background: transparent; }
+:root[data-embed] .masthead, :root[data-embed] #kpi-section, :root[data-embed] #samples-section,
+:root[data-embed] #detail-section > .sec-head, :root[data-embed] footer, :root[data-embed] .detail-nav { display: none; }
+:root[data-embed] .wrap { max-width: none; padding: 0; }
+:root[data-embed] #detail-section { margin: 0; }
+
 @media print {
-  .filters, .detail-nav, .theme-switch { display: none; }
+  .filters, .detail-nav, .mast-settings { display: none; }
   .masthead { box-shadow: none; }
   .card, .fact-card { box-shadow: none; }
   section { break-inside: avoid; }

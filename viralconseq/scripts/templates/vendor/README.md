@@ -19,7 +19,10 @@ All are classic scripts. Load order in the template matters: Chart.js defines
 `window.Chart`; hammer.js defines `window.Hammer`, which the zoom plugin reads for
 drag-to-pan; both plugins register themselves with `window.Chart` as they load; the
 report's own scripts follow; Alpine comes last, because it starts on the next microtask
-and its `alpine:init` handler lives in `report/store.js`.
+and its `alpine:init` handler lives in `report/store.js`. `store.js` holds that one start
+(the `queueMicrotask` call whose callback runs `.start()`) until just after the first paint,
+so the page shows its themed background at once; check that it still matches after an
+Alpine update (the page then simply starts before its first paint, as before).
 
 To update: `npm pack <package>@<version>` into an empty directory, extract it, copy
 the file above, strip the sourceMappingURL line, take the licence from the package (or,

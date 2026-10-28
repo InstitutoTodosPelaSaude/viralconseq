@@ -14,6 +14,17 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 - The report rule also writes the page's JSON document as `<run>/data.json`
   (`viralconseq create-report` writes it beside the page), for reuse outside
   the browser. `report.html` still carries everything inline.
+- Report: `report.html?sample=<id>` (the sample-sheet id or `sample-<id>`,
+  optional `&segment=<name>` and `&theme=light|dark`) shows only that
+  sample's detail card on a transparent page, ready to embed in an
+  `<iframe>`; it posts `{type: "viralconseq:resize", height}` to the parent
+  page so the frame can fit it, and names an unknown sample or segment.
+- Report: a Settings menu in the header (beside the theme switch) with "Open
+  samples in a modal", which opens a sample picked in the table or a chart
+  in a modal over the page (closed by its button, Escape or the backdrop;
+  Prev/Next and the segment switch work inside it), and "Log10 depth in
+  sample detail", the same switch as the depth trace's. Both are remembered
+  in the browser.
 
 ### Changed
 
@@ -52,6 +63,11 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   unavailable the page falls back to the system theme and a log axis.
 - Report: closed tooltips no longer widen the page (they gave it a sideways
   scroll at every width).
+- Report: the page no longer flashes on opening. The theme is set in
+  `<head>` before the first paint (it used to switch after the scripts ran,
+  showing the system theme first), the content stays hidden until Alpine has
+  rendered it and then fades in, and the first paint comes after ~20 ms
+  instead of ~110 ms.
 - Report: the sample detail's viralQC block shows its figures as cards
   (Genome quality with the grade and overall status, Classification,
   Differences) and keeps only the per-check statuses in its table; the

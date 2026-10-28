@@ -124,14 +124,20 @@ function mountChart(host, spec) {
   canvas.setAttribute("aria-label", spec.label);
   host.replaceChildren(canvas);
 
-  const mounted = { host, canvas, spec, chart: new Chart(canvas, spec.config()) };
-  if (spec.resetsZoomOnDoubleClick) canvas.addEventListener("dblclick", () => mounted.chart.resetZoom());
+  // The host keeps its height at once; the chart itself is built on the next frame, so the page is painted
+  // before the charts are (building them all before the first paint left the window blank for ~100 ms).
+  const mounted = { host, canvas, spec, chart: null };
+  if (spec.resetsZoomOnDoubleClick) canvas.addEventListener("dblclick", () => mounted.chart?.resetZoom());
   mountedCharts.push(mounted);
+  requestAnimationFrame(() => {
+    if (host.isConnected && !mounted.chart) mounted.chart = new Chart(canvas, spec.config());
+  });
 }
 
 function rebuildCharts() {
   destroyDetachedCharts();
   for (const mounted of mountedCharts) {
+    if (!mounted.chart) continue; // not built yet: it will be, with the current settings
     mounted.chart.destroy();
     mounted.chart = new Chart(mounted.canvas, mounted.spec.config());
   }
@@ -139,7 +145,7 @@ function rebuildCharts() {
 
 function destroyDetachedCharts() {
   const detached = mountedCharts.filter((mounted) => !mounted.host.isConnected);
-  detached.forEach((mounted) => mounted.chart.destroy());
+  detached.forEach((mounted) => mounted.chart?.destroy());
   mountedCharts = mountedCharts.filter((mounted) => mounted.host.isConnected);
 }
 

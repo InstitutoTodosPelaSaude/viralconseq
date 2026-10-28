@@ -72,6 +72,26 @@ const FACET_COUNTS = FACETS
   .map((facet) => [facet, ROWS.filter((row) => row.facet === facet).length])
   .filter(([, count]) => count > 0);
 
+// Embedding: ?sample=<id> shows only that sample's detail card. The id may be the sample sheet's (NORW-EFE85),
+// the page's (sample-NORW-EFE85) or a row key; &segment=<name> picks a segment, else the best-covered one.
+const URL_PARAMS = new URLSearchParams(location.search);
+const EMBED_SAMPLE = URL_PARAMS.get("sample");
+const IS_EMBED = EMBED_SAMPLE !== null;
+const EMBED_ROW = IS_EMBED ? rowNamedBy(EMBED_SAMPLE, URL_PARAMS.get("segment")) : null;
+
+function rowNamedBy(name, segment) {
+  const byKey = ROWS.find((row) => row.key === name);
+  if (byKey) return byKey;
+  const rows = ROWS.filter((row) => row.id === name || row.id === `sample-${name}`);
+  if (segment) return rows.find((row) => row.facet === segment) || null;
+  return rows.sort((a, b) => (b.cov_min ?? -1) - (a.cov_min ?? -1))[0] || null;
+}
+
+function embedNotFoundText() {
+  const segment = URL_PARAMS.get("segment");
+  return segment ? `No segment “${segment}” for sample “${EMBED_SAMPLE}” in this run.` : `No sample “${EMBED_SAMPLE}” in this run.`;
+}
+
 function coverageOf(row) {
   return DATA.coverage[row.key];
 }

@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>viralconseq run report</title>
 <link rel="stylesheet" href="report.css">
+<script src="report/boot.js"></script>
 </head>
 <!-- Alpine.js markup: $store.ui is report/store.js; every other name comes from report/*.js. -->
-<body x-data>
+<!-- x-cloak: hidden until Alpine has rendered, so the page appears whole rather than empty, then filled -->
+<body x-data x-cloak>
 
 <header class="masthead">
   <div class="wrap">
@@ -19,9 +21,26 @@
         id="run-pipeline" x-text="'viralconseq ' + PIPELINE_VERSION"></span><span x-text="`consensus genomes · generated ${DATA.run.generated}`"></span></p>
       </div>
     </div>
-    <div class="theme-switch" id="theme" role="radiogroup" aria-label="Colour theme" :data-dark="String($store.ui.dark)">
-      <button type="button" role="radio" aria-label="Light theme" :aria-checked="String(!$store.ui.dark)" @click="$store.ui.setTheme('light')" x-html="ICON_SUN"></button>
-      <button type="button" role="radio" aria-label="Dark theme" :aria-checked="String($store.ui.dark)" @click="$store.ui.setTheme('dark')" x-html="ICON_MOON"></button>
+    <!-- the page's settings, each remembered in this browser: a menu of switches beside the theme switch -->
+    <div class="mast-settings">
+      <div class="settings-menu" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+        <button type="button" class="button" id="settings-button" aria-haspopup="true" aria-controls="settings-panel" :aria-expanded="String(open)"
+          @click="open = !open">Settings<span class="chevron" x-html="ICON_CHEVRON_DOWN"></span></button>
+        <div class="settings-panel" id="settings-panel" role="group" aria-label="Report settings" x-show="open" x-transition.opacity.duration.150ms>
+          <button type="button" class="setting-row" role="switch" id="modal-switch" :aria-checked="String($store.ui.modalMode)" @click="$store.ui.toggleModalMode()">
+            <span class="setting-text"><span class="setting-name">Open samples in a modal</span><span class="setting-help">A sample picked in the table or a chart opens over the page.</span></span>
+            <span class="switch" aria-hidden="true"><span class="track"><span class="knob"></span></span></span>
+          </button>
+          <button type="button" class="setting-row" role="switch" id="log-switch-header" :aria-checked="String($store.ui.logDepth)" @click="$store.ui.toggleLogDepth()">
+            <span class="setting-text"><span class="setting-name">Log10 depth in sample detail</span><span class="setting-help">Only the depth along the genome; the run charts keep their scales.</span></span>
+            <span class="switch" aria-hidden="true"><span class="track"><span class="knob"></span></span></span>
+          </button>
+        </div>
+      </div>
+      <div class="theme-switch" id="theme" role="radiogroup" aria-label="Colour theme" :data-dark="String($store.ui.dark)">
+        <button type="button" role="radio" aria-label="Light theme" :aria-checked="String(!$store.ui.dark)" @click="$store.ui.setTheme('light')" x-html="ICON_SUN"></button>
+        <button type="button" role="radio" aria-label="Dark theme" :aria-checked="String($store.ui.dark)" @click="$store.ui.setTheme('dark')" x-html="ICON_MOON"></button>
+      </div>
     </div>
   </div>
 </header>
@@ -73,7 +92,7 @@
     </div>
   </section>
 
-  <section>
+  <section id="samples-section">
     <div class="sec-head">
       <div class="title-row"><h2>Samples</h2><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About the sample table" aria-describedby="table-foot" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="table-foot"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>
         <b x-text="`Cov ≥${MIN_DEPTH}×`"></b> is the share of reference positions at or above the masking depth;
@@ -120,12 +139,16 @@
     </div>
   </section>
 
-  <section>
+  <!-- with "Open in modal" on, this section becomes the modal: its backdrop closes it, and so does Escape -->
+  <section id="detail-section" :class="{ 'as-modal': $store.ui.modalMode, 'is-open': $store.ui.modalOpen }"
+    @click.self="$store.ui.closeModal()" @keydown.escape.window="$store.ui.closeModal()">
     <div class="sec-head">
       <div class="title-row"><h2>Sample detail</h2><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About the sample detail" aria-describedby="tip-detail" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-detail"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>The row selected in the sample table. Select any row above; Prev and Next walk the table in its current order and filter.</span></span></div>
     </div>
-    <div class="card" id="detail">
-      <template x-if="!$store.ui.selectedRow"><p class="note">Select a sample from the table above.</p></template>
+    <div class="card" id="detail" :role="$store.ui.modalOpen ? 'dialog' : null" :aria-modal="$store.ui.modalOpen ? 'true' : null"
+      :aria-label="$store.ui.modalOpen ? 'Sample detail' : null">
+      <template x-if="!$store.ui.selectedRow"><p class="note" id="detail-empty"
+        x-text="IS_EMBED ? embedNotFoundText() : 'Select a sample from the table above.'"></p></template>
       <!-- keyed on the row, so its charts are mounted afresh for each selection -->
       <template x-for="row in $store.ui.selectedRow ? [$store.ui.selectedRow] : []" :key="row.key">
         <div style="display: contents">
@@ -141,6 +164,9 @@
                 ><span x-html="ICON_ARROW_LEFT"></span>Prev</button>
               <button class="button" type="button" id="next" :disabled="!$store.ui.hasNext" @click="$store.ui.selectNeighbour(1)"
                 >Next<span x-html="ICON_ARROW_RIGHT"></span></button>
+              <template x-if="$store.ui.modalOpen">
+                <button class="button icon-button" type="button" id="detail-close" aria-label="Close" @click="$store.ui.closeModal()" x-html="ICON_CLOSE"></button>
+              </template>
             </div>
           </div>
 
