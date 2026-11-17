@@ -1,11 +1,21 @@
 "use strict";
 
+// The page carries its document. The raw template (marker unfilled, served over HTTP for work on the page)
+// borrows the one inside a run's report.html, copied beside it as run-report.html.
+const DEV_RUN_PAGE = "run-report.html";
+
 const DATA = loadRunDocument();
 
 function loadRunDocument() {
   const inline = document.getElementById("run-data").textContent;
   const isTemplateWithoutData = inline.startsWith("/*");
-  return JSON.parse(isTemplateWithoutData ? readFileBesideTemplate("data.json") : inline);
+  return JSON.parse(isTemplateWithoutData ? documentOfRunPage(readFileBesideTemplate(DEV_RUN_PAGE)) : inline);
+}
+
+function documentOfRunPage(html) {
+  const data = new DOMParser().parseFromString(html, "text/html").getElementById("run-data");
+  if (!data) throw new Error(`${DEV_RUN_PAGE}: no run document in it (copy a run's report.html)`);
+  return data.textContent;
 }
 
 // Synchronous on purpose: every script after this one reads DATA as it loads.
@@ -13,7 +23,7 @@ function readFileBesideTemplate(name) {
   const request = new XMLHttpRequest();
   request.open("GET", name, false);
   request.send();
-  if (request.status !== 200) throw new Error(`${name}: not found beside the template (copy one from a run)`);
+  if (request.status !== 200) throw new Error(`${name}: not found beside the template (copy a run's report.html there)`);
   return request.responseText;
 }
 

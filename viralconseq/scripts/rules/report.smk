@@ -2,8 +2,7 @@
 # summary.tsv and the artefacts around it by scripts/python/build_report.py
 # with the shell in scripts/templates/report.html: it inlines report.css and the
 # scripts the template loads (templates/report/*.js, templates/vendor/*.js).
-# No external resources. The JSON document the page renders is
-# also written beside it as <run>/data.json.
+# No external resources.
 #
 # Included by the four entry-point workflows after rules/collect.smk (it uses
 # its helpers and rules.summary / rules.collect_consensus) and before
@@ -88,8 +87,6 @@ rule report:
         scheme = REPORT_SCHEME if REPORT_SCHEME != "NA" else [],
     output:
         report = config["output"] + "report.html",
-        # Written by build_report.py beside the page; the name is fixed there.
-        document = config["output"] + "data.json",
     params:
         run_dir = config["output"],
         data_type = REPORT_DATA,

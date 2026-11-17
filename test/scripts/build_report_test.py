@@ -882,11 +882,12 @@ class Test_Page(_RunDir):
             self.assertIn((templates / name).read_text(encoding="utf-8").strip(), page, name)
         self.assertIsNone(re.search(r"<(?:script|link)\b[^>]*\b(?:src|href)=", page))
 
-    def test_the_document_is_also_written_as_data_json(self):
+    def test_the_page_is_the_only_file_written(self):
+        """The document lives inside the page; nothing is written beside it."""
         self.spine([ok_row("sample-a"), ok_row("sample-b", cov_min=40.0)])
+        before = set(os.listdir(self._tmp.name))
         self.run_report()
-        with open(os.path.join(self._tmp.name, "data.json"), encoding="utf-8") as handle:
-            self.assertEqual(json.load(handle), document(self.page))
+        self.assertEqual(set(os.listdir(self._tmp.name)) - before, {os.path.basename(self.page)})
 
     def test_a_template_without_the_marker_is_refused(self):
         self.spine([ok_row("sample-a")])

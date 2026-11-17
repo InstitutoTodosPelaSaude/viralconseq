@@ -11,9 +11,6 @@ The release process is documented in [RELEASING.md](RELEASING.md).
 
 ### Added
 
-- The report rule also writes the page's JSON document as `<run>/data.json`
-  (`viralconseq create-report` writes it beside the page), for reuse outside
-  the browser. `report.html` still carries everything inline.
 - Report: `report.html?sample=<id>` (the sample-sheet id or `sample-<id>`,
   optional `&segment=<name>` and `&theme=light|dark`) shows only that
   sample's detail card on a transparent page, ready to embed in an
@@ -40,8 +37,9 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   `build_report.py` inlines every file the template loads, so `report.html`
   is still one file that opens offline; the rest of the page looks and
   behaves as before.
-  Served over HTTP with a `data.json` beside it, the raw template renders on
-  its own, for work on the page.
+  Served over HTTP with a run's `report.html` copied beside it as
+  `run-report.html`, the raw template renders that run's document, for work
+  on the page.
 - The report follows the Nimbus design system: its colour palette (light and
   dark), Inter type scale, and one table style for every table (a grey frame
   holding the header, rounded white body, 56 px rows, the selected row
@@ -137,14 +135,14 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   header (which summarises what it holds) opens it. Printing opens it. The
   fine print under its grid (where the figures come from, the input FASTQs
   and their checksums) is gone; every tool version, long ones included, sits
-  in the grid. The checksums stay in `run_manifest.json` and `data.json`.
+  in the grid. The checksums stay in `run_manifest.json`.
   Timestamps (run created and finished, viralQC datasets built) read in the
   viewer's locale and time zone instead of raw ISO 8601, and a value no
   longer breaks mid-number in a narrow column.
 - Report: on nanopore, the depth trace's masked bands also cover the calls
   the variant filter masked (`masked_variants.bed`), and its legend and info
   tooltip say so ("masked to N (below 20× or masked call)").
-- Report: the page and its `data.json` carry no filesystem paths: the run
+- Report: the page carries no filesystem paths: the run
   directory is gone, inputs are named by file name, and absolute paths in
   `versions.tsv` (the viralQC database location) and `viralqc_status.txt`
   are dropped.

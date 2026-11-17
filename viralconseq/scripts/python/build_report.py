@@ -4,13 +4,13 @@
 Reads a finished run directory and writes a single HTML file: run-level figures, a
 sortable table of every sample (or sample-segment) row, and a per-sample detail panel
 with the depth trace. The page's shell is the template passed as ``--template``; this
-script only produces the JSON document. It writes the document to ``data.json`` beside
-the page and splices it in at the template's ``/*{{DATA}}*/`` marker. The template's
+script only produces the JSON document, spliced in at the template's ``/*{{DATA}}*/``
+marker; the page carries it and nothing else is written. The template's
 ``<link rel="stylesheet" href=...>`` and ``<script src=...></script>`` tags (the page's
 scripts: ``report/*.js`` and ``vendor/alpine.min.js``) are replaced by the files they
 name, so the page is one file that runs with no network. The raw template, served over
-HTTP from its own directory, loads the same files by path and renders a ``data.json``
-copied next to it: that is the loop for work on the page.
+HTTP from its own directory, loads the same files by path and renders the document of a
+run's page copied next to it as ``run-report.html``: that is the loop for work on the page.
 
 ``summary.tsv`` is the spine. Every other artefact is joined onto it and is optional,
 so a run that is missing one still produces a page rather than a traceback:
@@ -759,9 +759,6 @@ SPLICE = re.compile(
     r"|(?P<data>" + re.escape(DATA_MARKER) + ")"
 )
 
-#: The document's file name, beside the page.
-DATA_FILENAME = "data.json"
-
 
 def build_parser():
     parser = argparse.ArgumentParser(
@@ -914,8 +911,6 @@ def main(argv=None) -> int:
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page, encoding="utf-8")
-    data = out.with_name(DATA_FILENAME)
-    data.write_text(payload + "\n", encoding="utf-8")
 
     threshold = document["run"]["params"]["consensus_coverage_threshold"]
     ids = {s["id"] for s in document["samples"]}
@@ -925,7 +920,7 @@ def main(argv=None) -> int:
     print(
         f"{len(ids)} samples ({len(document['samples'])} rows, {complete} at "
         f">={threshold:g}% covered), "
-        f"{len(document['coverage'])} depth traces -> {out} [{len(page) / 1024:.0f} kB], {data}"
+        f"{len(document['coverage'])} depth traces -> {out} [{len(page) / 1024:.0f} kB]"
     )
     return 0
 
