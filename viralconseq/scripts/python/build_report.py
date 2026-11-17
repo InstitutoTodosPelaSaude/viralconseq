@@ -61,7 +61,7 @@ TRACE_POINTS = 1000
 TRACE_POINTS_LARGE_RUN = 500
 LARGE_RUN_ROWS = 500
 
-#: viralQC's per-check verdicts, shown individually beside the overall status.
+#: viralQC's checks, each graded A-D (``<check>Quality``) in the per-check table.
 QC_CHECKS = [
     "privateMutations",
     "missingData",
@@ -139,6 +139,19 @@ def read_kv(path):
         except ValueError:
             result[key.strip()] = value
     return result
+
+
+#: An absolute path (POSIX, home-relative or Windows): never written into the page.
+ABSOLUTE_PATH = re.compile(r"^(?:/|~|[A-Za-z]:[\\/])")
+
+
+def is_path(value):
+    return isinstance(value, str) and bool(ABSOLUTE_PATH.match(value.strip()))
+
+
+def without_paths(mapping):
+    """``mapping`` minus every entry whose value is an absolute path."""
+    return {key: value for key, value in mapping.items() if not is_path(value)}
 
 
 def sanitize_nanopore_contig(name):
@@ -277,16 +290,31 @@ def pick_viralqc_row(grouped, sample, segment):
     return max(candidates, key=rank)
 
 
+def check_grade(row, check):
+    """viralQC's A-D grade for one check, or, from a viralQC that predates the grades,
+    Nextclade's verdict (good / mediocre / bad)."""
+    if f"{check}Quality" in row:
+        return text(row.get(f"{check}Quality"))
+    return text(row.get(f"qc.{check}.status"))
+
+
 def viralqc_block(row, spine):
-    """The viralQC facts for one sample: spine columns first, results.tsv for the rest."""
+    """The viralQC facts for one sample: spine columns first, results.tsv for the rest.
+
+    viralQC's clade and lineage name the same thing (a dataset fills one or the other),
+    so the page carries one ``clade``, the lineage standing in when the clade is empty.
+    """
     r = row or {}
     block = {
         "virus": first(text(spine.get("virus")), text(r.get("virus"))),
         "species": text(r.get("virus_species")),
         "clade": first(
-            text(spine.get("clade")), text(r.get("clade")), text(r.get("clade_display"))
+            text(spine.get("clade")),
+            text(r.get("clade")),
+            text(r.get("clade_display")),
+            text(spine.get("lineage")),
+            text(r.get("lineage")),
         ),
-        "lineage": first(text(spine.get("lineage")), text(r.get("lineage"))),
         "grade": first(text(spine.get("genome_quality")), text(r.get("genomeQuality"))),
         "score": first(num(spine.get("genome_quality_score")), num(r.get("genomeQualityScore"))),
         "overall": first(text(spine.get("qc_overall_status")), text(r.get("qc.overallStatus"))),
@@ -294,7 +322,7 @@ def viralqc_block(row, spine):
         "substitutions": num(r.get("totalSubstitutions"), int),
         "deletions": num(r.get("totalDeletions"), int),
         "missing": num(r.get("totalMissing"), int),
-        "checks": {check: text(r.get(f"qc.{check}.status")) for check in QC_CHECKS},
+        "checks": {check: check_grade(r, check) for check in QC_CHECKS},
         "dataset": first(text(spine.get("viralqc_dataset")), text(r.get("dataset"))),
         "dataset_version": first(
             text(spine.get("viralqc_dataset_version")), text(r.get("datasetVersion"))
@@ -383,7 +411,8 @@ def amplicon_means(depths, spans):
 
 
 def read_versions(path):
-    """[[component, version], ...] from versions.tsv."""
+    """[[component, version], ...] from versions.tsv, minus the entries that record a
+    path (the viralQC database's location) rather than a version."""
     pairs = []
     with open(path, newline="") as handle:
         reader = csv.reader(handle, delimiter="\t")
@@ -392,11 +421,15 @@ def read_versions(path):
                 continue
             if index == 0 and fields[0].strip().lower() == "component":
                 continue
+            if is_path(fields[1]):
+                continue
             pairs.append([fields[0].strip(), fields[1].strip()])
     return pairs
 
 
 def read_manifest(path):
+    """The manifest's provenance, with each input named by its file name alone: the page
+    is meant to be passed around, and carries no path from the machine that ran it."""
     raw = json.loads(path.read_text())
     inputs = []
     for sample, entries in sorted((raw.get("samples") or {}).items()):
@@ -404,7 +437,7 @@ def read_manifest(path):
             inputs.append(
                 {
                     "sample": sample,
-                    "path": entry.get("path"),
+                    "file": Path(entry["path"]).name if entry.get("path") else None,
                     "sha256": entry.get("sha256"),
                     "size_bytes": entry.get("size_bytes"),
                 }
@@ -595,7 +628,6 @@ def build(run_dir, rows, data_type, segments, params, label, versions, manifest,
         "run": {
             "label": label,
             "generated": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z"),
-            "output_dir": str(run_dir),
             "pipeline": PIPELINE,
             "version": version,
             "data_type": data_type,
@@ -755,7 +787,7 @@ def collect(args):
     manifest = read_manifest(manifest_path) if manifest_path.is_file() else None
 
     status_path = run_dir / "qc" / "viralqc" / "viralqc_status.txt"
-    viralqc_status = read_kv(status_path) if status_path.is_file() else None
+    viralqc_status = without_paths(read_kv(status_path)) if status_path.is_file() else None
 
     scheme_rows = None
     scheme_path = Path(args.scheme) if args.scheme else None

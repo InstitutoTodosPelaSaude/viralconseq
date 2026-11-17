@@ -250,7 +250,7 @@ class Test_Spine(_RunDir):
         self.assertEqual(sample["viralqc"]["grade"], "B")
         self.assertEqual(sample["viralqc"]["score"], 19)
         self.assertEqual(sample["viralqc"]["clade"], "24A")
-        self.assertEqual(sample["viralqc"]["lineage"], "KP.3")
+        self.assertNotIn("lineage", sample["viralqc"])  # viralQC's clade and lineage are one name
         self.assertEqual(sample["viralqc"]["dataset_version"], "2025-01-01")
 
     def test_an_unknown_summary_column_is_ignored(self):
@@ -322,7 +322,8 @@ class Test_Spine(_RunDir):
             },
         )
         self.assertIn("generated", run)
-        self.assertEqual(run["output_dir"], self.run_dir)
+        # the page is passed around: it names no directory of the machine that built it
+        self.assertNotIn("output_dir", run)
 
 
 class Test_Label(_RunDir):
@@ -475,17 +476,40 @@ class Test_ViralQC(_RunDir):
         self.assertEqual(vq["virus"], "SARS-CoV-2")
         self.assertTrue(vq["species"].startswith("Severe acute"))
         self.assertEqual(vq["clade"], "24A")
-        self.assertEqual(vq["lineage"], "KP.3")
+        self.assertNotIn("lineage", vq)
         self.assertEqual(vq["grade"], "A")
         self.assertEqual(vq["score"], 22.0)
         self.assertEqual(vq["overall"], "good")
         self.assertEqual(vq["coverage"], 0.98)
         self.assertEqual((vq["substitutions"], vq["deletions"], vq["missing"]), (70, 2, 300))
+        # this results.tsv predates viralQC's per-check grades: Nextclade's verdicts stand in
         self.assertEqual(vq["checks"]["missingData"], "mediocre")
         # a check viralQC did not report stays absent rather than becoming "good"
         self.assertIsNone(vq["checks"]["frameShifts"])
         self.assertEqual(vq["dataset"], "sars-cov-2")
         self.assertEqual(vq["input_status"], "ok")
+
+    def test_checks_carry_viralqcs_grades_over_nextclades_verdicts(self):
+        self.spine([ok_row("sample-a")])
+        grades = ["A", "C", "B", "A", "", "D"]
+        header = VIRALQC_HEADER + [f"{check}Quality" for check in build_report.QC_CHECKS]
+        write_tsv(
+            self.path("qc", "viralqc", "outputs", "results.tsv"),
+            header,
+            [self.viralqc_row("sample-a") + grades],
+        )
+        checks = self.doc()["samples"][0]["viralqc"]["checks"]
+        self.assertEqual(checks["privateMutations"], "A")
+        self.assertEqual(checks["missingData"], "C")  # not Nextclade's "mediocre"
+        self.assertEqual(checks["stopCodons"], "D")
+        # an empty grade stays empty: it does not fall back to Nextclade's "good"
+        self.assertIsNone(checks["frameShifts"])
+
+    def test_the_lineage_stands_in_for_an_empty_clade(self):
+        row = ok_row("sample-a")
+        row[SUMMARY_HEADER.index("clade")] = NA
+        self.spine([row])
+        self.assertEqual(self.doc()["samples"][0]["viralqc"]["clade"], "KP.3")
 
     def test_the_spine_wins_over_results_tsv_for_shared_fields(self):
         self.spine([ok_row("sample-a")])  # grade B in the spine
@@ -507,7 +531,8 @@ class Test_ViralQC(_RunDir):
         )
         write_text(
             self.path("qc", "viralqc", "viralqc_status.txt"),
-            "status\tfailed\nexit_code\t1\ninput_records\t1\nresult_rows\t0\n",
+            "status\tfailed\nexit_code\t1\ninput_records\t1\nresult_rows\t0\n"
+            "log\t/runs/r1/logs/run_viralqc/run_viralqc.log\n",
         )
         data = self.doc()
         vq = data["samples"][0]["viralqc"]
@@ -929,10 +954,8 @@ class Test_Provenance(_RunDir):
         )
         run = self.doc()["run"]
         self.assertEqual(run["version"], "0.2.0")
-        self.assertEqual(
-            run["versions"],
-            [["viralconseq", "0.2.0"], ["snakemake", "7.32.4"], ["viralqc_db", "/db/viralqc"]],
-        )
+        # the viralQC database's location is a path, not a version: it stays off the page
+        self.assertEqual(run["versions"], [["viralconseq", "0.2.0"], ["snakemake", "7.32.4"]])
         self.assertEqual(run["manifest"]["created_utc"], "2026-09-17T10:00:00Z")
         self.assertEqual(run["manifest"]["finished_utc"], "2026-09-17T11:00:00Z")
         self.assertEqual(run["manifest"]["status"], "completed")
@@ -942,13 +965,13 @@ class Test_Provenance(_RunDir):
             [
                 {
                     "sample": "sample-a",
-                    "path": "/data/a_R1.fastq.gz",
+                    "file": "a_R1.fastq.gz",
                     "sha256": "f00",
                     "size_bytes": 10,
                 },
                 {
                     "sample": "sample-a",
-                    "path": "/data/a_R2.fastq.gz",
+                    "file": "a_R2.fastq.gz",
                     "sha256": "ba7",
                     "size_bytes": 20,
                 },

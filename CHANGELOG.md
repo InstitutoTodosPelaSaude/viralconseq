@@ -117,6 +117,34 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   repeated there. The explanatory subtitles of "Sample detail" and
   "Provenance" move into info tooltips, and the "Run overview" heading, which
   only restated the page's title, is gone.
+- Report: the Amplicon coverage chart has a Log10 switch. It is the depth
+  trace's switch (and the Settings menu's): flipping any of them puts both
+  depth charts of the sample detail on the same scale.
+- Report: the depth trace no longer shades the ends outside the primer
+  extent, and its legend drops "outside primer extent": the grey was almost
+  the chart panel's own background and read as such. Hovering a window still
+  says whether it lies inside the extent, and the info tooltip gives the
+  extent's positions.
+- Report: viralQC's clade and lineage name the same thing, so the page shows
+  Clade only (the sample table's "Clade / lineage" column becomes "Clade",
+  and Classification drops Lineage). `build_report.py` falls back to the
+  lineage when a dataset leaves the clade empty.
+- Report: the "Consensus quality control" table grades each check A–D from
+  viralQC's `<check>Quality` columns (column "Grade") instead of showing
+  Nextclade's good / mediocre / bad; a `results.tsv` from a viralQC without
+  those columns still shows Nextclade's verdicts.
+- Report: Provenance is a card of its own, closed by default; clicking its
+  header (which summarises what it holds) opens it. Printing opens it. The
+  fine print under its grid (where the figures come from, the input FASTQs
+  and their checksums) is gone; every tool version, long ones included, sits
+  in the grid. The checksums stay in `run_manifest.json` and `data.json`.
+  Timestamps (run created and finished, viralQC datasets built) read in the
+  viewer's locale and time zone instead of raw ISO 8601, and a value no
+  longer breaks mid-number in a narrow column.
+- Report: the page and its `data.json` carry no filesystem paths: the run
+  directory is gone, inputs are named by file name, and absolute paths in
+  `versions.tsv` (the viralQC database location) and `viralqc_status.txt`
+  are dropped.
 
 ### Fixed
 

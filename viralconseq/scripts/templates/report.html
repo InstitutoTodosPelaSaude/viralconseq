@@ -32,7 +32,7 @@
             <span class="switch" aria-hidden="true"><span class="track"><span class="knob"></span></span></span>
           </button>
           <button type="button" class="setting-row" role="switch" id="log-switch-header" :aria-checked="String($store.ui.logDepth)" @click="$store.ui.toggleLogDepth()">
-            <span class="setting-text"><span class="setting-name">Log10 depth in sample detail</span><span class="setting-help">Only the depth along the genome; the run charts keep their scales.</span></span>
+            <span class="setting-text"><span class="setting-name">Log10 depth in sample detail</span><span class="setting-help">The depth along the genome and the amplicon coverage; the run charts keep their scales.</span></span>
             <span class="switch" aria-hidden="true"><span class="track"><span class="knob"></span></span></span>
           </button>
         </div>
@@ -220,7 +220,7 @@
           </template>
           <template x-if="VIRALQC_FAILURE_STATUSES.includes(row.status)">
             <p class="callout">viralQC did not grade this genome (<b x-text="statusDisplay(row.status).text"></b>).
-              Coverage and depth below are unaffected; clade, lineage and grade are unavailable.</p>
+              Coverage and depth below are unaffected; clade and grade are unavailable.</p>
           </template>
           <template x-if="row.status === 'missing_stats'">
             <p class="callout flag">Assembly statistics are missing for this row; the figures shown come only from
@@ -264,7 +264,6 @@
                 <span class="chip"><i class="sw" :style="{ background: facetColor(row.facet) }"></i>depth per window</span>
                 <span class="chip"><i class="sw" style="background:var(--mask-band)"></i><span x-text="`masked to N (below ${MIN_DEPTH}×)`"></span></span>
                 <span class="chip"><i class="sw sw-dashed"></i><span x-text="`min threshold ${MIN_DEPTH}×`"></span></span>
-                <template x-if="primerExtentOf(row)"><span class="chip"><i class="sw" style="background:var(--outside-band)"></i>outside primer extent</span></template>
                 <template x-if="(coverageOf(row).contigs || []).length > 1"><span class="chip"><i class="sw sw-contig"></i>contig boundary</span></template>
               </div>
             </template>
@@ -274,10 +273,17 @@
           </div>
 
           <template x-if="ampliconDepthsOf(row)">
-            <div class="detail-block">
+            <div class="detail-block" id="amplicon-detail">
+              <div class="block-head">
               <div class="title-row"><h3 class="sub-h3">Amplicon coverage</h3><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-amplicons" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-amplicons"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Mean depth over each amplicon of <code x-text="PARAMS.primer_scheme || 'the primer scheme'"></code>,
                 from the same per-position table. A mean above <span x-text="MIN_DEPTH"></span>× does not guarantee every position
-                in the amplicon met the masking threshold; use the trace for that.</span></span></div>
+                in the amplicon met the masking threshold; use the trace for that. Shown on a <span x-text="$store.ui.logDepth ? 'log10' : 'linear'"></span> axis,
+                the same as the trace.</span></span></div>
+                <div class="block-controls">
+                  <button type="button" class="switch" role="switch" id="amplicon-log-switch" :aria-checked="String($store.ui.logDepth)"
+                    @click="$store.ui.toggleLogDepth()"><span class="track"><span class="knob"></span></span><span class="switch-label">Log10</span></button>
+                </div>
+              </div>
               <div class="chart-card">
                 <div id="sampleamp" x-init="mountChart($el, ampliconDepthChart(row))"></div>
                 <div class="chart-foot"><span x-text="ampliconCaption(row)"></span></div>
@@ -313,10 +319,10 @@
               <template x-if="viralqcCheckVerdicts(row.viralqc).length">
                 <div class="tablewrap" style="margin-top:12px">
                   <table class="data" id="qc-table">
-                    <thead><tr><th scope="col" style="width:70%">Check</th><th scope="col">Status</th></tr></thead>
+                    <thead><tr><th scope="col" style="width:70%">Check</th><th scope="col" class="grade-col">Grade</th></tr></thead>
                     <tbody>
                       <template x-for="[check, verdict] in viralqcCheckVerdicts(row.viralqc)">
-                        <tr><td x-text="check"></td><td x-html="verdictPillHtml(verdict)"></td></tr>
+                        <tr><td x-text="check"></td><td class="grade-col" x-html="checkGradeHtml(verdict)"></td></tr>
                       </template>
                     </tbody>
                   </table>
@@ -331,19 +337,23 @@
     </div>
   </section>
 
-  <footer>
-    <div class="sec-head"><div class="title-row"><h2>Provenance</h2><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About the provenance" aria-describedby="tip-provenance" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-provenance"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Everything the page reports comes from these versions and settings.</span></span></div></div>
-    <div class="prov" id="prov">
-      <template x-for="[name, value] in PROVENANCE_ROWS">
-        <div class="row"><span x-text="name"></span><b x-text="value"></b></div>
-      </template>
-    </div>
-    <p class="fine" id="fine">Read counts and coverage come from <code>summary.tsv</code>; the depth trace from each row's
-      <code>table_cov_basewise.txt</code>; variant counts are VCF records; the N mask is derived from
-      depth &lt; <span x-text="MIN_DEPTH"></span>×. Clade, lineage and grade are viralQC's. Source: <code x-text="DATA.run.output_dir"></code>.<template
-      x-for="[tool, version] in LONG_VERSIONS"><span><br><code x-text="tool"></code>: <span x-text="version"></span></span></template><template
-      x-if="INPUT_FILES.length"><span><br>Inputs:</span></template><template
-      x-for="input in INPUT_FILES"><span><br><code x-text="input.sample"></code> <span x-text="input.file"></span><span x-text="input.details"></span></span></template></p>
+  <!-- Provenance: a card of its own, closed until its header is clicked; print opens it -->
+  <footer x-data="{ open: false }">
+    <section class="card provenance" id="provenance" :class="{ 'is-open': open }">
+      <button type="button" class="provenance-toggle" id="provenance-toggle" aria-controls="provenance-body" :aria-expanded="String(open)"
+        @click="open = !open">
+        <span class="provenance-title"><h2>Provenance</h2><span class="provenance-summary" x-text="PROVENANCE_SUMMARY"></span></span>
+        <span class="chevron" x-html="ICON_CHEVRON_DOWN"></span>
+      </button>
+      <div class="provenance-body" id="provenance-body" x-show="open" x-transition.opacity.duration.150ms>
+        <p class="note">Everything the page reports comes from these versions and settings.</p>
+        <div class="prov" id="prov">
+          <template x-for="[name, value] in PROVENANCE_ROWS">
+            <div class="row"><span x-text="name"></span><b x-text="value"></b></div>
+          </template>
+        </div>
+      </div>
+    </section>
   </footer>
 
 </div>

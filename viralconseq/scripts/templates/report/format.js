@@ -33,6 +33,23 @@ function formatCompact(value) {
   return value.toLocaleString("en-US");
 }
 
+// An ISO 8601 timestamp, as the run manifest and versions.tsv write them.
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/;
+
+function isTimestamp(value) {
+  return typeof value === "string" && ISO_TIMESTAMP.test(value);
+}
+
+// A timestamp in the viewer's locale and time zone, named so the hour is unambiguous. Fractions of a second
+// are cut to milliseconds first: Python writes microseconds, which not every browser parses.
+function formatTimestamp(value) {
+  const date = new Date(value.replace(/(\.\d{3})\d+/, "$1"));
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+  });
+}
+
 function truncate(text, maxLength = 18) {
   return text && text.length > maxLength ? text.slice(0, maxLength - 1) + "…" : text;
 }

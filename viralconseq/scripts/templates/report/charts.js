@@ -311,7 +311,7 @@ function scatterConfig() {
 }
 
 function scatterTooltipLines(row) {
-  const clade = (row.viralqc && (row.viralqc.clade || row.viralqc.lineage)) || MISSING;
+  const clade = cladeText(row) || MISSING;
   return [
     ...facetLine(row),
     `Median depth: ${formatDecimal(row.median_depth)}×`,
@@ -329,21 +329,27 @@ function depthTraceChart(row) {
   };
 }
 
-// A log axis has no zero, so on it depth is plotted as depth + 1 and its ticks read back as depth.
-function depthTraceConfig(row) {
-  const coverage = coverageOf(row);
-  const genomeLength = coverage.genome_length;
+// The sample detail's depth axis, linear or log10 as the Log10 switch says. A log axis has no zero, so on it
+// depth is plotted as depth + 1 and its ticks read back as depth.
+function depthAxis(deepest) {
   const isLog = Alpine.store("ui").logDepth;
   const offset = isLog ? 1 : 0;
-  const plottedMax = Math.max(10, ...coverage.bins) + offset;
-  const color = resolveColor(facetColor(row.facet));
-  const yAxis = isLog
+  const plottedMax = Math.max(10, deepest) + offset;
+  const axis = isLog
     ? axisOptions({
       type: "logarithmic", min: 1, max: plottedMax,
       afterBuildTicks: decadeTicks(plottedMax),
       ticks: { callback: (value) => (value === 1 ? "0" : formatCompact(value)) },
     })
     : axisOptions({ type: "linear", min: 0, ticks: { maxTicksLimit: 5, callback: formatCompact } });
+  return { axis, offset, plottedMax };
+}
+
+function depthTraceConfig(row) {
+  const coverage = coverageOf(row);
+  const genomeLength = coverage.genome_length;
+  const { axis: yAxis, offset, plottedMax } = depthAxis(Math.max(...coverage.bins));
+  const color = resolveColor(facetColor(row.facet));
   return {
     type: "line",
     data: {
@@ -396,18 +402,13 @@ function contigSummary(contigs) {
 
 function depthTraceAnnotations(row, coverage, plottedMax, offset) {
   const genomeLength = coverage.genome_length;
-  const extent = primerExtentOf(row);
   const contigs = coverage.contigs || [];
-  const band = (from, to, colorVariable) => ({
-    type: "box", xMin: from, xMax: to, backgroundColor: resolveColor(colorVariable), borderWidth: 0,
+  const masked = (coverage.mask || []).map(([first, last]) => ({
+    type: "box", xMin: first - 1, xMax: last, backgroundColor: resolveColor("var(--mask-band)"), borderWidth: 0,
     drawTime: "beforeDatasetsDraw",
-  });
-  const outsidePrimers = extent
-    ? [band(0, extent.start, "var(--outside-band)"), band(extent.end, genomeLength, "var(--outside-band)")]
-    : [];
-  const masked = (coverage.mask || []).map(([first, last]) => band(first - 1, last, "var(--mask-band)"));
+  }));
   const contigMarkers = contigs.length > 1 ? contigBoundaries(contigs).concat(contigNames(contigs, genomeLength, plottedMax)) : [];
-  return [...outsidePrimers, ...masked, ...contigMarkers, thresholdLine(MIN_DEPTH + offset, `${MIN_DEPTH}× min`)];
+  return [...masked, ...contigMarkers, thresholdLine(MIN_DEPTH + offset, `${MIN_DEPTH}× min`)];
 }
 
 function contigBoundaries(contigs) {
@@ -464,6 +465,7 @@ function ampliconDepthChart(row) {
 
 function ampliconDepthConfig(row) {
   const depths = ampliconDepthsOf(row);
+  const { axis: yAxis, offset } = depthAxis(Math.max(...depths));
   const color = resolveColor(facetColor(row.facet));
   const belowColor = resolveColor("var(--accent)");
   const everyFifthAmplicon = (value, index) => (index === 0 || (index + 1) % 5 === 0 ? index + 1 : "");
@@ -472,7 +474,7 @@ function ampliconDepthConfig(row) {
     data: {
       labels: depths.map((_, index) => index + 1),
       datasets: [{
-        data: depths,
+        data: depths.map((depth) => depth + offset),
         backgroundColor: depths.map((depth) => (depth < MIN_DEPTH ? belowColor : color)),
         ...COLUMN_BARS,
       }],
@@ -481,10 +483,10 @@ function ampliconDepthConfig(row) {
       interaction: { mode: "index", intersect: false },
       scales: {
         x: axisOptions({ grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0, callback: everyFifthAmplicon } }),
-        y: axisOptions({ min: 0, ticks: { maxTicksLimit: 5, callback: formatCompact } }),
+        y: yAxis,
       },
       plugins: {
-        annotation: { annotations: { threshold: thresholdLine(MIN_DEPTH) } },
+        annotation: { annotations: { threshold: thresholdLine(MIN_DEPTH + offset) } },
         tooltip: tooltipFor((index) => `Amplicon ${index + 1}`, (index) => ampliconTooltipLines(depths[index])),
       },
     }),

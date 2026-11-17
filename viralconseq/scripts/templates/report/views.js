@@ -152,8 +152,7 @@ function facetChipHtml(facet) {
 }
 
 function cladeText(row) {
-  if (!row.viralqc) return "";
-  return [row.viralqc.clade, row.viralqc.lineage].filter(Boolean).join(" · ");
+  return (row.viralqc && row.viralqc.clade) || "";
 }
 
 function numericCell(value, text) {
@@ -226,7 +225,7 @@ const TABLE_COLUMNS = [
     cell: (row) => ({ className: "", html: gradePillHtml(gradeOf(row)) }),
   },
   HAS_VIRALQC && {
-    key: "clade", title: "Clade / lineage", numeric: false,
+    key: "clade", title: "Clade", numeric: false,
     sortValue: cladeText,
     cell: (row) => ({ className: cladeText(row) ? "" : "dim", html: escapeHtml(cladeText(row) || MISSING) }),
   },
@@ -254,7 +253,7 @@ function rowsInView({ filter, query, sortKey, sortDirection }) {
 function matchesSearch(row, search) {
   if (!search) return true;
   const viralqc = row.viralqc || {};
-  const searchable = [row.id, row.facet, viralqc.virus, viralqc.clade, viralqc.lineage, row.status, statusDisplay(row.status).text];
+  const searchable = [row.id, row.facet, viralqc.virus, viralqc.clade, row.status, statusDisplay(row.status).text];
   return searchable.some((value) => value && String(value).toLowerCase().includes(search));
 }
 
@@ -364,8 +363,8 @@ function depthTraceNotes(row) {
   const extent = primerExtentOf(row);
   const contigNote = contigs.length > 1 ? `; dashed lines separate the ${contigs.length} reference contigs` : "";
   const extentNote = extent
-    ? `; the pale bands at each end lie outside the primer extent (${formatNumber(extent.outside_bp)} bp) `
-      + "and describe scheme geometry, not a measured coverage limit"
+    ? `; the primer scheme spans positions ${formatNumber(extent.start + 1)}–${formatNumber(extent.end)}, `
+      + "and hovering a window says whether it lies inside it"
     : "";
   return contigNote + extentNote;
 }
@@ -420,12 +419,11 @@ function viralqcFactGroups(row) {
     },
     {
       label: "Classification",
-      tip: "The virus, clade and lineage viralQC assigned, and the dataset it compared the consensus against.",
+      tip: "The virus and clade viralQC assigned, and the dataset it compared the consensus against.",
       facts: [
         fact("Virus", qc.virus || MISSING),
         qc.species && fact("Species", qc.species),
         fact("Clade", qc.clade || MISSING),
-        fact("Lineage", qc.lineage || MISSING),
         fact("Dataset", qc.dataset || MISSING),
         qc.dataset_version && fact("Dataset version", qc.dataset_version),
       ].filter(Boolean),
@@ -442,6 +440,11 @@ function viralqcFactGroups(row) {
   ];
 }
 
+// Each check's A–D grade; a viralQC older than the grades gave Nextclade's verdict instead.
+function checkGradeHtml(grade) {
+  return /^[A-D]$/i.test(grade) ? gradePillHtml(grade.toUpperCase()) : verdictPillHtml(grade);
+}
+
 function viralqcCheckVerdicts(viralqc) {
   const humanName = (check) => {
     const words = check.replace(/([A-Z])/g, " $1").toLowerCase();
@@ -452,7 +455,6 @@ function viralqcCheckVerdicts(viralqc) {
     .map(([check, verdict]) => [humanName(check), verdict]);
 }
 
-const MAX_GRID_VERSION_LENGTH = 26;
 const MANIFEST = DATA.run.manifest || {};
 
 function viralqcRunSummary(status) {
@@ -467,29 +469,30 @@ function viralqcRunSummary(status) {
   return parts.filter((part) => !isMissing(part)).join(", ");
 }
 
+// versions.tsv's keys that are not tool names, given names a reader can scan.
+const VERSION_LABELS = { viralqc_nextclade_datasets_built: "viralQC datasets built" };
+
 const PROVENANCE_ROWS = [
-  ...DATA.run.versions.filter(([, version]) => version.length <= MAX_GRID_VERSION_LENGTH),
+  ...DATA.run.versions.map(([tool, version]) => [VERSION_LABELS[tool] || tool, version]),
   ["platform", PLATFORM],
   ["minimum depth", `${MIN_DEPTH}×`],
   ["consensus coverage threshold", `${COVERAGE_THRESHOLD}% at ≥${MIN_DEPTH}×`],
   ["primer scheme", PARAMS.primer_scheme],
-  [IS_ILLUMINA ? "allele-frequency threshold" : "allele-fraction threshold (ALT / (REF + ALT))", PARAMS.af_threshold],
+  [IS_ILLUMINA ? "allele-frequency threshold" : "allele-fraction threshold", PARAMS.af_threshold],
   ["minimum read length", PARAMS.minimum_length === null ? null : `${formatNumber(PARAMS.minimum_length)} bp`],
   ["MAPQ floor", PARAMS.minimum_map_quality],
   ["Clair3 model", IS_ILLUMINA ? null : PARAMS.clair3_model],
   ["viralQC", viralqcRunSummary(DATA.run.viralqc_status)],
-  ["run created (UTC)", MANIFEST.created_utc],
-  ["run finished (UTC)", MANIFEST.finished_utc],
+  ["run created", MANIFEST.created_utc],
+  ["run finished", MANIFEST.finished_utc],
   ["run status", MANIFEST.status],
   ["config sha256", MANIFEST.config_sha256 ? MANIFEST.config_sha256.slice(0, 12) : null],
 ]
   .filter(([, value]) => !isMissing(value) && value !== "")
-  .map(([name, value]) => [name, String(value)]);
+  .map(([name, value]) => [name, isTimestamp(value) ? formatTimestamp(value) : String(value)]);
 
-const LONG_VERSIONS = DATA.run.versions.filter(([, version]) => version.length > MAX_GRID_VERSION_LENGTH);
-
-const INPUT_FILES = (MANIFEST.inputs || []).map((input) => ({
-  sample: input.sample,
-  file: input.path ? String(input.path).split("/").pop() : MISSING,
-  details: ` · sha256 ${input.sha256 || MISSING}${isMissing(input.size_bytes) ? "" : ` · ${formatCompact(input.size_bytes)} B`}`,
-}));
+// The line beside the Provenance title, so the closed card still says what opening it shows.
+const PROVENANCE_SUMMARY = [
+  DATA.run.versions.length && `${DATA.run.versions.length} tool versions`,
+  "run settings",
+].filter(Boolean).join(" · ");
