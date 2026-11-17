@@ -22,7 +22,7 @@ from viralconseq.consensus_cli import _default_conda_prefix
 from viralconseq.constants import ResourceDefaults
 from viralconseq.exceptions import ConfigurationError, ViralConseqError
 from viralconseq.provenance import MANIFEST_FILENAME, record_run_completion
-from viralconseq.validators import validate_config_dict
+from viralconseq.validators import required_config_keys, validate_config_dict
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +41,18 @@ def load_config(path: str) -> Dict[str, Any]:
 
 def apply_overrides(config: Dict[str, Any], overrides: Sequence[str]) -> Dict[str, Any]:
     """Apply ``KEY=VALUE`` pairs; values are parsed as YAML (``4`` -> int,
-    ``true`` -> bool, ``'x'`` -> str). Only keys already in the config may be
-    set, which catches typos before they become silently ignored keys."""
+    ``true`` -> bool, ``'x'`` -> str). Only keys already in the config, or
+    keys the current release requires for its data type (so a config written
+    by an older release can be completed, e.g. ``frameshift_variant_quality``
+    for a 0.2.x nanopore run), may be set; that catches typos before they
+    become silently ignored keys."""
+    allowed = set(config) | set(required_config_keys(config))
     for entry in overrides:
         key, sep, raw = entry.partition("=")
         if not sep or not key.strip():
             raise click.BadParameter(f"expected KEY=VALUE, got {entry!r}", param_hint="--set")
         key = key.strip()
-        if key not in config:
+        if key not in allowed:
             raise click.BadParameter(
                 f"{key!r} is not a key of this config (keys: {', '.join(sorted(config))})",
                 param_hint="--set",

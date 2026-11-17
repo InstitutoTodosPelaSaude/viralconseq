@@ -50,8 +50,10 @@ rule infer_consensus_sequence:
     conda:
         "../envs/alignment.yaml"
     input:
-        bam = rules.trim_primer_sequences.output.bam,
-        bam_index = rules.trim_primer_sequences.output.bam_index
+        # The depth-normalised BAM (rules/normalise.smk); statistics and the
+        # iSNV step stay on the trimmed BAM.
+        bam = rules.normalise_depth.output.bam,
+        bam_index = rules.normalise_depth.output.bam_index
     output:
         consensus = config['output'] + "assembly/" + SEGMENT_WILDCARD + "consensus/final_consensus/{sample}.consensus.fasta"
     params:

@@ -7,7 +7,8 @@ output: test/dryrun_output/consensus_nanopore/
 threads: 4
 reference: data/references/reference.fasta
 scheme: NA
-minimum_depth: 20
+minimum_depth: 10
+normalise_depth: 100
 minimum_length: 50
 workflow_path: .
 
@@ -18,7 +19,8 @@ chunk_size: 10000
 clair3_model: "r1041_e82_400bps_sup_v500"
 clair3_model_dir: data/clair3_models
 minimum_mapped_reads: 10
-variant_quality: 15
+variant_quality: 10
+frameshift_variant_quality: 50
 variant_depth: 10
 minimum_map_quality: 30
 

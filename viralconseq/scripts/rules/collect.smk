@@ -57,6 +57,11 @@ rule summary:
             if COLLECT_DATA == "nanopore"
             else []
         ),
+        filter_files = (
+            _per_sample(rules.infer_consensus_sequence.output.filter_tsv)
+            if COLLECT_DATA == "nanopore"
+            else []
+        ),
     output:
         summary = config["output"] + "summary.tsv",
         # Deprecated alias of the old shape; removed in 0.3.0.
@@ -82,6 +87,11 @@ rule summary:
             if COLLECT_DATA == "nanopore"
             else []
         ),
+        filter_files = (
+            (lambda wildcards, input: ["--variant-filter-files"] + list(input.filter_files))
+            if COLLECT_DATA == "nanopore"
+            else []
+        ),
     log:
         LOG("summary", target="summary", per_segment=False)
     benchmark:
@@ -93,6 +103,7 @@ rule summary:
         python {input.script:q} --stats {input.stats:q} --samples {params.samples:q} {params.segments:q} \
             --min-depth {params.min_depth} --data-type {params.data_type} \
             {params.viralqc:q} {params.isnvs:q} {params.status_files:q} {params.model_files:q} \
+            {params.filter_files:q} \
             --output {output.summary:q} --legacy-csv {output.legacy:q}
         """
 

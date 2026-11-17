@@ -234,7 +234,7 @@
             <div class="block-head">
               <div class="title-row"><h3 class="sub-h3" x-text="IS_SEGMENTED ? 'Segment detail' : 'Depth along the genome'"></h3><template x-if="coverageOf(row)"><span class="info" @mouseenter="placeTooltip($el)" @focusin="placeTooltip($el)"><button type="button" class="info-btn" aria-label="About this section" aria-describedby="tip-depth" x-html="ICON_INFO"></button><span class="tip" role="tooltip" id="tip-depth"><svg class="tip-arrow" viewBox="0 0 10 6" aria-hidden="true"><path d="M0 6L4.2 0.9Q5 0 5.8 0.9L10 6Z"/></svg>Mean depth in <span x-text="formatNumber(coverageOf(row).bin_bp)"></span> bp windows from <code>table_cov_basewise.txt</code>,
                 on a <span x-text="$store.ui.logDepth ? 'log10' : 'linear'"></span> axis.
-                Wheel to zoom, drag to pan, double-click for the whole genome. Shaded bands are ranges below <span x-text="MIN_DEPTH"></span>× and masked to <code>N</code><span
+                Wheel to zoom, drag to pan, double-click for the whole genome. Shaded bands are ranges masked to <code>N</code>: below <span x-text="MIN_DEPTH"></span>×<span x-text="IS_ILLUMINA ? '' : ', or a call the variant filter masked'"></span><span
                 x-text="depthTraceNotes(row)"></span>.</span></span></template></div>
               <div class="block-controls">
                 <template x-if="segmentRowsOf(row).length > 1">
@@ -262,7 +262,7 @@
             <template x-if="coverageOf(row)">
               <div class="legend" id="depth-legend">
                 <span class="chip"><i class="sw" :style="{ background: facetColor(row.facet) }"></i>depth per window</span>
-                <span class="chip"><i class="sw" style="background:var(--mask-band)"></i><span x-text="`masked to N (below ${MIN_DEPTH}×)`"></span></span>
+                <span class="chip"><i class="sw" style="background:var(--mask-band)"></i><span x-text="IS_ILLUMINA ? `masked to N (below ${MIN_DEPTH}×)` : `masked to N (below ${MIN_DEPTH}× or masked call)`"></span></span>
                 <span class="chip"><i class="sw sw-dashed"></i><span x-text="`min threshold ${MIN_DEPTH}×`"></span></span>
                 <template x-if="(coverageOf(row).contigs || []).length > 1"><span class="chip"><i class="sw sw-contig"></i>contig boundary</span></template>
               </div>

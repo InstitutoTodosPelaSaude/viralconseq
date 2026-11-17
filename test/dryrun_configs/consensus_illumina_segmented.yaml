@@ -13,7 +13,8 @@ reference:
   S3: data/references/segment3.fasta
 
 scheme: NA
-minimum_depth: 20
+minimum_depth: 10
+normalise_depth: 100
 minimum_length: 50
 workflow_path: .
 

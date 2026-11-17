@@ -7,7 +7,9 @@ suite, keeping the code lint-clean, and getting changes merged.
 ## Setup
 
 viralconseq targets Python 3.10 – 3.11. The top-level conda environment
-provides Snakemake and the core runtime dependencies; the bioinformatics
+provides Snakemake, seqkit (the FASTQ integrity check; without it on `PATH`
+the seqkit-backed tests are *skipped*, not failed, so run the suite from the
+conda environment) and the core runtime dependencies; the bioinformatics
 tools themselves (minimap2, samtools, fastp, Clair3, …) live in per-rule
 conda environments under `viralconseq/scripts/envs/` that Snakemake builds
 on demand.

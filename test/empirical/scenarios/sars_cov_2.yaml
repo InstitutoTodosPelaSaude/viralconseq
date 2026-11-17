@@ -42,13 +42,16 @@ pipelines:
     extra_args:
       --reference:         references/nCoV-2019.reference.fasta
       --primer-scheme:     references/nCoV-2019.bed
-      --minimum-coverage:  "20"
+      --minimum-coverage:  "10"
       --threads:           "2"
       --threads-total:     "4"
     expected_outputs:
       - samples/sample-itps-0001/consensus.fasta
       - samples/sample-itps-0002/consensus.fasta
       - samples/sample-itps-0001/trimmed_mapped_reads.bam
+      - samples/sample-itps-0001/normalised_mapped_reads.bam
+      - samples/sample-itps-0001/normalise_depth.tsv
+      - samples/sample-itps-0001/normalise_amplicons.tsv
       - summary.tsv
       - assembly/assembly_stats_summary.csv
       - assembly/consensus/final_consensus/samples_alignment.fasta
@@ -72,13 +75,18 @@ pipelines:
       # 'auto' cannot resolve them; this is the matching model. It must be in
       # the model dir: viralconseq setup fetches it by default.
       --clair3-model:         r941_prom_hac_g360+g422
-      --minimum-coverage:     "20"
+      --minimum-coverage:     "10"
       --minimum-map-quality:  "30"
       --threads:              "4"
       --threads-total:        "4"
     expected_outputs:
       - samples/sample-barcode05/consensus.fasta
       - samples/sample-barcode09/consensus.fasta
+      - samples/sample-barcode05/normalised_mapped_reads.bam
+      - samples/sample-barcode05/normalise_depth.tsv
+      - samples/sample-barcode05/variant_filter.tsv
+      - samples/sample-barcode05/mask.bed
+      - samples/sample-barcode05/status.txt
       - assembly/consensus/final_consensus/samples_alignment.fasta
       - qc/viralqc/outputs/results.tsv
       - qc/viralqc/viralqc_status.txt

@@ -33,6 +33,7 @@ from viralconseq.exceptions import (
     ViralQCDatabaseNotFoundError,
 )
 from viralconseq.reference_splitter import count_records, split_multifasta
+from viralconseq.seqkit import SeqkitMissingError
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,8 @@ _NUMERIC_BOUNDS = {
     "consensus_coverage_threshold": (0.0, 100.0),
     "minimum_coverage": (1, None),
     "minimum_depth": (1, None),
+    "normalise_depth": (0, None),
+    "frameshift_variant_quality": (0, None),
     "minimum_length": (0, None),
     "minimum_read_length": (0, None),
     "af_threshold": (0.0, 1.0),
@@ -172,6 +175,7 @@ CONFIG_REQUIRED_COMMON = (
     "reference",
     "scheme",
     "minimum_depth",
+    "normalise_depth",
     "minimum_length",
     "af_threshold",
     "consensus_coverage_threshold",
@@ -190,6 +194,7 @@ CONFIG_REQUIRED_NANOPORE = (
     "chunk_size",
     "clair3_model",
     "variant_quality",
+    "frameshift_variant_quality",
     "variant_depth",
     "minimum_map_quality",
     "minimum_mapped_reads",
@@ -199,6 +204,7 @@ _CONFIG_NUMERIC = {
     "threads": (1, None, True),
     "threads_total": (1, None, True),
     "minimum_depth": (1, None, True),
+    "normalise_depth": (0, None, True),
     "minimum_length": (0, None, True),
     "af_threshold": (0.0, 1.0, False),
     "af_isnv_threshold": (0.0, 1.0, False),
@@ -211,12 +217,79 @@ _CONFIG_NUMERIC = {
     "cut_right_mean_quality": (0, None, True),
     "chunk_size": (1, None, True),
     "variant_quality": (0, None, True),
+    "frameshift_variant_quality": (0, None, True),
     "variant_depth": (0, None, True),
     "minimum_map_quality": (0, None, True),
     "minimum_mapped_reads": (0, None, True),
     "max_memory_mb": (0, None, True),
     "memory_detected_mb": (0, None, True),
 }
+
+
+def required_config_keys(config: Dict[str, Any]) -> List[str]:
+    """The keys a config of this ``data`` type must carry (the parse-time list in
+    ``rules/common.smk`` plus the CLI-side ones). Shared with ``rerun --set`` so a
+    config written by an older release can be completed with a key this release
+    requires."""
+    data = config.get("data")
+    required = list(CONFIG_REQUIRED_COMMON)
+    required += CONFIG_REQUIRED_ILLUMINA if data == DataType.ILLUMINA else CONFIG_REQUIRED_NANOPORE
+    if data == DataType.NANOPORE:
+        required.extend(["infer_consensus_sequence_ram", "clair3_model_dir"])
+    if config.get("run_viralqc", True):
+        required.extend(["viralqc_db", "run_viralqc_ram"])
+    return required
+
+
+def check_normalise_depth_cap(normalise_depth: Any, minimum_depth: Any) -> None:
+    """Refuse a depth cap below the consensus depth gate.
+
+    ``normalise_depth`` caps the records per reference position the consensus
+    caller sees; ``minimum_depth`` is the depth a position needs to be called.
+    A cap strictly between 0 (off) and the gate would mask every position the
+    gate would otherwise accept. Non-numeric values are left to the bounds
+    checks, which name them precisely.
+
+    Raises:
+        ValidationError: When ``0 < normalise_depth < minimum_depth``.
+    """
+    if isinstance(normalise_depth, bool) or isinstance(minimum_depth, bool):
+        return
+    if not isinstance(normalise_depth, (int, float)) or not isinstance(minimum_depth, (int, float)):
+        return
+    if 0 < normalise_depth < minimum_depth:
+        raise ValidationError(
+            f"--normalise-depth ({normalise_depth}) is below --minimum-coverage "
+            f"({minimum_depth}): capping the depth below the consensus depth gate would "
+            "mask every position the gate would accept. Raise --normalise-depth to at "
+            "least --minimum-coverage, or pass --normalise-depth 0 to switch the cap off "
+            "(config keys normalise_depth and minimum_depth)."
+        )
+
+
+def check_variant_depth_cap(normalise_depth: Any, variant_depth: Any) -> None:
+    """Refuse a depth cap below the nanopore ALT-depth bar.
+
+    ``variant_depth`` is the ALT-read support a Clair3 call needs to enter
+    the consensus, counted in the normalised BAM; with the cap strictly
+    between 0 (off) and that bar, a capped site can never reach it and every
+    call there is masked. Non-numeric values are left to the bounds checks.
+
+    Raises:
+        ValidationError: When ``0 < normalise_depth < variant_depth``.
+    """
+    if isinstance(normalise_depth, bool) or isinstance(variant_depth, bool):
+        return
+    if not isinstance(normalise_depth, (int, float)) or not isinstance(variant_depth, (int, float)):
+        return
+    if 0 < normalise_depth < variant_depth:
+        raise ValidationError(
+            f"--normalise-depth ({normalise_depth}) is below --variant-depth "
+            f"({variant_depth}): a capped site can never carry that many ALT reads, so "
+            "every variant there would be masked. Raise --normalise-depth to at least "
+            "--variant-depth, lower --variant-depth, or pass --normalise-depth 0 to switch "
+            "the cap off (config keys normalise_depth and variant_depth)."
+        )
 
 
 def validate_config_dict(config: Any) -> None:
@@ -240,12 +313,7 @@ def validate_config_dict(config: Any) -> None:
     if data not in (DataType.ILLUMINA, DataType.NANOPORE):
         fail(f"data must be 'illumina' or 'nanopore', got {data!r}")
 
-    required = list(CONFIG_REQUIRED_COMMON)
-    required += CONFIG_REQUIRED_ILLUMINA if data == DataType.ILLUMINA else CONFIG_REQUIRED_NANOPORE
-    if data == DataType.NANOPORE:
-        required.extend(["infer_consensus_sequence_ram", "clair3_model_dir"])
-    if config.get("run_viralqc", True):
-        required.extend(["viralqc_db", "run_viralqc_ram"])
+    required = required_config_keys(config)
     missing = [key for key in required if key not in config]
     if missing:
         fail(
@@ -320,6 +388,12 @@ def validate_config_dict(config: Any) -> None:
     for key, (lo, hi, integer) in _CONFIG_NUMERIC.items():
         if key in config:
             check_number(key, lo, hi, integer)
+    try:
+        check_normalise_depth_cap(config["normalise_depth"], config["minimum_depth"])
+        if "variant_depth" in config:
+            check_variant_depth_cap(config["normalise_depth"], config["variant_depth"])
+    except ValidationError as exc:
+        fail(str(exc))
     for key in config:
         if isinstance(key, str) and (key.endswith("_cpus") or key.endswith("_ram")):
             check_number(key, 1, None, True)
@@ -639,6 +713,11 @@ def validate_consensus_requirements(args: Dict[str, Any]) -> None:
         except ViralConseqFileNotFoundError as e:
             raise PrimerSchemeNotFoundError(f"Primer scheme file does not exist: {e}") from e
 
+    if args.get("normalise_depth") is not None:
+        check_normalise_depth_cap(args["normalise_depth"], args.get("minimum_coverage", 10))
+        if args.get("variant_depth") is not None:
+            check_variant_depth_cap(args["normalise_depth"], args["variant_depth"])
+
 
 # ---------------------------------------------------------------------------
 # Content-level input integrity (consensus)
@@ -679,24 +758,53 @@ def validate_consensus_input_integrity(args: Dict[str, Any], samples: Dict[str, 
         logger.info("Input integrity validation skipped (--skip-input-validation).")
         return
 
-    logger.info("Running input integrity checks")
+    fastq_paths = [path for file_paths in samples.values() for path in file_paths]
+    workers = min(int(args.get("threads_total") or 1), len(fastq_paths)) or 1
+    logger.info(
+        "Running input integrity checks (%d FASTQ file(s), %d worker(s))",
+        len(fastq_paths),
+        workers,
+    )
     reports: List[integrity.IntegrityReport] = []
 
-    # FASTQ: every read file of every sample.
-    for file_paths in samples.values():
-        for file_path in file_paths:
-            reports.append(integrity.validate_fastq(file_path))
+    # FASTQ: every read file of every sample, seqkit-detected in a process
+    # pool sized to the thread budget (integrity.validate_fastq_files).
+    try:
+        reports.extend(integrity.validate_fastq_files(fastq_paths, workers=workers))
+    except SeqkitMissingError as e:
+        raise ValidationError(str(e)) from e
 
     # Reference FASTA(s): collect the headers so we can derive the exact contig
     # names the pipeline will map against.
     all_headers: List[str] = []
+    fasta_reports: List[integrity.IntegrityReport] = []
     for ref_path in _reference_paths(args.get("reference")):
         report = integrity.validate_fasta(ref_path)
         reports.append(report)
+        fasta_reports.append(report)
         all_headers.extend(report.headers)
 
     data_type = args.get("data_type")
     if data_type == DataType.NANOPORE:
+        # Tell the user when sanitisation renames a contig: the BAM/VCF carry the
+        # sanitised name and a primer BED must use it. One issue per header, not
+        # capped by MAX_ISSUES_PER_FILE.
+        for report in fasta_reports:
+            for header in report.headers:
+                if integrity._NANOPORE_WARN_RE.search(header):
+                    sanitized = integrity.sanitize_nanopore_contig(header)
+                    report.issues.append(
+                        integrity.IntegrityIssue(
+                            "warning",
+                            "fasta_header_sanitized",
+                            f"Reference header '{header}' contains characters earlier releases did not rewrite (outside "
+                            f"[A-Za-z0-9._-]; the nanopore workflow maps against "
+                            f"'{sanitized}' (see reference/*.sanitized.fasta). "
+                            "A primer BED must use that name.",
+                            path=report.path,
+                            kind="fasta",
+                        )
+                    )
         expected_contigs = {integrity.sanitize_nanopore_contig(h) for h in all_headers}
         accession_map = {
             integrity.header_token(h): integrity.sanitize_nanopore_contig(h) for h in all_headers

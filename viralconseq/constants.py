@@ -35,6 +35,7 @@ class ConfigKeys:
     ADAPTERS = "adapters"
     MINIMUM_LENGTH = "minimum_length"
     MINIMUM_DEPTH = "minimum_depth"
+    NORMALISE_DEPTH = "normalise_depth"
     TRIM_HEAD = "trim_head"
     TRIM_TAIL = "trim_tail"
     CUT_FRONT_MEAN_QUALITY = "cut_front_mean_quality"
@@ -48,6 +49,7 @@ class ConfigKeys:
     CHUNK_SIZE = "chunk_size"
     CLAIR3_MODEL = "clair3_model"
     VARIANT_QUALITY = "variant_quality"
+    FRAMESHIFT_VARIANT_QUALITY = "frameshift_variant_quality"
     VARIANT_DEPTH = "variant_depth"
     MINIMUM_MAP_QUALITY = "minimum_map_quality"
     RUN_ISNV = "run_isnv"
@@ -222,7 +224,7 @@ class ReportDefaults:
     ``config.yml`` is missing; they match the CLI defaults of ``consensus``."""
 
     DATA_TYPE = "illumina"
-    MIN_DEPTH = 20
+    MIN_DEPTH = 10
     CONSENSUS_COVERAGE_THRESHOLD = 70.0
 
 
@@ -257,6 +259,7 @@ class ResourceDefaults:
         "perform_qc",
         "map_reads",
         "trim_primer_sequences",
+        "normalise_depth",
         "detect_isnv",
         "run_viralqc",
     ]
@@ -265,6 +268,7 @@ class ResourceDefaults:
     CONSENSUS_NANOPORE_RULES = [
         "map_reads",
         "trim_primer_sequences",
+        "normalise_depth",
         "infer_consensus_sequence",
         "run_viralqc",
     ]

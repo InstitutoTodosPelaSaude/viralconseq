@@ -16,6 +16,8 @@ rule calculate_assembly_statistics:
         raw = get_map_input_fastqs,
         qc_passed = [rules.perform_qc.output.paired_R1, rules.perform_qc.output.paired_R2],
         bam = rules.trim_primer_sequences.output.bam,
+        bam_normalised = rules.normalise_depth.output.bam,
+        normalise_summary = rules.normalise_depth.output.summary,
         table_cov = rules.calculate_coverage_basewise.output.table_cov,
         consensus = rules.rename_sequences.output.consensus_renamed
     output:

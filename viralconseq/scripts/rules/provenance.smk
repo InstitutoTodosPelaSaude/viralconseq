@@ -47,7 +47,7 @@ rule versions_alignment:
         """
         set -euo pipefail
         exec > {log} 2>&1
-        python {input.script:q} --tools minimap2 samtools bedtools GSAlign gofasta \
+        python {input.script:q} --tools python minimap2 samtools bedtools GSAlign gofasta \
             --output {output.fragment:q}
         cat {output.fragment:q}
         """
@@ -186,6 +186,11 @@ rule versions:
             printf 'component\\tversion\\n'
             printf 'viralconseq\\t%s\\n' {params.viralconseq:q}
             printf 'snakemake\\t%s\\n' {params.snakemake:q}
+            # seqkit runs in the CLI environment (the FASTQ integrity check), not
+            # in a rule env, so it is probed here; absent under --skip-input-validation.
+            if command -v seqkit > /dev/null 2>&1; then
+                printf 'seqkit\\t%s\\n' "$(seqkit version | awk '{{print $2}}')"
+            fi
             # A tool pinned in two environments (samtools, bcftools) is listed
             # once when the versions agree, twice when they differ.
             for fragment in {input.fragments}; do
