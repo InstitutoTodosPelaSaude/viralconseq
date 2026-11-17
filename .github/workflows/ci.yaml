@@ -102,14 +102,22 @@ jobs:
   conda-smoke:
     # Full conda-env install smoke test (mirrors real user setup).
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        # Login shell so the env activated by setup-miniconda is on PATH in every step.
+        shell: bash -el {0}
     steps:
       - uses: actions/checkout@v7
-      - name: Add conda to PATH
-        run: echo "$CONDA/bin" >> $GITHUB_PATH
+      # The Ubuntu 26 runner image no longer ships Miniconda under $CONDA, so install
+      # conda here. Miniforge is pinned to a conda 25.x release: environment.yml keeps
+      # conda <26 because conda 26 trips over bioconda's missing repodata shards.
       - name: Create conda env
-        run: conda env update --file environment.yml --name viralconseq
-      - name: Activate env
-        run: echo "$CONDA/envs/viralconseq/bin" >> $GITHUB_PATH
+        uses: conda-incubator/setup-miniconda@v4.1.0
+        with:
+          miniforge-version: 25.11.0-1
+          environment-file: environment.yml
+          activate-environment: viralconseq
+          auto-activate: false
       - name: Install with dev extras
         run: pip install -e ".[dev]"
       - name: Verify install
