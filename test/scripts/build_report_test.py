@@ -5,7 +5,6 @@ import csv
 import gzip
 import json
 import os
-import re
 import tempfile
 import unittest
 
@@ -127,14 +126,6 @@ def status_row(sample, status="no_mapped_reads", segment=None, virus=NA):
     return row
 
 
-#: The smallest template build_report accepts: a stylesheet, the marker and a script.
-SHELL = (
-    '<link rel="stylesheet" href="t.css">'
-    "<script>/*{{DATA}}*/</script>"
-    '<script src="t.js"></script>'
-)
-
-
 def document(page):
     """The JSON the page carries, which is everything the template renders."""
     with open(page, encoding="utf-8") as handle:
@@ -184,34 +175,6 @@ class _RunDir(unittest.TestCase):
     def doc(self, *extra, **kwargs):
         return document(self.run_report(*extra, **kwargs))
 
-    def template(self, html, css="body {}", js="void 0;"):
-        """A template t.html in the temp dir, with its t.css and t.js siblings."""
-        for suffix, content in ((".css", css), (".js", js)):
-            if content is not None:
-                write_text(os.path.join(self._tmp.name, "t" + suffix), content)
-        return write_text(os.path.join(self._tmp.name, "t.html"), html)
-
-    def run_template(self, template):
-        """Build the page against another template; returns the SystemExit message."""
-        with self.assertRaises(SystemExit) as ctx:
-            build_report.main(
-                [
-                    "--run-dir",
-                    self.run_dir,
-                    "--template",
-                    template,
-                    "--output",
-                    self.page,
-                    "--data-type",
-                    "illumina",
-                    "--min-depth",
-                    "20",
-                    "--consensus-coverage-threshold",
-                    "70",
-                ]
-            )
-        return str(ctx.exception)
-
 
 class Test_Spine(_RunDir):
     def test_every_sample_reaches_the_page_in_spine_order(self):
@@ -250,7 +213,7 @@ class Test_Spine(_RunDir):
         self.assertEqual(sample["viralqc"]["grade"], "B")
         self.assertEqual(sample["viralqc"]["score"], 19)
         self.assertEqual(sample["viralqc"]["clade"], "24A")
-        self.assertNotIn("lineage", sample["viralqc"])  # viralQC's clade and lineage are one name
+        self.assertEqual(sample["viralqc"]["lineage"], "KP.3")
         self.assertEqual(sample["viralqc"]["dataset_version"], "2025-01-01")
 
     def test_an_unknown_summary_column_is_ignored(self):
@@ -322,8 +285,7 @@ class Test_Spine(_RunDir):
             },
         )
         self.assertIn("generated", run)
-        # the page is passed around: it names no directory of the machine that built it
-        self.assertNotIn("output_dir", run)
+        self.assertEqual(run["output_dir"], self.run_dir)
 
 
 class Test_Label(_RunDir):
@@ -492,40 +454,17 @@ class Test_ViralQC(_RunDir):
         self.assertEqual(vq["virus"], "SARS-CoV-2")
         self.assertTrue(vq["species"].startswith("Severe acute"))
         self.assertEqual(vq["clade"], "24A")
-        self.assertNotIn("lineage", vq)
+        self.assertEqual(vq["lineage"], "KP.3")
         self.assertEqual(vq["grade"], "A")
         self.assertEqual(vq["score"], 22.0)
         self.assertEqual(vq["overall"], "good")
         self.assertEqual(vq["coverage"], 0.98)
         self.assertEqual((vq["substitutions"], vq["deletions"], vq["missing"]), (70, 2, 300))
-        # this results.tsv predates viralQC's per-check grades: Nextclade's verdicts stand in
         self.assertEqual(vq["checks"]["missingData"], "mediocre")
         # a check viralQC did not report stays absent rather than becoming "good"
         self.assertIsNone(vq["checks"]["frameShifts"])
         self.assertEqual(vq["dataset"], "sars-cov-2")
         self.assertEqual(vq["input_status"], "ok")
-
-    def test_checks_carry_viralqcs_grades_over_nextclades_verdicts(self):
-        self.spine([ok_row("sample-a")])
-        grades = ["A", "C", "B", "A", "", "D"]
-        header = VIRALQC_HEADER + [f"{check}Quality" for check in build_report.QC_CHECKS]
-        write_tsv(
-            self.path("qc", "viralqc", "outputs", "results.tsv"),
-            header,
-            [self.viralqc_row("sample-a") + grades],
-        )
-        checks = self.doc()["samples"][0]["viralqc"]["checks"]
-        self.assertEqual(checks["privateMutations"], "A")
-        self.assertEqual(checks["missingData"], "C")  # not Nextclade's "mediocre"
-        self.assertEqual(checks["stopCodons"], "D")
-        # an empty grade stays empty: it does not fall back to Nextclade's "good"
-        self.assertIsNone(checks["frameShifts"])
-
-    def test_the_lineage_stands_in_for_an_empty_clade(self):
-        row = ok_row("sample-a")
-        row[SUMMARY_HEADER.index("clade")] = NA
-        self.spine([row])
-        self.assertEqual(self.doc()["samples"][0]["viralqc"]["clade"], "KP.3")
 
     def test_the_spine_wins_over_results_tsv_for_shared_fields(self):
         self.spine([ok_row("sample-a")])  # grade B in the spine
@@ -547,8 +486,7 @@ class Test_ViralQC(_RunDir):
         )
         write_text(
             self.path("qc", "viralqc", "viralqc_status.txt"),
-            "status\tfailed\nexit_code\t1\ninput_records\t1\nresult_rows\t0\n"
-            "log\t/runs/r1/logs/run_viralqc/run_viralqc.log\n",
+            "status\tfailed\nexit_code\t1\ninput_records\t1\nresult_rows\t0\n",
         )
         data = self.doc()
         vq = data["samples"][0]["viralqc"]
@@ -864,84 +802,55 @@ class Test_Page(_RunDir):
         self.assertEqual(
             self.doc("--label", "</script><b>x</b>")["run"]["label"], "</script><b>x</b>"
         )
-        closers = build_report.TEMPLATE_PATH.read_text(encoding="utf-8").count("</script>")
         with open(self.page, encoding="utf-8") as handle:
-            self.assertEqual(handle.read().count("</script>"), closers)
-
-    def test_the_stylesheet_and_scripts_are_inlined(self):
-        """Every file the template loads travels inside the page, so it needs nothing
-        beside it."""
-        self.spine([ok_row("sample-a")])
-        with open(self.run_report(), encoding="utf-8") as handle:
-            page = handle.read()
-        templates = build_report.TEMPLATE_PATH.parent
-        template = build_report.TEMPLATE_PATH.read_text(encoding="utf-8")
-        loaded = re.findall(r'<script src="([^"]+)"></script>', template)
-        self.assertIn("vendor/alpine.min.js", loaded)
-        for name in ["report.css", *loaded]:
-            self.assertIn((templates / name).read_text(encoding="utf-8").strip(), page, name)
-        self.assertIsNone(re.search(r"<(?:script|link)\b[^>]*\b(?:src|href)=", page))
-
-    def test_the_page_is_the_only_file_written(self):
-        """The document lives inside the page; nothing is written beside it."""
-        self.spine([ok_row("sample-a"), ok_row("sample-b", cov_min=40.0)])
-        before = set(os.listdir(self._tmp.name))
-        self.run_report()
-        self.assertEqual(set(os.listdir(self._tmp.name)) - before, {os.path.basename(self.page)})
+            self.assertEqual(handle.read().count("</script>"), 2)
 
     def test_a_template_without_the_marker_is_refused(self):
         self.spine([ok_row("sample-a")])
-        self.assertIn("marker", self.run_template(self.template("<html></html>")))
-
-    def test_a_missing_script_is_named(self):
-        self.spine([ok_row("sample-a")])
-        template = self.template(SHELL, js=None)
-        self.assertIn("t.js: not found", self.run_template(template))
-
-    def test_a_script_one_directory_down_is_inlined(self):
-        self.spine([ok_row("sample-a")])
-        write_text(os.path.join(self._tmp.name, "lib", "x.js"), "var fromLib = 1;")
-        template = self.template(SHELL + '<script src="lib/x.js"></script>')
-        build_report.main(
-            [
-                "--run-dir",
-                self.run_dir,
-                "--template",
-                template,
-                "--output",
-                self.page,
-                "--data-type",
-                "illumina",
-                "--min-depth",
-                "20",
-                "--consensus-coverage-threshold",
-                "70",
-            ]
-        )
-        with open(self.page, encoding="utf-8") as handle:
-            self.assertIn("var fromLib = 1;", handle.read())
-
-    def test_a_script_outside_the_template_directory_is_left_and_refused(self):
-        """A path the splice does not accept (here, a parent directory) stays a <script
-        src>, which would make the page depend on a file beside it."""
-        self.spine([ok_row("sample-a")])
-        template = self.template(SHELL + '<script src="../x.js"></script>')
-        self.assertIn("<script src> or <link href> left on the page", self.run_template(template))
-
-    def test_a_script_that_closes_its_element_is_refused(self):
-        self.spine([ok_row("sample-a")])
-        template = self.template(SHELL, js='x = "</SCRIPT>";')
-        self.assertIn("must not contain </script>", self.run_template(template))
-
-    def test_a_stylesheet_that_closes_its_element_is_refused(self):
-        self.spine([ok_row("sample-a")])
-        template = self.template(SHELL, css="a::after { content: '</STYLE>'; }")
-        self.assertIn("must not contain </style>", self.run_template(template))
+        template = write_text(os.path.join(self._tmp.name, "t.html"), "<html></html>")
+        with self.assertRaises(SystemExit) as ctx:
+            build_report.main(
+                [
+                    "--run-dir",
+                    self.run_dir,
+                    "--template",
+                    template,
+                    "--output",
+                    self.page,
+                    "--data-type",
+                    "illumina",
+                    "--min-depth",
+                    "20",
+                    "--consensus-coverage-threshold",
+                    "70",
+                ]
+            )
+        self.assertIn("marker", str(ctx.exception))
 
     def test_an_external_resource_in_the_template_is_refused(self):
         self.spine([ok_row("sample-a")])
-        template = self.template('<script src="https://cdn.example/x.js"></script>' + SHELL)
-        self.assertIn("external", self.run_template(template))
+        template = write_text(
+            os.path.join(self._tmp.name, "t.html"),
+            '<script src="https://cdn.example/x.js"></script><script>/*{{DATA}}*/</script>',
+        )
+        with self.assertRaises(SystemExit) as ctx:
+            build_report.main(
+                [
+                    "--run-dir",
+                    self.run_dir,
+                    "--template",
+                    template,
+                    "--output",
+                    self.page,
+                    "--data-type",
+                    "illumina",
+                    "--min-depth",
+                    "20",
+                    "--consensus-coverage-threshold",
+                    "70",
+                ]
+            )
+        self.assertIn("external", str(ctx.exception))
 
 
 class Test_Provenance(_RunDir):
@@ -974,8 +883,10 @@ class Test_Provenance(_RunDir):
         )
         run = self.doc()["run"]
         self.assertEqual(run["version"], "0.2.0")
-        # the viralQC database's location is a path, not a version: it stays off the page
-        self.assertEqual(run["versions"], [["viralconseq", "0.2.0"], ["snakemake", "7.32.4"]])
+        self.assertEqual(
+            run["versions"],
+            [["viralconseq", "0.2.0"], ["snakemake", "7.32.4"], ["viralqc_db", "/db/viralqc"]],
+        )
         self.assertEqual(run["manifest"]["created_utc"], "2026-09-17T10:00:00Z")
         self.assertEqual(run["manifest"]["finished_utc"], "2026-09-17T11:00:00Z")
         self.assertEqual(run["manifest"]["status"], "completed")
@@ -985,13 +896,13 @@ class Test_Provenance(_RunDir):
             [
                 {
                     "sample": "sample-a",
-                    "file": "a_R1.fastq.gz",
+                    "path": "/data/a_R1.fastq.gz",
                     "sha256": "f00",
                     "size_bytes": 10,
                 },
                 {
                     "sample": "sample-a",
-                    "file": "a_R2.fastq.gz",
+                    "path": "/data/a_R2.fastq.gz",
                     "sha256": "ba7",
                     "size_bytes": 20,
                 },

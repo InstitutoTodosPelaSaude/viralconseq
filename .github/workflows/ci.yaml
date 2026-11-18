@@ -102,22 +102,14 @@ jobs:
   conda-smoke:
     # Full conda-env install smoke test (mirrors real user setup).
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        # Login shell so the env activated by setup-miniconda is on PATH in every step.
-        shell: bash -el {0}
     steps:
       - uses: actions/checkout@v7
-      # The Ubuntu 26 runner image no longer ships Miniconda under $CONDA, so install
-      # conda here. Miniforge is pinned to a conda 25.x release: environment.yml keeps
-      # conda <26 because conda 26 trips over bioconda's missing repodata shards.
+      - name: Add conda to PATH
+        run: echo "$CONDA/bin" >> $GITHUB_PATH
       - name: Create conda env
-        uses: conda-incubator/setup-miniconda@v4.1.0
-        with:
-          miniforge-version: 25.11.0-1
-          environment-file: environment.yml
-          activate-environment: viralconseq
-          auto-activate: false
+        run: conda env update --file environment.yml --name viralconseq
+      - name: Activate env
+        run: echo "$CONDA/envs/viralconseq/bin" >> $GITHUB_PATH
       - name: Install with dev extras
         run: pip install -e ".[dev]"
       - name: Verify install
@@ -166,15 +158,13 @@ jobs:
 
           checkout = pathlib.Path(sys.argv[1]).resolve()
           src = checkout / "viralconseq" / "scripts"
-          patterns = ("*.smk", "rules/*.smk", "envs/clair3.yaml", "templates/report.*", "templates/report/*.js", "templates/vendor/*", "python/*.py")
+          patterns = ("*.smk", "rules/*.smk", "envs/clair3.yaml", "templates/report.html", "python/*.py")
           expected = sorted(
               p.relative_to(src).as_posix() for pat in patterns for p in src.glob(pat)
           )
           assert expected, f"no assets matched under {src}"
           assert any(f.endswith(".smk") for f in expected)
           assert "envs/clair3.yaml" in expected and "templates/report.html" in expected
-          assert {"templates/report.css", "templates/report/store.js", "templates/vendor/alpine.min.js",
-                  "templates/vendor/chart.umd.min.js", "templates/vendor/LICENSE-chartjs"} <= set(expected)
 
           spec = importlib.util.find_spec("viralconseq")
           installed = pathlib.Path(spec.origin).resolve().parent

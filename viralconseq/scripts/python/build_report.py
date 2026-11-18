@@ -3,14 +3,9 @@
 
 Reads a finished run directory and writes a single HTML file: run-level figures, a
 sortable table of every sample (or sample-segment) row, and a per-sample detail panel
-with the depth trace. The page's shell is the template passed as ``--template``; this
-script only produces the JSON document, spliced in at the template's ``/*{{DATA}}*/``
-marker; the page carries it and nothing else is written. The template's
-``<link rel="stylesheet" href=...>`` and ``<script src=...></script>`` tags (the page's
-scripts: ``report/*.js`` and ``vendor/alpine.min.js``) are replaced by the files they
-name, so the page is one file that runs with no network. The raw template, served over
-HTTP from its own directory, loads the same files by path and renders the document of a
-run's page copied next to it as ``run-report.html``: that is the loop for work on the page.
+with the depth trace. The page's shell -- CSS, JS, layout -- is the template passed as
+``--template``; this script only produces the JSON document and splices it in at the
+template's ``/*{{DATA}}*/`` marker.
 
 ``summary.tsv`` is the spine. Every other artefact is joined onto it and is optional,
 so a run that is missing one still produces a page rather than a traceback:
@@ -61,7 +56,7 @@ TRACE_POINTS = 1000
 TRACE_POINTS_LARGE_RUN = 500
 LARGE_RUN_ROWS = 500
 
-#: viralQC's checks, each graded A-D (``<check>Quality``) in the per-check table.
+#: viralQC's per-check verdicts, shown individually beside the overall status.
 QC_CHECKS = [
     "privateMutations",
     "missingData",
@@ -141,19 +136,6 @@ def read_kv(path):
         except ValueError:
             result[key.strip()] = value
     return result
-
-
-#: An absolute path (POSIX, home-relative or Windows): never written into the page.
-ABSOLUTE_PATH = re.compile(r"^(?:/|~|[A-Za-z]:[\\/])")
-
-
-def is_path(value):
-    return isinstance(value, str) and bool(ABSOLUTE_PATH.match(value.strip()))
-
-
-def without_paths(mapping):
-    """``mapping`` minus every entry whose value is an absolute path."""
-    return {key: value for key, value in mapping.items() if not is_path(value)}
 
 
 def sanitize_nanopore_contig(name):
@@ -320,31 +302,16 @@ def pick_viralqc_row(grouped, sample, segment):
     return max(candidates, key=rank)
 
 
-def check_grade(row, check):
-    """viralQC's A-D grade for one check, or, from a viralQC that predates the grades,
-    Nextclade's verdict (good / mediocre / bad)."""
-    if f"{check}Quality" in row:
-        return text(row.get(f"{check}Quality"))
-    return text(row.get(f"qc.{check}.status"))
-
-
 def viralqc_block(row, spine):
-    """The viralQC facts for one sample: spine columns first, results.tsv for the rest.
-
-    viralQC's clade and lineage name the same thing (a dataset fills one or the other),
-    so the page carries one ``clade``, the lineage standing in when the clade is empty.
-    """
+    """The viralQC facts for one sample: spine columns first, results.tsv for the rest."""
     r = row or {}
     block = {
         "virus": first(text(spine.get("virus")), text(r.get("virus"))),
         "species": text(r.get("virus_species")),
         "clade": first(
-            text(spine.get("clade")),
-            text(r.get("clade")),
-            text(r.get("clade_display")),
-            text(spine.get("lineage")),
-            text(r.get("lineage")),
+            text(spine.get("clade")), text(r.get("clade")), text(r.get("clade_display"))
         ),
+        "lineage": first(text(spine.get("lineage")), text(r.get("lineage"))),
         "grade": first(text(spine.get("genome_quality")), text(r.get("genomeQuality"))),
         "score": first(num(spine.get("genome_quality_score")), num(r.get("genomeQualityScore"))),
         "overall": first(text(spine.get("qc_overall_status")), text(r.get("qc.overallStatus"))),
@@ -352,7 +319,7 @@ def viralqc_block(row, spine):
         "substitutions": num(r.get("totalSubstitutions"), int),
         "deletions": num(r.get("totalDeletions"), int),
         "missing": num(r.get("totalMissing"), int),
-        "checks": {check: check_grade(r, check) for check in QC_CHECKS},
+        "checks": {check: text(r.get(f"qc.{check}.status")) for check in QC_CHECKS},
         "dataset": first(text(spine.get("viralqc_dataset")), text(r.get("dataset"))),
         "dataset_version": first(
             text(spine.get("viralqc_dataset_version")), text(r.get("datasetVersion"))
@@ -441,8 +408,7 @@ def amplicon_means(depths, spans):
 
 
 def read_versions(path):
-    """[[component, version], ...] from versions.tsv, minus the entries that record a
-    path (the viralQC database's location) rather than a version."""
+    """[[component, version], ...] from versions.tsv."""
     pairs = []
     with open(path, newline="") as handle:
         reader = csv.reader(handle, delimiter="\t")
@@ -451,15 +417,11 @@ def read_versions(path):
                 continue
             if index == 0 and fields[0].strip().lower() == "component":
                 continue
-            if is_path(fields[1]):
-                continue
             pairs.append([fields[0].strip(), fields[1].strip()])
     return pairs
 
 
 def read_manifest(path):
-    """The manifest's provenance, with each input named by its file name alone: the page
-    is meant to be passed around, and carries no path from the machine that ran it."""
     raw = json.loads(path.read_text())
     inputs = []
     for sample, entries in sorted((raw.get("samples") or {}).items()):
@@ -467,7 +429,7 @@ def read_manifest(path):
             inputs.append(
                 {
                     "sample": sample,
-                    "file": Path(entry["path"]).name if entry.get("path") else None,
+                    "path": entry.get("path"),
                     "sha256": entry.get("sha256"),
                     "size_bytes": entry.get("size_bytes"),
                 }
@@ -666,6 +628,7 @@ def build(run_dir, rows, data_type, segments, params, label, versions, manifest,
         "run": {
             "label": label,
             "generated": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z"),
+            "output_dir": str(run_dir),
             "pipeline": PIPELINE,
             "version": version,
             "data_type": data_type,
@@ -748,28 +711,12 @@ def self_check(document, run_dir, rows, threshold):
 # ----------------------------------------------------------------------------------- CLI
 
 
-#: Where the document goes in the template.
-DATA_MARKER = "/*{{DATA}}*/"
-
-#: What the page is assembled from: the template's stylesheet and script tags, each
-#: naming a file beside the template or one directory below it, and the document marker.
-SPLICE = re.compile(
-    r'<link rel="stylesheet" href="(?P<css>(?:[\w-]+/)?[\w.-]+\.css)">'
-    r'|<script src="(?P<js>(?:[\w-]+/)?[\w.-]+\.js)"></script>'
-    r"|(?P<data>" + re.escape(DATA_MARKER) + ")"
-)
-
-
 def build_parser():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--run-dir", required=True, help="A finished viralconseq run directory.")
-    parser.add_argument(
-        "--template",
-        required=True,
-        help="The HTML shell to fill in; the stylesheet and scripts it loads are inlined.",
-    )
+    parser.add_argument("--template", required=True, help="The HTML shell to fill in.")
     parser.add_argument("--output", required=True, help="HTML file to write.")
     parser.add_argument("--data-type", required=True, choices=["illumina", "nanopore"])
     parser.add_argument(
@@ -805,8 +752,9 @@ def build_parser():
     return parser
 
 
-def collect(args):
-    """The JSON document for the run directory named in ``args``."""
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+
     run_dir = Path(args.run_dir)
     summary = run_dir / "summary.tsv"
     if not summary.is_file():
@@ -815,6 +763,12 @@ def collect(args):
     if rows and "sample_id" not in rows[0]:
         raise SystemExit(f"{summary}: no 'sample_id' column")
 
+    template_path = Path(args.template)
+    template = template_path.read_text(encoding="utf-8")
+    marker = "/*{{DATA}}*/"
+    if marker not in template:
+        raise SystemExit(f"{template_path}: no {marker} marker")
+
     versions_path = run_dir / "versions.tsv"
     versions = read_versions(versions_path) if versions_path.is_file() else []
 
@@ -822,7 +776,7 @@ def collect(args):
     manifest = read_manifest(manifest_path) if manifest_path.is_file() else None
 
     status_path = run_dir / "qc" / "viralqc" / "viralqc_status.txt"
-    viralqc_status = without_paths(read_kv(status_path)) if status_path.is_file() else None
+    viralqc_status = read_kv(status_path) if status_path.is_file() else None
 
     scheme_rows = None
     scheme_path = Path(args.scheme) if args.scheme else None
@@ -855,36 +809,10 @@ def collect(args):
 
     if not args.no_self_check:
         self_check(document, run_dir, rows, args.consensus_coverage_threshold)
-    return document
 
-
-def inline(template_path, name, tag):
-    """The ``<tag>`` element holding the file ``name`` from beside the template."""
-    path = template_path.parent / name
-    if not path.is_file():
-        raise SystemExit(f"{path}: not found (the template {template_path.name} loads it)")
-    content = path.read_text(encoding="utf-8")
-    if f"</{tag}" in content.lower() or DATA_MARKER in content:
-        raise SystemExit(f"{path}: must not contain </{tag}> or {DATA_MARKER}")
-    return f"<{tag}>\n{content}</{tag}>"
-
-
-def render(template_path, payload):
-    """The page: the template with its stylesheet, its scripts and the document inlined."""
-    template = template_path.read_text(encoding="utf-8")
-    if template.count(DATA_MARKER) != 1:
-        raise SystemExit(f"{template_path}: needs exactly one {DATA_MARKER} marker")
-
-    def splice(match):
-        if match.group("data"):
-            # A literal </script> inside a JSON string would close the host element early.
-            return payload.replace("</", "<\\/")
-        if match.group("css"):
-            return inline(template_path, match.group("css"), "style")
-        return inline(template_path, match.group("js"), "script")
-
-    # One pass, so nothing spliced in is itself scanned.
-    page = SPLICE.sub(splice, template)
+    payload = json.dumps(document, separators=(",", ":"))
+    # A literal </script> inside a JSON string would close the host element early.
+    page = template.replace(marker, payload.replace("</", "<\\/"))
 
     external = re.findall(r"(?:src|href)\s*=\s*[\"']https?:", page)
     if external:
@@ -892,34 +820,20 @@ def render(template_path, payload):
             f"{template_path}: the page would load {len(external)} external "
             "resource(s); the report must render with no network"
         )
-    local = re.findall(r"<(?:script|link)\b[^>]*\b(?:src|href)\s*=", page)
-    if local:
-        raise SystemExit(
-            f"{template_path}: {len(local)} <script src> or <link href> left on the page; "
-            "only a file beside the template, or one directory below it, can be inlined"
-        )
-    return page
-
-
-def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
-    document = collect(args)
-
-    payload = json.dumps(document, separators=(",", ":"))
-    page = render(Path(args.template), payload)
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page, encoding="utf-8")
 
-    threshold = document["run"]["params"]["consensus_coverage_threshold"]
     ids = {s["id"] for s in document["samples"]}
     complete = sum(
-        1 for s in document["samples"] if s["cov_min"] is not None and s["cov_min"] >= threshold
+        1
+        for s in document["samples"]
+        if s["cov_min"] is not None and s["cov_min"] >= args.consensus_coverage_threshold
     )
     print(
         f"{len(ids)} samples ({len(document['samples'])} rows, {complete} at "
-        f">={threshold:g}% covered), "
+        f">={args.consensus_coverage_threshold:g}% covered), "
         f"{len(document['coverage'])} depth traces -> {out} [{len(page) / 1024:.0f} kB]"
     )
     return 0
