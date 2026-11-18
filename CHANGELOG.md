@@ -7,6 +7,152 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
+## [Unreleased]
+
+### Added
+
+- Report: `report.html?sample=<id>` (the sample-sheet id or `sample-<id>`,
+  optional `&segment=<name>` and `&theme=light|dark`) shows only that
+  sample's detail card on a transparent page, ready to embed in an
+  `<iframe>`; it posts `{type: "viralconseq:resize", height}` to the parent
+  page so the frame can fit it, and names an unknown sample or segment.
+- Report: a Settings menu in the header (beside the theme switch) with "Open
+  samples in a modal", which opens a sample picked in the table or a chart
+  in a modal over the page (closed by its button, Escape or the backdrop;
+  Prev/Next and the segment switch work inside it), and "Log10 depth in
+  sample detail", the same switch as the depth trace's. Both are remembered
+  in the browser.
+
+### Changed
+
+- The report page is rebuilt on Alpine.js and Chart.js (vendored under
+  `templates/vendor/` with the annotation and zoom plugins, no build step):
+  `templates/report.html` holds the whole page's markup with Alpine
+  directives, `templates/report/*.js` the data, view figures, chart
+  configurations and shared state, and `templates/report.css` the stylesheet.
+  The depth trace now zooms (mouse wheel or pinch) and pans (drag);
+  double-click shows the whole genome again. Chart marks are no longer
+  keyboard-focusable (the charts are canvas); rows are still selected from the
+  keyboard through the sample table.
+  `build_report.py` inlines every file the template loads, so `report.html`
+  is still one file that opens offline; the rest of the page looks and
+  behaves as before.
+  Served over HTTP with a run's `report.html` copied beside it as
+  `run-report.html`, the raw template renders that run's document, for work
+  on the page.
+- The report follows the Nimbus design system: its colour palette (light and
+  dark), Inter type scale, and one table style for every table (a grey frame
+  holding the header, rounded white body, 56 px rows, the selected row
+  tinted). Status and verdict pills are tinted chips, viralQC grades are
+  quality badges, and a coverage below the consensus threshold reads in
+  warning ink with a down arrow instead of a meter bar. The sample detail
+  gains a "Segment results" table (every segment of the sample, click to
+  switch) on segmented runs, shows viralQC's checks as a "Consensus quality
+  control" table, and draws its charts on a sunk panel. Unsegmented runs
+  draw their charts in the primary blue instead of grey.
+- Report: the depth trace has its own full-width block ("Segment detail" on
+  segmented runs) with a Segment select that switches the detailed segment, a
+  Log10 switch that puts the depth axis on a linear scale when off, and a
+  legend for the trace, the bands masked to N, the dashed minimum-depth line,
+  the primer extent and contig boundaries. Masked bands are tinted instead of
+  grey, so they stay distinct from the primer-extent bands.
+- Report: the theme and Log10 choices are remembered in the browser
+  (`localStorage`) and restored when a report is opened again; with storage
+  unavailable the page falls back to the system theme and a log axis.
+- Report: closed tooltips no longer widen the page (they gave it a sideways
+  scroll at every width).
+- Report: the page no longer flashes on opening. The theme is set in
+  `<head>` before the first paint (it used to switch after the scripts ran,
+  showing the system theme first), the content stays hidden until Alpine has
+  rendered it and then fades in, and the first paint comes after ~20 ms
+  instead of ~110 ms.
+- Report: the sample detail's viralQC block shows its figures as cards
+  (Genome quality with the grade and overall status, Classification,
+  Differences) and keeps only the per-check statuses in its table; the
+  table's Grade column, filled on one row only, is gone.
+- Report: the header's platform chip tells the platforms apart: Nanopore in
+  the primary blue, Illumina in violet.
+- Report: the sample detail's viralQC block shows its figures as cards
+  (Genome quality with the grade and overall status, Classification,
+  Differences) and keeps only the per-check statuses in its table; the
+  table's Grade column, filled on one row only, is gone.
+- Report: the dark theme sits on near-black neutral surfaces with lighter
+  text; every text pair is at least AA (4.5:1), the muted text on cards now
+  8.9:1 and the card labels 13.6:1.
+- Report: the sample table's filters are Nimbus tabs (a grey track, a white
+  pill that slides under the selected filter, "All (48)"-style labels), and
+  the search is a rounded field with a magnifier that stays on the right of
+  the same row at every width; the fields it searches are in its tooltip.
+- Report: table bodies round all four corners again; the top two were square
+  (Alpine's `<template>` is the body's first child, so `:first-child` never
+  matched), most visibly with a single row.
+- Report: the text explaining what a section shows (the overview charts, the
+  sample table's columns, and each block of the sample detail) moves into a
+  tooltip behind an info icon beside the section title, opened on hover,
+  keyboard focus or tap, always below the icon with its arrow on it (the
+  Nimbus tooltip: slate surface, white text). Text that carries run data
+  stays on the page.
+- Report: the sample detail's figures are grouped into cards of label/value
+  rows -- Read QC (Illumina; the former "Read QC (fastp)" block), Depth &
+  coverage, Consensus, Variant calling (nanopore; the former block of that
+  name) and Reads -- each with an info tooltip in place of the
+  old per-figure notes. The four cards run 4 across, then 2x2, then one
+  column, and three-card rows 3 across, then one column, so no card is left
+  alone on a row. Each figure stays on one line; a value cut short by a
+  narrow card shows in full in a tooltip on hover. A coverage below the
+  consensus threshold reads in warning ink with a down arrow, as in the
+  tables, and its tooltip names the threshold. The Segment select's list
+  follows the dark theme.
+- Report: the run's six KPI tiles are three cards in the same label/value
+  style (Samples, Genomes, Depth & mapping), each with an info tooltip that
+  carries the tiles' footnotes and the per-segment or per-virus counts. The
+  header is a floating rounded card in the style of the cards below it,
+  aligned with the content, carrying a
+  "viralconseq · run report" eyebrow over the
+  run label, the platform (primary-tinted) and pipeline version as chips
+  beside the generation date, and a sun/moon switch (amber sun, blue moon)
+  in place of the "Dark theme" button; its Samples and Genomes figures, now in the cards, are not
+  repeated there. The explanatory subtitles of "Sample detail" and
+  "Provenance" move into info tooltips, and the "Run overview" heading, which
+  only restated the page's title, is gone.
+- Report: the Amplicon coverage chart has a Log10 switch. It is the depth
+  trace's switch (and the Settings menu's): flipping any of them puts both
+  depth charts of the sample detail on the same scale.
+- Report: the depth trace no longer shades the ends outside the primer
+  extent, and its legend drops "outside primer extent": the grey was almost
+  the chart panel's own background and read as such. Hovering a window still
+  says whether it lies inside the extent, and the info tooltip gives the
+  extent's positions.
+- Report: viralQC's clade and lineage name the same thing, so the page shows
+  Clade only (the sample table's "Clade / lineage" column becomes "Clade",
+  and Classification drops Lineage). `build_report.py` falls back to the
+  lineage when a dataset leaves the clade empty.
+- Report: the "Consensus quality control" table grades each check A–D from
+  viralQC's `<check>Quality` columns (column "Grade") instead of showing
+  Nextclade's good / mediocre / bad; a `results.tsv` from a viralQC without
+  those columns still shows Nextclade's verdicts.
+- Report: Provenance is a card of its own, closed by default; clicking its
+  header (which summarises what it holds) opens it. Printing opens it. The
+  fine print under its grid (where the figures come from, the input FASTQs
+  and their checksums) is gone; every tool version, long ones included, sits
+  in the grid. The checksums stay in `run_manifest.json`.
+  Timestamps (run created and finished, viralQC datasets built) read in the
+  viewer's locale and time zone instead of raw ISO 8601, and a value no
+  longer breaks mid-number in a narrow column.
+- Report: on nanopore, the depth trace's masked bands also cover the calls
+  the variant filter masked (`masked_variants.bed`), and its legend and info
+  tooltip say so ("masked to N (below 20× or masked call)").
+- Report: the page carries no filesystem paths: the run
+  directory is gone, inputs are named by file name, and absolute paths in
+  `versions.tsv` (the viralQC database location) and `viralqc_status.txt`
+  are dropped.
+
+### Fixed
+
+- Report: after filtering or sorting the sample table, the detail panel's
+  Previous/Next walked the list as it was at the last selection; they now
+  follow the table. The charts follow an OS light/dark switch.
+
 ## [0.3.2] - 2026-10-19
 
 Upgrading from 0.3.x: no config change; an existing `config.yml` reruns as
