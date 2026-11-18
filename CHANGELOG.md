@@ -7,7 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 The release process is documented in [RELEASING.md](RELEASING.md).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-18
+
+Upgrading from 0.3.x: no config change; an existing run reruns as is. The
+run report is rebuilt on a new page stack (below); `viralconseq create-report
+<run>` regenerates the page of an existing 0.3.x run.
 
 ### Added
 
@@ -72,10 +76,6 @@ The release process is documented in [RELEASING.md](RELEASING.md).
   table's Grade column, filled on one row only, is gone.
 - Report: the header's platform chip tells the platforms apart: Nanopore in
   the primary blue, Illumina in violet.
-- Report: the sample detail's viralQC block shows its figures as cards
-  (Genome quality with the grade and overall status, Classification,
-  Differences) and keeps only the per-check statuses in its table; the
-  table's Grade column, filled on one row only, is gone.
 - Report: the dark theme sits on near-black neutral surfaces with lighter
   text; every text pair is at least AA (4.5:1), the muted text on cards now
   8.9:1 and the card labels 13.6:1.

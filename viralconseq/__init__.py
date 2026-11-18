@@ -3,4 +3,4 @@ _description = (
     "Reference-guided consensus sequence inference for viral high-throughput sequencing data."
 )
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
